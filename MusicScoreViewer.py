@@ -85,6 +85,7 @@ import logging
 import argparse
 import uuid
 import tempfile
+import shutil
 import time
 import threading
 import tkinter as tk
@@ -312,7 +313,12 @@ class SafeJSON:
 
     @staticmethod
     def save(filepath: str, data) -> bool:
-        """Write data atomically via a temp file + os.replace.
+        """Write data via a local temp file then move/copy to the destination.
+
+        Writing the temp file locally (rather than in the target directory)
+        avoids hangs when the target is on a network drive.  If the destination
+        is on the same device, os.replace gives an atomic rename; otherwise
+        shutil.copy2 is used as a fallback.
 
         Returns True on success, False on failure.  A visible error dialog is
         shown to the user on failure so callers do not need their own
@@ -326,10 +332,17 @@ class SafeJSON:
                 logging.error(f"SafeJSON.save: {msg}")
                 messagebox.showerror("Save Failed", msg)
                 return False
-            fd, tmp_name = tempfile.mkstemp(dir=dir_name or ".", text=True)
+            # Write to a local temp file to avoid blocking on network drives.
+            fd, tmp_name = tempfile.mkstemp(text=True)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4)
-            os.replace(tmp_name, filepath)
+            try:
+                os.replace(tmp_name, filepath)
+            except OSError:
+                # Cross-device (e.g. local temp → network drive): copy then delete.
+                shutil.copy2(tmp_name, filepath)
+                os.remove(tmp_name)
+            tmp_name = None
             return True
         except Exception as e:
             msg = f"Failed to save:\n{filepath}\n\n{e}"
