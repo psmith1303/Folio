@@ -339,8 +339,9 @@ class SafeJSON:
             try:
                 os.replace(tmp_name, filepath)
             except OSError:
-                # Cross-device (e.g. local temp → network drive): copy then delete.
-                shutil.copy2(tmp_name, filepath)
+                # Cross-device (e.g. local temp → network drive): copy data only.
+                # shutil.copyfile avoids metadata ops that fail on SMB/CIFS mounts.
+                shutil.copyfile(tmp_name, filepath)
                 os.remove(tmp_name)
             tmp_name = None
             return True
