@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Music Score Viewer</title>
+  <link rel="stylesheet" href="/app.css">
+  <!-- pdf.js from CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.9.155/pdf.min.mjs" type="module"></script>
+</head>
+<body>
+  <!-- ================================================================== -->
+  <!-- Top bar                                                            -->
+  <!-- ================================================================== -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <button id="btn-library" class="nav-btn active" title="Library">Library</button>
+      <button id="btn-back" class="nav-btn hidden" title="Back to library">&larr; Back</button>
+    </div>
+    <div class="topbar-center">
+      <span id="title-display"></span>
+    </div>
+    <div class="topbar-right">
+      <button id="btn-set-dir" title="Set music library folder">Set Folder</button>
+    </div>
+  </header>
+
+  <!-- ================================================================== -->
+  <!-- Library view                                                       -->
+  <!-- ================================================================== -->
+  <section id="library-view">
+    <div id="library-toolbar">
+      <input type="text" id="search-input" placeholder="Search titles and composers…">
+      <select id="composer-filter">
+        <option value="">All Composers</option>
+      </select>
+    </div>
+    <div id="tag-bar"></div>
+    <div id="library-table-wrap">
+      <table id="library-table">
+        <thead>
+          <tr>
+            <th data-col="composer" class="sortable sort-asc">Composer ▲</th>
+            <th data-col="title" class="sortable">Title</th>
+            <th data-col="tags" class="sortable">Tags</th>
+          </tr>
+        </thead>
+        <tbody id="library-body"></tbody>
+      </table>
+    </div>
+    <div id="library-status"></div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Score viewer                                                       -->
+  <!-- ================================================================== -->
+  <section id="viewer" class="hidden">
+    <div id="viewer-toolbar">
+      <button id="btn-prev" title="Previous page (←)">&larr;</button>
+      <span id="page-display">
+        <input type="number" id="page-input" min="1" value="1"> / <span id="page-total">0</span>
+      </span>
+      <button id="btn-next" title="Next page (→)">&rarr;</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-zoom-fit" title="Zoom to fit" class="active">Fit</button>
+      <button id="btn-side-by-side" title="Side-by-side view">2-up</button>
+    </div>
+    <div id="pdf-container">
+      <canvas id="pdf-canvas"></canvas>
+      <canvas id="pdf-canvas-2" class="hidden"></canvas>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Set-folder dialog                                                  -->
+  <!-- ================================================================== -->
+  <dialog id="dir-dialog">
+    <form method="dialog">
+      <h3>Set Music Library Folder</h3>
+      <p>Enter the full path to your music score directory:</p>
+      <input type="text" id="dir-input" placeholder="/mnt/z/PARA/Resources/Music" style="width:100%">
+      <div class="dialog-buttons">
+        <button type="button" id="dir-cancel">Cancel</button>
+        <button type="submit" id="dir-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
