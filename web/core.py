@@ -5,6 +5,7 @@ This module contains no Tkinter dependencies and is used by the web backend.
 Error conditions raise exceptions instead of showing message dialogs.
 """
 
+import copy
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import re
 import shutil
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 
 # ---------------------------------------------------------------------------
@@ -202,3 +204,70 @@ def pdf_page_count(filepath: str) -> int:
     count = len(doc)
     doc.close()
     return count
+
+
+# ---------------------------------------------------------------------------
+# Annotations
+# ---------------------------------------------------------------------------
+
+ANNOTATION_VERSION = 2
+
+
+def annotation_sidecar_path(pdf_path: str) -> str:
+    """Return the sidecar JSON path for a given PDF."""
+    return os.path.splitext(normalize_path(pdf_path))[0] + ".json"
+
+
+def load_annotations(pdf_path: str) -> dict:
+    """Load the annotation sidecar JSON for *pdf_path*.
+
+    Returns a dict with keys: version, rotations, pages.
+    Migrates old formats and assigns missing UUIDs.
+    """
+    sidecar = annotation_sidecar_path(pdf_path)
+    try:
+        raw = SafeJSON.load(sidecar, default={})
+    except SafeJSONError:
+        raw = {}
+
+    # Normalise structure
+    if "version" not in raw:
+        # Old format: top-level keys are page numbers → annotation lists
+        pages = {}
+        for k, v in raw.items():
+            if isinstance(v, list):
+                pages[k] = v
+        raw = {"version": ANNOTATION_VERSION, "rotations": {}, "pages": pages}
+
+    rotations = raw.get("rotations", {})
+    pages = raw.get("pages", {})
+
+    # Ensure every annotation has a UUID
+    dirty = False
+    for pg_annots in pages.values():
+        for annot in pg_annots:
+            if "uuid" not in annot:
+                annot["uuid"] = str(uuid.uuid4())
+                dirty = True
+
+    if dirty:
+        save_annotations(pdf_path, pages, rotations)
+
+    return {
+        "version": ANNOTATION_VERSION,
+        "rotations": rotations,
+        "pages": pages,
+    }
+
+
+def save_annotations(pdf_path: str, pages: dict, rotations: dict) -> None:
+    """Save annotations and rotations to the sidecar JSON."""
+    sidecar = annotation_sidecar_path(pdf_path)
+    # Only save non-zero rotations
+    clean_rot = {k: v for k, v in rotations.items() if v % 360 != 0}
+    data = {
+        "version": ANNOTATION_VERSION,
+        "rotations": clean_rot,
+        "pages": pages,
+    }
+    SafeJSON.save(sidecar, data)

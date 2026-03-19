@@ -64,10 +64,37 @@
       <span class="toolbar-sep"></span>
       <button id="btn-zoom-fit" title="Zoom to fit" class="active">Fit</button>
       <button id="btn-side-by-side" title="Side-by-side view">2-up</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-nav" class="tool-btn active" title="Navigate (v)">Nav</button>
+      <button id="btn-pen" class="tool-btn" title="Pen (d)">Pen</button>
+      <button id="btn-text" class="tool-btn" title="Text (t)">Text</button>
+      <button id="btn-eraser" class="tool-btn" title="Eraser (e)">Eraser</button>
+      <span class="toolbar-sep"></span>
+      <span id="color-swatches">
+        <span class="swatch selected" data-color="black" style="background:black" title="Black"></span>
+        <span class="swatch" data-color="red" style="background:red" title="Red"></span>
+        <span class="swatch" data-color="blue" style="background:blue" title="Blue"></span>
+        <span class="swatch" data-color="green" style="background:green" title="Green"></span>
+        <span class="swatch" data-color="orange" style="background:orange" title="Orange"></span>
+        <span class="swatch" data-color="purple" style="background:purple" title="Purple"></span>
+        <span class="swatch" data-color="magenta" style="background:magenta" title="Magenta"></span>
+      </span>
+      <span class="toolbar-sep"></span>
+      <label id="size-label" title="Pen / text size">
+        Size <input type="range" id="size-slider" min="1" max="10" value="2">
+      </label>
+      <span class="toolbar-sep"></span>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
     </div>
     <div id="pdf-container">
-      <canvas id="pdf-canvas"></canvas>
-      <canvas id="pdf-canvas-2" class="hidden"></canvas>
+      <div id="page-wrap-1" class="page-wrap">
+        <canvas id="pdf-canvas"></canvas>
+        <canvas id="annot-canvas" class="annot-layer"></canvas>
+      </div>
+      <div id="page-wrap-2" class="page-wrap hidden">
+        <canvas id="pdf-canvas-2"></canvas>
+        <canvas id="annot-canvas-2" class="annot-layer"></canvas>
+      </div>
     </div>
   </section>
 
@@ -82,6 +109,44 @@
       <div class="dialog-buttons">
         <button type="button" id="dir-cancel">Cancel</button>
         <button type="submit" id="dir-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Text annotation dialog                                           -->
+  <!-- ================================================================== -->
+  <dialog id="text-dialog">
+    <form method="dialog">
+      <h3 id="text-dialog-title">Add Text</h3>
+      <div class="dialog-row">
+        <label>Text: <input type="text" id="text-input" style="width:100%"></label>
+      </div>
+      <div class="dialog-row">
+        <label>Font:
+          <select id="text-font">
+            <option>serif</option>
+            <option selected>sans-serif</option>
+            <option>monospace</option>
+            <option>cursive</option>
+          </select>
+        </label>
+      </div>
+      <div class="dialog-row" id="symbol-bar">
+        <button type="button" class="sym-btn" data-sym="&#x1D15E;" title="Minim">&#x1D15E;</button>
+        <button type="button" class="sym-btn" data-sym="&#9833;" title="Crotchet">&#9833;</button>
+        <button type="button" class="sym-btn" data-sym="&#9833;." title="Dotted crotchet">&#9833;.</button>
+        <button type="button" class="sym-btn" data-sym="&#9834;" title="Quaver">&#9834;</button>
+        <button type="button" class="sym-btn dyn" data-sym="pp">pp</button>
+        <button type="button" class="sym-btn dyn" data-sym="p">p</button>
+        <button type="button" class="sym-btn dyn" data-sym="mp">mp</button>
+        <button type="button" class="sym-btn dyn" data-sym="mf">mf</button>
+        <button type="button" class="sym-btn dyn" data-sym="f">f</button>
+        <button type="button" class="sym-btn dyn" data-sym="ff">ff</button>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="text-cancel">Cancel</button>
+        <button type="submit" id="text-ok">OK</button>
       </div>
     </form>
   </dialog>

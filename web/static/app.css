@@ -262,9 +262,98 @@ th.sortable:hover {
   background: var(--bg);
 }
 
-#pdf-container canvas {
+.page-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.page-wrap canvas:first-child {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   background: #fff;
+}
+
+.annot-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  cursor: default;
+}
+
+.annot-layer.tool-pen { cursor: crosshair; }
+.annot-layer.tool-text { cursor: text; }
+.annot-layer.tool-eraser { cursor: pointer; }
+
+/* ================================================================== */
+/* Annotation toolbar                                                 */
+/* ================================================================== */
+
+.swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.swatch:hover { border-color: var(--fg-dim); }
+.swatch.selected { border-color: #fff; box-shadow: 0 0 0 1px var(--accent); }
+
+#color-swatches {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+
+#size-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+#size-slider {
+  width: 80px;
+  accent-color: var(--accent);
+}
+
+/* ================================================================== */
+/* Text annotation dialog                                             */
+/* ================================================================== */
+
+.dialog-row {
+  margin-bottom: 10px;
+}
+
+.dialog-row label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-row input[type="text"],
+.dialog-row select {
+  flex: 1;
+}
+
+#symbol-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sym-btn {
+  min-width: 36px;
+  font-size: 16px;
+  padding: 4px 6px;
+}
+
+.sym-btn.dyn {
+  font-style: italic;
+  font-weight: bold;
+  font-family: serif;
 }
 
 /* ================================================================== */

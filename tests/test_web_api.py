@@ -150,3 +150,63 @@ class TestServePDF:
         state.set_library(library_with_pdfs)
         resp = client.get(f"/api/pdf?path={library_with_pdfs}/nope.pdf")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/annotations
+# ---------------------------------------------------------------------------
+
+
+class TestGetAnnotations:
+    def test_returns_empty_for_unannotated_pdf(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+        resp = client.get(f"/api/annotations?path={path}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["version"] == 2
+        assert data["pages"] == {}
+
+    def test_no_library_returns_400(self, client):
+        resp = client.get("/api/annotations?path=/some/file.pdf")
+        assert resp.status_code == 400
+
+    def test_nonexistent_pdf_returns_404(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.get(f"/api/annotations?path={library_with_pdfs}/nope.pdf")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/annotations
+# ---------------------------------------------------------------------------
+
+
+class TestPutAnnotations:
+    def test_save_and_reload(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        pages = {"0": [{"uuid": "test-123", "type": "ink",
+                        "points": [[0.1, 0.2], [0.3, 0.4]],
+                        "color": "red", "width": 3}]}
+        resp = client.put("/api/annotations", json={
+            "path": path, "pages": pages, "rotations": {}
+        })
+        assert resp.status_code == 200
+
+        # Reload and verify
+        resp = client.get(f"/api/annotations?path={path}")
+        data = resp.json()
+        assert len(data["pages"]["0"]) == 1
+        assert data["pages"]["0"][0]["color"] == "red"
+
+    def test_path_traversal_blocked(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.put("/api/annotations", json={
+            "path": f"{library_with_pdfs}/../../../etc/passwd",
+            "pages": {}, "rotations": {}
+        })
+        assert resp.status_code in (403, 404)

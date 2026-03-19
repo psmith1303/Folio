@@ -7,11 +7,15 @@ import tempfile
 import pytest
 
 from web.core import (
+    ANNOTATION_VERSION,
     SafeJSON,
     SafeJSONError,
     Score,
+    annotation_sidecar_path,
+    load_annotations,
     normalize_path,
     portable_path,
+    save_annotations,
     scan_library,
 )
 
@@ -146,3 +150,89 @@ class TestScanLibrary:
 
     def test_scan_empty_dir(self, tmp_path):
         assert scan_library(str(tmp_path)) == []
+
+
+# ---------------------------------------------------------------------------
+# Annotations
+# ---------------------------------------------------------------------------
+
+
+class TestAnnotationSidecarPath:
+    def test_derives_json_from_pdf(self):
+        result = annotation_sidecar_path("/music/score.pdf")
+        assert result.endswith("/score.json")
+
+    def test_preserves_directory(self):
+        result = annotation_sidecar_path("/music/sub/score.pdf")
+        assert "/sub/" in result
+
+
+class TestLoadAnnotations:
+    def test_no_sidecar_returns_empty(self, tmp_path):
+        pdf = tmp_path / "score.pdf"
+        pdf.touch()
+        data = load_annotations(str(pdf))
+        assert data["version"] == ANNOTATION_VERSION
+        assert data["pages"] == {}
+        assert data["rotations"] == {}
+
+    def test_loads_existing_sidecar(self, tmp_path):
+        pdf = tmp_path / "score.pdf"
+        pdf.touch()
+        sidecar = tmp_path / "score.json"
+        sidecar.write_text(json.dumps({
+            "version": 2,
+            "rotations": {"0": 90},
+            "pages": {"0": [
+                {"uuid": "abc", "type": "ink", "points": [[0.1, 0.2]],
+                 "color": "red", "width": 3}
+            ]}
+        }))
+        data = load_annotations(str(pdf))
+        assert data["rotations"]["0"] == 90
+        assert len(data["pages"]["0"]) == 1
+        assert data["pages"]["0"][0]["uuid"] == "abc"
+
+    def test_assigns_missing_uuids(self, tmp_path):
+        pdf = tmp_path / "score.pdf"
+        pdf.touch()
+        sidecar = tmp_path / "score.json"
+        sidecar.write_text(json.dumps({
+            "version": 2,
+            "rotations": {},
+            "pages": {"0": [
+                {"type": "ink", "points": [[0.5, 0.5]], "color": "black", "width": 2}
+            ]}
+        }))
+        data = load_annotations(str(pdf))
+        assert "uuid" in data["pages"]["0"][0]
+        assert len(data["pages"]["0"][0]["uuid"]) > 0
+
+    def test_migrates_old_format(self, tmp_path):
+        pdf = tmp_path / "score.pdf"
+        pdf.touch()
+        sidecar = tmp_path / "score.json"
+        # Old format: page numbers as top-level keys
+        sidecar.write_text(json.dumps({
+            "0": [{"type": "ink", "points": [[0.1, 0.2]], "color": "blue", "width": 1}]
+        }))
+        data = load_annotations(str(pdf))
+        assert data["version"] == ANNOTATION_VERSION
+        assert "0" in data["pages"]
+        assert data["pages"]["0"][0]["type"] == "ink"
+
+
+class TestSaveAnnotations:
+    def test_save_and_reload(self, tmp_path):
+        pdf = tmp_path / "score.pdf"
+        pdf.touch()
+        pages = {"0": [{"uuid": "xyz", "type": "text", "x": 0.5, "y": 0.5,
+                        "text": "ff", "font": "serif", "color": "red", "size": 3}]}
+        rotations = {"0": 90, "1": 0}
+        save_annotations(str(pdf), pages, rotations)
+
+        data = load_annotations(str(pdf))
+        assert data["pages"]["0"][0]["text"] == "ff"
+        # Rotation 0 should be filtered out
+        assert "1" not in data["rotations"]
+        assert data["rotations"]["0"] == 90

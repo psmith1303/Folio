@@ -20,9 +20,11 @@ from .core import (
     SafeJSON,
     SafeJSONError,
     Score,
+    load_annotations,
     normalize_path,
     pdf_page_count,
     portable_path,
+    save_annotations,
     scan_library,
 )
 
@@ -222,6 +224,53 @@ def pdf_pages(path: str = Query(..., description="Score filepath")):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"path": portable_path(path), "pages": count}
+
+
+# ---------------------------------------------------------------------------
+# Annotation endpoints
+# ---------------------------------------------------------------------------
+
+
+def _validate_pdf_in_library(filepath: str) -> str:
+    """Like _validate_library_path but allows the file to not exist yet
+    (annotations can be created before the sidecar JSON exists)."""
+    if not state.library_dir:
+        raise HTTPException(status_code=400, detail="No library directory set")
+    resolved = os.path.realpath(normalize_path(filepath))
+    root = os.path.realpath(state.library_dir)
+    if not resolved.startswith(root + os.sep) and resolved != root:
+        raise HTTPException(status_code=403, detail="Path outside library")
+    return resolved
+
+
+@app.get("/api/annotations")
+def get_annotations(path: str = Query(..., description="PDF filepath")):
+    resolved = _validate_pdf_in_library(path)
+    if not os.path.isfile(resolved):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    try:
+        data = load_annotations(resolved)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return data
+
+
+class SaveAnnotationsRequest(BaseModel):
+    path: str
+    pages: dict
+    rotations: dict
+
+
+@app.put("/api/annotations")
+def put_annotations(req: SaveAnnotationsRequest):
+    resolved = _validate_pdf_in_library(req.path)
+    if not os.path.isfile(resolved):
+        raise HTTPException(status_code=404, detail="PDF not found")
+    try:
+        save_annotations(resolved, req.pages, req.rotations)
+    except SafeJSONError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

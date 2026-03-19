@@ -64,8 +64,8 @@ python -m pytest -v
 ```
 
 Some tests are platform-specific. On Linux/WSL, 4 Windows-only path tests
-are skipped (90 of 94 pass). On Windows, 11 Linux/WSL-only tests are skipped
-instead (83 of 94 pass).
+are skipped (102 of 106 pass). On Windows, 11 Linux/WSL-only tests are skipped
+instead (95 of 106 pass).
 
 ### What the tests cover
 
@@ -74,8 +74,8 @@ instead (83 of 94 pass).
 | `tests/test_path_utils.py` | 22 | 18 | 12 | `normalize_path()` and `portable_path()`, including WSL↔Windows translation and round-trip invariants |
 | `tests/test_rotation.py` | 17 | 17 | 17 | `_rotate_annotation_coords()` rotation transform maths: identity, known corners, CW/CCW inverse, composition, bounds |
 | `tests/test_safe_json.py` | 21 | 21 | 20 | `SafeJSON.load()` and `SafeJSON.save()`: missing files, valid JSON, corrupt JSON, missing directory, cross-device/network-drive write, unicode, round-trips |
-| `tests/test_web_core.py` | 20 | 20 | 20 | `web.core` module: path utils, SafeJSON (exception-based), Score parsing, library scanning |
-| `tests/test_web_api.py` | 14 | 14 | 14 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, path traversal protection |
+| `tests/test_web_core.py` | 27 | 27 | 27 | `web.core` module: path utils, SafeJSON (exception-based), Score parsing, library scanning, annotation load/save/migration |
+| `tests/test_web_api.py` | 19 | 19 | 19 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, annotation CRUD, path traversal protection |
 
 ## Emacs Editing
 
