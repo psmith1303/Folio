@@ -536,7 +536,21 @@ function canvasCoords(e, annotCanvas) {
 }
 
 function onPointerDown(e, annotCanvas, layoutIndex) {
-  if (activeTool === "nav") return;
+  if (activeTool === "nav") {
+    // Click on right/bottom half → next page, left/top half → previous page
+    const { x, y } = canvasCoords(e, annotCanvas);
+    const layout = pageLayouts[layoutIndex];
+    if (layout) {
+      const rightHalf = x > layout.cssW / 2;
+      const bottomHalf = y > layout.cssH / 2;
+      if (rightHalf || bottomHalf) {
+        nextPage();
+      } else {
+        prevPage();
+      }
+    }
+    return;
+  }
   e.preventDefault();
 
   const layout = pageLayouts[layoutIndex];
