@@ -29,13 +29,13 @@ A Python application to view, navigate, and annotate PDF music scores.
 The web version serves your music library over HTTP, accessible from any
 browser (including iPad).
 
-1. Install web dependencies:
+1. Install web dependencies (WSL / Debian / Ubuntu):
    ```
-   pip install -r web/requirements.txt
+   sudo apt install python3-uvicorn python3-fastapi python3-pymupdf
    ```
 2. Start the server:
    ```
-   python -m uvicorn web.server:app --host 0.0.0.0 --port 8000
+   python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8000
    ```
 3. Open `http://<your-machine>:8000` in a browser or on your iPad.
 
