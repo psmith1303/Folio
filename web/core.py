@@ -1,11 +1,10 @@
 """
-Core business logic extracted from MusicScoreViewer.py.
+Folio — core business logic.
 
 This module contains no Tkinter dependencies and is used by the web backend.
 Error conditions raise exceptions instead of showing message dialogs.
 """
 
-import copy
 import json
 import logging
 import os
@@ -175,13 +174,20 @@ class Score:
 
 
 def scan_library(path: str) -> list[Score]:
-    """Walk *path* and return a Score for every PDF found."""
+    """Walk *path* and return a Score for every PDF found.
+
+    Directories containing a ``.exclude`` file are skipped entirely.
+    """
     path = normalize_path(path)
     if not os.path.isdir(path):
         raise FileNotFoundError(f"Directory not found: {path}")
 
     found: list[Score] = []
-    for root_dir, _, files in os.walk(path):
+    for root_dir, subdirs, files in os.walk(path):
+        # Skip directories that contain a .exclude marker
+        if ".exclude" in files:
+            subdirs.clear()
+            continue
         rel = os.path.normpath(os.path.relpath(root_dir, path))
         parts = rel.lower().replace("\\", "/").split("/")
         ftags = {p for p in parts if p and p != "."}

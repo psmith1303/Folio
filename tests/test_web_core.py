@@ -151,6 +151,30 @@ class TestScanLibrary:
     def test_scan_empty_dir(self, tmp_path):
         assert scan_library(str(tmp_path)) == []
 
+    def test_exclude_file_skips_directory(self, tmp_path):
+        """A directory with a .exclude file is skipped entirely."""
+        included = tmp_path / "included"
+        included.mkdir()
+        (included / "keep.pdf").touch()
+        excluded = tmp_path / "excluded"
+        excluded.mkdir()
+        (excluded / ".exclude").touch()
+        (excluded / "hidden.pdf").touch()
+        result = scan_library(str(tmp_path))
+        assert len(result) == 1
+        assert result[0].title == "keep"
+
+    def test_exclude_file_skips_subdirectories(self, tmp_path):
+        """A .exclude marker prevents recursion into subdirectories."""
+        parent = tmp_path / "parent"
+        parent.mkdir()
+        (parent / ".exclude").touch()
+        child = parent / "child"
+        child.mkdir()
+        (child / "deep.pdf").touch()
+        result = scan_library(str(tmp_path))
+        assert len(result) == 0
+
 
 # ---------------------------------------------------------------------------
 # Annotations

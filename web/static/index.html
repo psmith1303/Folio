@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#333333">
-  <title>Music Score Viewer</title>
+  <title>Folio</title>
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
@@ -40,6 +40,7 @@
       <select id="composer-filter">
         <option value="">All Composers</option>
       </select>
+      <button id="btn-reset" title="Clear all filters">Reset</button>
     </div>
     <div id="tag-bar"></div>
     <div id="library-table-wrap">
@@ -58,53 +59,57 @@
   </section>
 
   <!-- ================================================================== -->
-  <!-- Setlist list view                                                  -->
+  <!-- Setlist view (two-column: list + detail)                           -->
   <!-- ================================================================== -->
   <section id="setlist-view" class="hidden">
-    <div id="setlist-toolbar">
-      <button id="btn-new-setlist">New Setlist</button>
-    </div>
-    <div id="setlist-list-wrap">
-      <table id="setlist-table">
-        <thead>
-          <tr>
-            <th>Setlist</th>
-            <th>Songs</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="setlist-body"></tbody>
-      </table>
-    </div>
-    <div id="setlist-status"></div>
-  </section>
-
-  <!-- ================================================================== -->
-  <!-- Setlist detail view                                                -->
-  <!-- ================================================================== -->
-  <section id="setlist-detail" class="hidden">
-    <div id="setlist-detail-toolbar">
-      <span id="setlist-detail-name"></span>
-      <button id="btn-rename-setlist" title="Rename setlist">Rename</button>
-      <span class="toolbar-sep"></span>
-      <button id="btn-add-song">Add Song</button>
-      <span class="toolbar-sep"></span>
-      <button id="btn-play-setlist" title="Play this setlist">&#9654; Play</button>
-    </div>
-    <div id="setlist-songs-wrap">
-      <table id="setlist-songs-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Composer</th>
-            <th>Title</th>
-            <th>Start</th>
-            <th>End</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="setlist-songs-body"></tbody>
-      </table>
+    <div id="setlist-columns">
+      <!-- Left column: setlist list -->
+      <div id="setlist-left">
+        <div id="setlist-toolbar">
+          <button id="btn-new-setlist">New Setlist</button>
+        </div>
+        <div id="setlist-list-wrap">
+          <table id="setlist-table">
+            <thead>
+              <tr>
+                <th>Setlist</th>
+                <th>Songs</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setlist-body"></tbody>
+          </table>
+        </div>
+        <div id="setlist-status"></div>
+      </div>
+      <!-- Right column: selected setlist contents -->
+      <div id="setlist-right">
+        <div id="setlist-detail-toolbar">
+          <span id="setlist-detail-name">Select a setlist</span>
+          <span id="setlist-detail-actions" class="hidden">
+            <button id="btn-rename-setlist" title="Rename setlist">Rename</button>
+            <span class="toolbar-sep"></span>
+            <button id="btn-add-song">Add Song</button>
+            <span class="toolbar-sep"></span>
+            <button id="btn-play-setlist" title="Play this setlist">&#9654; Play</button>
+          </span>
+        </div>
+        <div id="setlist-songs-wrap">
+          <table id="setlist-songs-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Composer</th>
+                <th>Title</th>
+                <th>Start</th>
+                <th>End</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setlist-songs-body"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -147,6 +152,10 @@
       <button id="btn-rot-cw" title="Rotate page right (r)">&#x21B7;</button>
       <span class="toolbar-sep"></span>
       <button id="btn-export" title="Download PDF with annotations">Export</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-add-to-setlist" title="Add to setlist (s)">+Setlist</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-fullscreen" title="Toggle fullscreen (f)">Fullscreen</button>
     </div>
     <div id="pdf-container">
       <div id="page-wrap-1" class="page-wrap">
@@ -243,6 +252,34 @@
       <div class="dialog-buttons">
         <button type="button" id="song-picker-cancel">Cancel</button>
         <button type="submit" id="song-picker-add" value="add" disabled>Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Setlist picker dialog (add current score to a setlist)             -->
+  <!-- ================================================================== -->
+  <dialog id="setlist-picker-dialog">
+    <form method="dialog">
+      <h3>Add to Setlist</h3>
+      <div id="setlist-picker-list"></div>
+      <div class="dialog-buttons">
+        <button type="button" id="setlist-picker-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Login dialog                                                       -->
+  <!-- ================================================================== -->
+  <dialog id="login-dialog">
+    <form method="dialog">
+      <h3>Login Required</h3>
+      <p>Enter access code:</p>
+      <input type="password" id="login-input" style="width:100%">
+      <div id="login-error" style="color:#f88;font-size:13px;margin-top:6px"></div>
+      <div class="dialog-buttons">
+        <button type="submit" value="login">Login</button>
       </div>
     </form>
   </dialog>

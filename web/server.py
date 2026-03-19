@@ -1,5 +1,5 @@
 """
-MusicScoreViewer — Web backend (FastAPI).
+Folio — Web backend (FastAPI).
 
 Run with:
     uvicorn web.server:app --reload
@@ -7,14 +7,20 @@ or:
     python -m web.server
 """
 
+import datetime
+import hashlib
+import hmac
 import logging
 import os
-from pathlib import PurePosixPath
+import re
+import secrets
+import time
+from collections import defaultdict
 
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, Response
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .core import (
     SafeJSON,
@@ -42,13 +48,23 @@ logging.basicConfig(
 # Application state
 # ---------------------------------------------------------------------------
 
-CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".music_score_viewer")
+CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".folio")
+
+# Migrate from old config directory
+_OLD_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".music_score_viewer")
+if os.path.isdir(_OLD_CONFIG_DIR) and not os.path.exists(CONFIG_DIR):
+    os.rename(_OLD_CONFIG_DIR, CONFIG_DIR)
 os.makedirs(CONFIG_DIR, exist_ok=True)
 WEB_CONFIG_PATH = os.path.join(CONFIG_DIR, "web_config.json")
 
 DEFAULT_WEB_CONFIG = {
     "last_directory": "",
+    "allowed_roots": [],
 }
+
+# Max setlist name length; only printable non-path characters allowed
+_MAX_SETLIST_NAME = 200
+_SETLIST_NAME_RE = re.compile(r'^[^/\\<>:"|?*\x00-\x1f]+$')
 
 
 def _load_config() -> dict:
@@ -62,6 +78,63 @@ def _load_config() -> dict:
 
 def _save_config(cfg: dict) -> None:
     SafeJSON.save(WEB_CONFIG_PATH, cfg)
+
+
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
+
+_SESSION_COOKIE = "folio_session"
+_SESSION_MAX_AGE = 30 * 24 * 3600  # 30 days
+
+
+def _get_auth_salt() -> str:
+    """Return the auth salt.  Env var FOLIO_AUTH_SALT takes precedence."""
+    return os.environ.get("FOLIO_AUTH_SALT", "").strip() or \
+        state.config.get("auth_salt", "").strip()
+
+
+def _get_session_secret() -> str:
+    """Return (and auto-generate on first use) a persistent signing key."""
+    secret = state.config.get("session_secret", "")
+    if not secret:
+        secret = secrets.token_hex(32)
+        state.config["session_secret"] = secret
+        _save_config(state.config)
+    return secret
+
+
+def _expected_passphrase(salt: str) -> str:
+    today = datetime.date.today().isoformat()  # YYYY-MM-DD
+    return f"{today}-{salt}"
+
+
+def _make_session_token() -> str:
+    """Create an HMAC-signed session token embedding a timestamp."""
+    ts = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
+    sig = hmac.new(
+        _get_session_secret().encode(), ts.encode(), hashlib.sha256
+    ).hexdigest()
+    return f"{ts}.{sig}"
+
+
+def _verify_session_token(token: str) -> bool:
+    """Verify the token signature and check it's not expired."""
+    parts = token.split(".", 1)
+    if len(parts) != 2:
+        return False
+    ts_str, sig = parts
+    expected = hmac.new(
+        _get_session_secret().encode(), ts_str.encode(), hashlib.sha256
+    ).hexdigest()
+    if not hmac.compare_digest(sig, expected):
+        return False
+    try:
+        ts = int(ts_str)
+    except ValueError:
+        return False
+    age = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) - ts
+    return 0 <= age <= _SESSION_MAX_AGE
 
 
 class AppState:
@@ -106,7 +179,94 @@ if _last:
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-app = FastAPI(title="MusicScoreViewer", version="0.1.0")
+app = FastAPI(title="Folio", version="0.1.0", docs_url=None, redoc_url=None)
+
+
+# ---------------------------------------------------------------------------
+# Security: rate limiting (simple in-memory per-IP, per-endpoint bucket)
+# ---------------------------------------------------------------------------
+
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+_RATE_WINDOW = 5.0  # seconds
+_RATE_LIMIT = 30  # max requests per window per key
+
+
+def _check_rate_limit(key: str) -> None:
+    now = time.monotonic()
+    bucket = _rate_buckets[key]
+    # Evict old entries
+    _rate_buckets[key] = bucket = [t for t in bucket if now - t < _RATE_WINDOW]
+    if len(bucket) >= _RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many requests")
+    bucket.append(now)
+
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    path = request.url.path
+
+    # Rate-limit write endpoints
+    if request.method in ("POST", "PUT", "DELETE"):
+        client = request.client.host if request.client else "unknown"
+        _check_rate_limit(f"{client}:{path}")
+
+    # Auth check: protect /api/* except /api/login and /api/auth-status
+    salt = _get_auth_salt()
+    if salt and path.startswith("/api/") \
+            and path not in ("/api/login", "/api/auth-status"):
+        token = request.cookies.get(_SESSION_COOKIE, "")
+        if not _verify_session_token(token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Authentication required"},
+            )
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+
+class LoginRequest(BaseModel):
+    passphrase: str
+
+
+@app.get("/api/auth-status")
+def auth_status(request: Request):
+    """Check whether auth is enabled and whether the current session is valid."""
+    salt = _get_auth_salt()
+    if not salt:
+        return {"auth_required": False, "authenticated": True}
+    token = request.cookies.get(_SESSION_COOKIE, "")
+    return {
+        "auth_required": True,
+        "authenticated": _verify_session_token(token),
+    }
+
+
+@app.post("/api/login")
+def login(req: LoginRequest):
+    salt = _get_auth_salt()
+    if not salt:
+        return {"ok": True}
+    if req.passphrase.strip() != _expected_passphrase(salt):
+        raise HTTPException(status_code=403, detail="Invalid passphrase")
+    token = _make_session_token()
+    response = JSONResponse(content={"ok": True})
+    response.set_cookie(
+        key=_SESSION_COOKIE,
+        value=token,
+        max_age=_SESSION_MAX_AGE,
+        httponly=True,
+        samesite="strict",
+    )
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -114,10 +274,11 @@ app = FastAPI(title="MusicScoreViewer", version="0.1.0")
 # ---------------------------------------------------------------------------
 
 
-def _validate_library_path(filepath: str) -> str:
+def _resolve_under_library(filepath: str) -> str:
     """Resolve *filepath* and verify it is under the library root.
 
-    Returns the normalised absolute path.  Raises 403 on traversal attempts.
+    Returns the normalised absolute path.  Raises 400 if no library is set,
+    403 on traversal attempts.  Does NOT check whether the file exists.
     """
     if not state.library_dir:
         raise HTTPException(status_code=400, detail="No library directory set")
@@ -125,6 +286,15 @@ def _validate_library_path(filepath: str) -> str:
     root = os.path.realpath(state.library_dir)
     if not resolved.startswith(root + os.sep) and resolved != root:
         raise HTTPException(status_code=403, detail="Path outside library")
+    return resolved
+
+
+def _validate_library_path(filepath: str) -> str:
+    """Resolve *filepath*, verify it is under the library root **and exists**.
+
+    Returns the normalised absolute path.
+    """
+    resolved = _resolve_under_library(filepath)
     if not os.path.isfile(resolved):
         raise HTTPException(status_code=404, detail="File not found")
     return resolved
@@ -139,6 +309,35 @@ class SetLibraryRequest(BaseModel):
     path: str
 
 
+def _validate_setlist_name(name: str) -> str:
+    """Validate and return a cleaned setlist name, or raise 400."""
+    name = name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    if len(name) > _MAX_SETLIST_NAME:
+        raise HTTPException(status_code=400, detail="Name too long")
+    if not _SETLIST_NAME_RE.match(name):
+        raise HTTPException(status_code=400, detail="Name contains invalid characters")
+    return name
+
+
+def _is_allowed_root(path: str) -> bool:
+    """Check whether *path* is under one of the configured allowed_roots.
+
+    If no roots are configured, any directory is allowed (first-use convenience).
+    Once roots are set, the library directory must be under one of them.
+    """
+    roots = state.config.get("allowed_roots", [])
+    if not roots:
+        return True
+    resolved = os.path.realpath(path)
+    for root in roots:
+        root_resolved = os.path.realpath(normalize_path(root))
+        if resolved == root_resolved or resolved.startswith(root_resolved + os.sep):
+            return True
+    return False
+
+
 @app.get("/api/config")
 def get_config():
     return {
@@ -151,7 +350,9 @@ def get_config():
 def set_library(req: SetLibraryRequest):
     path = normalize_path(req.path)
     if not os.path.isdir(path):
-        raise HTTPException(status_code=404, detail=f"Directory not found: {path}")
+        raise HTTPException(status_code=404, detail="Directory not found")
+    if not _is_allowed_root(path):
+        raise HTTPException(status_code=403, detail="Directory not in allowed roots")
     state.set_library(path)
     return {
         "library_dir": portable_path(state.library_dir),
@@ -222,8 +423,9 @@ def pdf_pages(path: str = Query(..., description="Score filepath")):
     resolved = _validate_library_path(path)
     try:
         count = pdf_page_count(resolved)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logging.exception("Page count failed for %s", resolved)
+        raise HTTPException(status_code=500, detail="Failed to read PDF")
     return {"path": portable_path(path), "pages": count}
 
 
@@ -233,9 +435,11 @@ def export_pdf(path: str = Query(..., description="Score filepath")):
     resolved = _validate_library_path(path)
     try:
         pdf_bytes = export_annotated_pdf(resolved)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    filename = f"annotated_{os.path.basename(resolved)}"
+    except Exception:
+        logging.exception("PDF export failed for %s", resolved)
+        raise HTTPException(status_code=500, detail="Export failed")
+    basename = re.sub(r'[^\w.\- ]', '_', os.path.basename(resolved))
+    filename = f"annotated_{basename}"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -251,13 +455,7 @@ def export_pdf(path: str = Query(..., description="Score filepath")):
 def _validate_pdf_in_library(filepath: str) -> str:
     """Like _validate_library_path but allows the file to not exist yet
     (annotations can be created before the sidecar JSON exists)."""
-    if not state.library_dir:
-        raise HTTPException(status_code=400, detail="No library directory set")
-    resolved = os.path.realpath(normalize_path(filepath))
-    root = os.path.realpath(state.library_dir)
-    if not resolved.startswith(root + os.sep) and resolved != root:
-        raise HTTPException(status_code=403, detail="Path outside library")
-    return resolved
+    return _resolve_under_library(filepath)
 
 
 @app.get("/api/annotations")
@@ -267,8 +465,9 @@ def get_annotations(path: str = Query(..., description="PDF filepath")):
         raise HTTPException(status_code=404, detail="PDF not found")
     try:
         data = load_annotations(resolved)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logging.exception("Failed to load annotations for %s", resolved)
+        raise HTTPException(status_code=500, detail="Failed to load annotations")
     return data
 
 
@@ -285,8 +484,9 @@ def put_annotations(req: SaveAnnotationsRequest):
         raise HTTPException(status_code=404, detail="PDF not found")
     try:
         save_annotations(resolved, req.pages, req.rotations)
-    except SafeJSONError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except SafeJSONError:
+        logging.exception("Failed to save annotations for %s", resolved)
+        raise HTTPException(status_code=500, detail="Failed to save annotations")
     return {"ok": True}
 
 
@@ -331,9 +531,7 @@ class CreateSetlistRequest(BaseModel):
 
 @app.post("/api/setlists")
 def create_setlist(req: CreateSetlistRequest):
-    name = req.name.strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    name = _validate_setlist_name(req.name)
     data = _load_setlists()
     if name in data:
         raise HTTPException(status_code=409, detail="Setlist already exists")
@@ -372,9 +570,7 @@ class RenameSetlistRequest(BaseModel):
 
 @app.post("/api/setlists/{name}/rename")
 def rename_setlist(name: str, req: RenameSetlistRequest):
-    new_name = req.new_name.strip()
-    if not new_name:
-        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    new_name = _validate_setlist_name(req.new_name)
     data = _load_setlists()
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")

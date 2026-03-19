@@ -305,10 +305,28 @@ th.sortable:hover {
 /* Setlist views                                                      */
 /* ================================================================== */
 
-#setlist-view, #setlist-detail {
+#setlist-view {
+  height: calc(100vh - 40px);
+}
+
+#setlist-columns {
+  display: flex;
+  height: 100%;
+}
+
+#setlist-left {
+  width: 300px;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  border-right: 1px solid var(--border);
+}
+
+#setlist-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 #setlist-toolbar, #setlist-detail-toolbar {
@@ -333,6 +351,28 @@ th.sortable:hover {
   flex: 1;
   overflow-y: auto;
   padding: 0 12px;
+}
+
+#setlist-table tbody tr {
+  cursor: pointer;
+}
+
+#setlist-table tbody tr.selected-setlist {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Drag-and-drop visual feedback */
+#setlist-songs-table tbody tr {
+  cursor: grab;
+}
+
+#setlist-songs-table tbody tr.dragging {
+  opacity: 0.4;
+}
+
+#setlist-songs-table tbody tr.drag-over {
+  border-top: 2px solid var(--accent);
 }
 
 #setlist-table, #setlist-songs-table {
@@ -488,6 +528,10 @@ th.sortable:hover {
 /* Dialog                                                             */
 /* ================================================================== */
 
+dialog:not([open]) {
+  display: none;
+}
+
 dialog {
   background: var(--bg-panel);
   color: var(--fg);
@@ -495,6 +539,12 @@ dialog {
   border-radius: 8px;
   padding: 20px;
   min-width: 400px;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  max-width: 90vw;
 }
 
 dialog::backdrop {
@@ -536,7 +586,7 @@ dialog p {
     padding-top: env(safe-area-inset-top);
     height: calc(40px + env(safe-area-inset-top));
   }
-  #library-view, #setlist-view, #setlist-detail, #viewer {
+  #library-view, #setlist-view, #viewer {
     height: calc(100vh - 40px - env(safe-area-inset-top));
   }
   #viewer-toolbar, #setlist-detail-toolbar {

@@ -1,4 +1,4 @@
-#+TITLE: MusicScoreViewer Web App — Implementation Plan
+#+TITLE: Folio — Implementation Plan
 #+DATE: 2026-03-19
 #+STARTUP: showall
 
@@ -8,7 +8,7 @@
 - pdf.js viewer with zoom-to-fit and side-by-side page view
 - Library browser: search, composer filter, tag chips, sortable table
 - Auto-load last library directory on startup
-- Config persistence in =~/.music_score_viewer/web_config.json=
+- Config persistence in =~/.folio/web_config.json=
 - Set Folder dialog auto-shown on first launch
 - Path traversal protection on all file-serving endpoints
 ** DONE Phase 2 — Annotations (pen, text, eraser, undo)

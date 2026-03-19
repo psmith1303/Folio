@@ -1,4 +1,4 @@
-# Music Score Viewer
+# Folio
 
 A web application to view, navigate, and annotate PDF music scores.
 Runs on any device with a browser, including iPad.
@@ -9,11 +9,14 @@ Runs on any device with a browser, including iPad.
 - 7-colour palette, adjustable pen/text size, musical symbol shortcuts
 - Touch and Apple Pencil support (Pointer Events API)
 - Metadata search by composer, title, and folder tags
+- Add scores to setlists directly from the viewer (`s` key)
 - Click-to-navigate: right/bottom half = next page, left/top half = previous
 - Keyboard shortcuts for page navigation and tool switching
 - Setlist management: create, edit, reorder, rename, delete, playback with page constraints
 - Dark/light theme toggle (remembered across sessions)
 - Export annotated PDF with annotations baked in
+- Fullscreen mode for distraction-free viewing (f key or toolbar button)
+- Directories with a `.exclude` file are hidden from the library
 
 ## Requirements
 - Python 3.10+
@@ -40,6 +43,23 @@ Open `http://<your-machine>:8989` in a browser or on your iPad.
 On first launch, a dialog prompts for your music library path.
 The setting is remembered across restarts.
 
+## Authentication
+
+When exposed to the internet, enable authentication by setting an auth salt.
+The passphrase is `YYYY-MM-DD-<salt>` (today's date + your salt), so it changes
+daily and requires no memorisation.
+
+### Option 1: environment variable
+```
+FOLIO_AUTH_SALT=psmith python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+```
+
+### Option 2: config file
+Add `"auth_salt": "psmith"` to `~/.folio/web_config.json`.
+
+Once authenticated, a 30-day session cookie is set — no need to re-enter
+the passphrase on every visit.  With no salt configured, auth is disabled.
+
 ## Running the Tests
 
 ### Install test dependencies
@@ -56,8 +76,8 @@ python3 -m pytest -v
 
 | File | Tests | What is tested |
 |---|---|---|
-| `tests/test_web_core.py` | 27 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning, annotation load/save/migration |
-| `tests/test_web_api.py` | 38 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, setlist CRUD/rename, PDF export, path traversal |
+| `tests/test_web_core.py` | 29 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning (.exclude support), annotation load/save/migration |
+| `tests/test_web_api.py` | 48 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, setlist CRUD/rename, PDF export, path traversal, security, auth |
 
 ## Emacs Editing
 
@@ -69,7 +89,7 @@ row.  Requires Emacs 27+; no external packages needed.
 
 ```elisp
 ;; In your Emacs init file, or load manually with M-x load-file:
-(load "/path/to/MusicScoreViewer/setlist-editor.el")
+(load "/path/to/Folio/setlist-editor.el")
 ```
 
 ### Usage
@@ -114,5 +134,7 @@ row.  Requires Emacs 27+; no external packages needed.
 | Home / End | First / last page |
 | Escape | Back to library |
 | v / d / t / e | Nav / Pen / Text / Eraser tool |
+| s | Add current score to a setlist |
+| f | Toggle fullscreen |
 | r / R | Rotate page CW / CCW |
 | Ctrl+Z | Undo |

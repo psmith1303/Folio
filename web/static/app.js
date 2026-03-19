@@ -1,6 +1,77 @@
 /* ================================================================== */
-/* MusicScoreViewer — Web frontend                                    */
+/* Folio — Web frontend                                               */
 /* ================================================================== */
+
+// ---------------------------------------------------------------------------
+// Polyfills for older browsers (iPad Safari < 15.4)
+// ---------------------------------------------------------------------------
+
+// crypto.randomUUID — Safari 15.4+
+if (typeof crypto !== "undefined" && !crypto.randomUUID) {
+  crypto.randomUUID = function () {
+    const b = new Uint8Array(16);
+    crypto.getRandomValues(b);
+    b[6] = (b[6] & 0x0f) | 0x40;
+    b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, (v) => v.toString(16).padStart(2, "0")).join("");
+    return h.slice(0, 8) + "-" + h.slice(8, 12) + "-" + h.slice(12, 16) +
+      "-" + h.slice(16, 20) + "-" + h.slice(20);
+  };
+}
+
+// <dialog> element — Safari 15.4+
+// On older browsers, dialog.showModal / dialog.close / dialog.open don't exist.
+(function polyfillDialog() {
+  if (typeof HTMLDialogElement !== "undefined") return;
+
+  document.querySelectorAll("dialog").forEach(function (dlg) {
+    dlg.style.display = "none";
+
+    // Backdrop overlay (inserted once per dialog)
+    var backdrop = document.createElement("div");
+    backdrop.className = "dialog-backdrop-polyfill";
+    backdrop.style.cssText =
+      "display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999";
+    dlg.parentNode.insertBefore(backdrop, dlg);
+    dlg._backdrop = backdrop;
+
+    dlg.returnValue = "";
+
+    dlg.showModal = function () {
+      this.returnValue = "";
+      this.setAttribute("open", "");
+      this.style.display = "block";
+      this._backdrop.style.display = "block";
+    };
+
+    dlg.close = function (val) {
+      if (val !== undefined) this.returnValue = val;
+      this.removeAttribute("open");
+      this.style.display = "none";
+      this._backdrop.style.display = "none";
+      this.dispatchEvent(new Event("close"));
+    };
+
+    Object.defineProperty(dlg, "open", {
+      get: function () { return this.hasAttribute("open"); },
+    });
+
+    // Handle form[method=dialog] — track which submit button was clicked
+    var form = dlg.querySelector('form[method="dialog"]');
+    if (form) {
+      var lastSubmitter = null;
+      form.querySelectorAll('button[type="submit"]').forEach(function (btn) {
+        btn.addEventListener("click", function () { lastSubmitter = btn; });
+      });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        dlg.returnValue = lastSubmitter ? (lastSubmitter.value || "") : "";
+        lastSubmitter = null;
+        dlg.close(dlg.returnValue);
+      });
+    }
+  });
+})();
 
 // ---------------------------------------------------------------------------
 // pdf.js setup (ES module import from CDN)
@@ -63,7 +134,7 @@ const setlistView = $("#setlist-view");
 const setlistBody = $("#setlist-body");
 const setlistStatus = $("#setlist-status");
 const btnNewSetlist = $("#btn-new-setlist");
-const setlistDetailView = $("#setlist-detail");
+const setlistDetailActions = $("#setlist-detail-actions");
 const setlistDetailName = $("#setlist-detail-name");
 const setlistSongsBody = $("#setlist-songs-body");
 const btnRenameSetlist = $("#btn-rename-setlist");
@@ -82,11 +153,20 @@ const songPickerCancel = $("#song-picker-cancel");
 const songPickerAdd = $("#song-picker-add");
 const btnTheme = $("#btn-theme");
 const btnExport = $("#btn-export");
+const btnFullscreen = $("#btn-fullscreen");
+const loginDialog = $("#login-dialog");
+const loginInput = $("#login-input");
+const loginError = $("#login-error");
 const textDialog = $("#text-dialog");
 const textDialogTitle = $("#text-dialog-title");
 const textInput = $("#text-input");
 const textFont = $("#text-font");
 const textCancel = $("#text-cancel");
+const btnReset = $("#btn-reset");
+const btnAddToSetlist = $("#btn-add-to-setlist");
+const setlistPickerDialog = $("#setlist-picker-dialog");
+const setlistPickerList = $("#setlist-picker-list");
+const setlistPickerCancel = $("#setlist-picker-cancel");
 
 // ---------------------------------------------------------------------------
 // State
@@ -136,7 +216,6 @@ function showView(view) {
   currentView = view;
   libraryView.classList.add("hidden");
   setlistView.classList.add("hidden");
-  setlistDetailView.classList.add("hidden");
   viewerView.classList.add("hidden");
   btnLibrary.classList.add("hidden");
   btnSetlists.classList.add("hidden");
@@ -159,10 +238,6 @@ function showView(view) {
       btnSetlists.classList.add("active");
       titleDisplay.textContent = "";
       break;
-    case "setlist-detail":
-      setlistDetailView.classList.remove("hidden");
-      btnBack.classList.remove("hidden");
-      break;
     case "viewer":
       viewerView.classList.remove("hidden");
       btnBack.classList.remove("hidden");
@@ -176,6 +251,10 @@ function showView(view) {
 
 async function api(url, options = {}) {
   const resp = await fetch(url, options);
+  if (resp.status === 401) {
+    showLoginDialog();
+    throw new Error("Authentication required");
+  }
   if (!resp.ok) {
     const detail = await resp.text();
     throw new Error(`${resp.status}: ${detail}`);
@@ -326,10 +405,17 @@ async function openScore(score) {
     currentPage = 1;
     pageInput.max = totalPages;
     pageInput.value = 1;
+    autoSideBySide();
     renderPage();
   } catch (err) {
     pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
   }
+}
+
+function autoSideBySide() {
+  sideBySide = window.innerWidth >= 1024;
+  btnSideBySide.classList.toggle("active", sideBySide);
+  btnZoomFit.classList.toggle("active", !sideBySide);
 }
 
 function closeScore() {
@@ -546,7 +632,7 @@ function setTool(tool) {
   activeTool = tool;
   document.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
   const map = { nav: btnNav, pen: btnPen, text: btnText, eraser: btnEraser };
-  map[tool]?.classList.add("active");
+  if (map[tool]) map[tool].classList.add("active");
 
   // Update cursor on annotation canvases
   for (const ac of [annotCanvas1, annotCanvas2]) {
@@ -895,9 +981,6 @@ textDialog.addEventListener("close", () => {
 btnBack.addEventListener("click", () => {
   if (currentView === "viewer") {
     closeScore();
-  } else if (currentView === "setlist-detail") {
-    showView("setlists");
-    loadSetlists();
   }
 });
 
@@ -935,7 +1018,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   // Dialog open — don't handle
-  if (textDialog.open || dirDialog.open || setlistNameDialog.open || songPickerDialog.open) return;
+  if (textDialog.open || dirDialog.open || setlistNameDialog.open || songPickerDialog.open || setlistPickerDialog.open || loginDialog.open) return;
 
   if (!pdfDoc) return;
 
@@ -945,6 +1028,8 @@ document.addEventListener("keydown", (e) => {
     case "d": setTool("pen"); return;
     case "t": setTool("text"); return;
     case "e": setTool("eraser"); return;
+    case "f": toggleFullscreen(); return;
+    case "s": showSetlistPicker(); return;
     case "r": rotatePage(90); return;
     case "R": rotatePage(-90); return;
   }
@@ -1011,6 +1096,16 @@ searchInput.addEventListener("input", () => {
 
 composerFilter.addEventListener("change", loadLibrary);
 
+btnReset.addEventListener("click", () => {
+  searchInput.value = "";
+  composerFilter.value = "";
+  selectedTags.clear();
+  sortCol = "composer";
+  sortDesc = false;
+  updateSortHeaders();
+  loadLibrary();
+});
+
 // ---------------------------------------------------------------------------
 // Setlist list view
 // ---------------------------------------------------------------------------
@@ -1032,24 +1127,37 @@ function renderSetlistList(setlists) {
   setlistBody.innerHTML = "";
   for (const sl of setlists) {
     const tr = document.createElement("tr");
+    if (sl.name === editingSetlistName) {
+      tr.classList.add("selected-setlist");
+    }
     tr.innerHTML = `
       <td>${esc(sl.name)}</td>
       <td>${sl.count}</td>
       <td class="setlist-actions">
-        <button class="small-btn edit-btn" title="Edit">Edit</button>
-        <button class="small-btn play-btn" title="Play">&#9654;</button>
         <button class="small-btn del-btn" title="Delete">&#10005;</button>
       </td>
     `;
-    tr.querySelector(".edit-btn").addEventListener("click", () => openSetlistDetail(sl.name));
-    tr.querySelector(".play-btn").addEventListener("click", async () => {
+    // Single click selects and shows contents
+    tr.addEventListener("click", (e) => {
+      if (e.target.closest(".del-btn")) return;
+      openSetlistDetail(sl.name);
+    });
+    // Double-click starts playback
+    const playSetlist = async () => {
       const detail = await api(`/api/setlists/${encodeURIComponent(sl.name)}`);
       if (detail.songs.length === 0) return;
       startSetlistPlayback(sl.name, detail.songs);
-    });
-    tr.querySelector(".del-btn").addEventListener("click", async () => {
+    };
+    tr.addEventListener("dblclick", playSetlist);
+    tr.querySelector(".del-btn").addEventListener("click", async (e) => {
+      e.stopPropagation();
       if (!confirm(`Delete setlist "${sl.name}"?`)) return;
       await api(`/api/setlists/${encodeURIComponent(sl.name)}`, { method: "DELETE" });
+      if (editingSetlistName === sl.name) {
+        editingSetlistName = null;
+        editingSetlistSongs = [];
+        renderSetlistDetail();
+      }
       loadSetlists();
     });
     setlistBody.appendChild(tr);
@@ -1098,8 +1206,8 @@ setlistNameDialog.addEventListener("close", async () => {
         body: JSON.stringify({ new_name: name }),
       });
       editingSetlistName = name;
-      titleDisplay.textContent = name;
       setlistDetailName.textContent = name;
+      loadSetlists();
     }
   } catch (err) {
     console.error("Setlist name operation failed:", err);
@@ -1115,20 +1223,35 @@ async function openSetlistDetail(name) {
     const data = await api(`/api/setlists/${encodeURIComponent(name)}`);
     editingSetlistName = data.name;
     editingSetlistSongs = data.songs;
-    showView("setlist-detail");
-    titleDisplay.textContent = editingSetlistName;
     renderSetlistDetail();
+    // Highlight the selected row in the left column
+    setlistBody.querySelectorAll("tr").forEach((row) => {
+      row.classList.toggle("selected-setlist",
+        row.querySelector("td").textContent === name);
+    });
   } catch (err) {
     console.error("Failed to load setlist:", err);
   }
 }
 
 function renderSetlistDetail() {
-  setlistDetailName.textContent = editingSetlistName;
   setlistSongsBody.innerHTML = "";
+
+  if (!editingSetlistName) {
+    setlistDetailName.textContent = "Select a setlist";
+    setlistDetailActions.classList.add("hidden");
+    return;
+  }
+
+  setlistDetailName.textContent = editingSetlistName;
+  setlistDetailActions.classList.remove("hidden");
+
+  let dragSrcIndex = null;
 
   editingSetlistSongs.forEach((song, i) => {
     const tr = document.createElement("tr");
+    tr.draggable = true;
+    tr.dataset.index = i;
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td>${esc(song.composer || "")}</td>
@@ -1154,6 +1277,37 @@ function renderSetlistDetail() {
     tr.querySelector(".up-btn").addEventListener("click", () => moveSong(i, -1));
     tr.querySelector(".down-btn").addEventListener("click", () => moveSong(i, 1));
     tr.querySelector(".del-btn").addEventListener("click", () => removeSong(i));
+
+    // Drag-and-drop reorder
+    tr.addEventListener("dragstart", (e) => {
+      dragSrcIndex = i;
+      tr.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    tr.addEventListener("dragend", () => {
+      tr.classList.remove("dragging");
+      setlistSongsBody.querySelectorAll("tr").forEach(
+        (r) => r.classList.remove("drag-over")
+      );
+    });
+    tr.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setlistSongsBody.querySelectorAll("tr").forEach(
+        (r) => r.classList.remove("drag-over")
+      );
+      tr.classList.add("drag-over");
+    });
+    tr.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const destIndex = parseInt(tr.dataset.index, 10);
+      if (dragSrcIndex !== null && dragSrcIndex !== destIndex) {
+        const moved = editingSetlistSongs.splice(dragSrcIndex, 1)[0];
+        editingSetlistSongs.splice(destIndex, 0, moved);
+        saveSetlistSongs();
+        renderSetlistDetail();
+      }
+    });
 
     setlistSongsBody.appendChild(tr);
   });
@@ -1305,6 +1459,7 @@ async function openSetlistSong(index, goToEnd = false) {
     pageInput.max = totalPages;
     currentPage = goToEnd ? range.max : range.min;
     pageInput.value = currentPage;
+    autoSideBySide();
     renderPage();
   } catch (err) {
     pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
@@ -1384,10 +1539,7 @@ function checkAutoSideBySide() {
   if (!pdfDoc) return;
   const wide = window.innerWidth >= 1024;
   if (wide !== sideBySide) {
-    sideBySide = wide;
-    btnSideBySide.classList.toggle("active", sideBySide);
-    btnZoomFit.classList.toggle("active", !sideBySide);
-    renderPage();
+    autoSideBySide();
   }
 }
 
@@ -1395,7 +1547,13 @@ function checkAutoSideBySide() {
 // Theme toggle
 // ---------------------------------------------------------------------------
 
-const savedTheme = localStorage.getItem("msv-theme");
+// Migrate old localStorage key
+if (!localStorage.getItem("folio-theme") && localStorage.getItem("msv-theme")) {
+  localStorage.setItem("folio-theme", localStorage.getItem("msv-theme"));
+  localStorage.removeItem("msv-theme");
+}
+
+const savedTheme = localStorage.getItem("folio-theme");
 if (savedTheme === "light") {
   document.documentElement.classList.add("light");
   btnTheme.textContent = "Dark";
@@ -1404,7 +1562,7 @@ if (savedTheme === "light") {
 btnTheme.addEventListener("click", () => {
   const isLight = document.documentElement.classList.toggle("light");
   btnTheme.textContent = isLight ? "Dark" : "Light";
-  localStorage.setItem("msv-theme", isLight ? "light" : "dark");
+  localStorage.setItem("folio-theme", isLight ? "light" : "dark");
 });
 
 // ---------------------------------------------------------------------------
@@ -1436,6 +1594,89 @@ btnExport.addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------------------
+// Add to setlist (from viewer)
+// ---------------------------------------------------------------------------
+
+btnAddToSetlist.addEventListener("click", showSetlistPicker);
+
+async function showSetlistPicker() {
+  if (!currentScore) return;
+  try {
+    const data = await api("/api/setlists");
+    setlistPickerList.innerHTML = "";
+    if (data.setlists.length === 0) {
+      setlistPickerList.innerHTML =
+        '<p style="padding:10px;color:var(--fg-dim)">No setlists yet. Create one in the Setlists view.</p>';
+    } else {
+      for (const sl of data.setlists) {
+        const div = document.createElement("div");
+        div.className = "picker-item";
+        div.textContent = `${sl.name} (${sl.count})`;
+        div.addEventListener("click", () => addCurrentScoreToSetlist(sl.name));
+        setlistPickerList.appendChild(div);
+      }
+    }
+    setlistPickerDialog.showModal();
+  } catch (err) {
+    console.error("Failed to load setlists:", err);
+  }
+}
+
+async function addCurrentScoreToSetlist(setlistName) {
+  setlistPickerDialog.close();
+  try {
+    const data = await api(`/api/setlists/${encodeURIComponent(setlistName)}`);
+    const songs = data.songs || [];
+    songs.push({
+      path: currentScore.filepath,
+      title: currentScore.title || "",
+      composer: currentScore.composer || "",
+      start_page: 1,
+      end_page: null,
+    });
+    await api(`/api/setlists/${encodeURIComponent(setlistName)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ songs }),
+    });
+    titleDisplay.textContent += ` — added to ${setlistName}`;
+    setTimeout(() => {
+      if (currentScore) {
+        titleDisplay.textContent = `${currentScore.composer} — ${currentScore.title}`;
+      }
+    }, 2000);
+  } catch (err) {
+    console.error("Failed to add to setlist:", err);
+  }
+}
+
+setlistPickerCancel.addEventListener("click", () => setlistPickerDialog.close());
+
+// ---------------------------------------------------------------------------
+// Fullscreen toggle
+// ---------------------------------------------------------------------------
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(function () {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+btnFullscreen.addEventListener("click", toggleFullscreen);
+
+document.addEventListener("fullscreenchange", () => {
+  const fs = !!document.fullscreenElement;
+  btnFullscreen.textContent = fs ? "Exit FS" : "Fullscreen";
+  // In fullscreen, hide topbar and viewer toolbar — PDF only
+  document.getElementById("topbar").classList.toggle("hidden", fs);
+  document.getElementById("viewer-toolbar").classList.toggle("hidden", fs);
+  // Re-render to fill the freed space
+  if (pdfDoc) renderPage();
+});
+
+// ---------------------------------------------------------------------------
 // Service worker
 // ---------------------------------------------------------------------------
 
@@ -1446,23 +1687,77 @@ if ("serviceWorker" in navigator) {
 }
 
 // ---------------------------------------------------------------------------
+// Login
+// ---------------------------------------------------------------------------
+
+function showLoginDialog() {
+  loginInput.value = "";
+  loginError.textContent = "";
+  loginDialog.showModal();
+  loginInput.focus();
+}
+
+loginDialog.addEventListener("close", async () => {
+  if (loginDialog.returnValue !== "login") return;
+  const passphrase = loginInput.value.trim();
+  if (!passphrase) {
+    showLoginDialog();
+    return;
+  }
+  try {
+    const resp = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ passphrase }),
+    });
+    if (!resp.ok) {
+      loginError.textContent = "Invalid passphrase";
+      loginDialog.showModal();
+      loginInput.focus();
+      return;
+    }
+    // Re-run init on successful login
+    initApp();
+  } catch (err) {
+    loginError.textContent = "Login failed: " + err.message;
+    loginDialog.showModal();
+    loginInput.focus();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 
-(async function init() {
+async function initApp() {
   try {
     const cfg = await api("/api/config");
     if (cfg.library_dir && cfg.score_count > 0) {
-      // Re-use last folder
       dirInput.value = cfg.library_dir;
       await loadLibrary();
     } else {
-      // No library configured (or empty) — prompt immediately
       dirInput.value = cfg.library_dir || "";
       dirDialog.showModal();
       dirInput.focus();
     }
   } catch (err) {
+    if (err.message === "Authentication required") return;
     libraryStatus.textContent = `Error: ${err.message}`;
+  }
+}
+
+// Check auth status, then init
+(async function () {
+  try {
+    const resp = await fetch("/api/auth-status");
+    const status = await resp.json();
+    if (status.auth_required && !status.authenticated) {
+      showLoginDialog();
+    } else {
+      initApp();
+    }
+  } catch (err) {
+    // Auth check failed — try init anyway
+    initApp();
   }
 })();

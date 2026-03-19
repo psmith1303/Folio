@@ -19,9 +19,11 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
+    state.config = {"last_directory": "", "allowed_roots": []}
     yield
     state.library_dir = ""
     state.scores = []
+    state.config = {"last_directory": "", "allowed_roots": []}
 
 
 @pytest.fixture
@@ -363,6 +365,86 @@ class TestSetlists:
         resp = client.post("/api/setlists/Nope/rename",
                            json={"new_name": "X"})
         assert resp.status_code == 404
+
+    def test_create_invalid_name_returns_400(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.post("/api/setlists", json={"name": "bad/name"})
+        assert resp.status_code == 400
+
+    def test_create_too_long_name_returns_400(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.post("/api/setlists", json={"name": "x" * 201})
+        assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+
+
+class TestSecurity:
+    def test_set_library_outside_allowed_roots(self, client, tmp_path):
+        """When allowed_roots is set, directories outside are rejected."""
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        forbidden = tmp_path / "forbidden"
+        forbidden.mkdir()
+        state.config["allowed_roots"] = [str(allowed)]
+        resp = client.post("/api/library", json={"path": str(forbidden)})
+        assert resp.status_code == 403
+
+    def test_set_library_inside_allowed_roots(self, client, tmp_path):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        state.config["allowed_roots"] = [str(allowed)]
+        resp = client.post("/api/library", json={"path": str(allowed)})
+        assert resp.status_code == 200
+
+    def test_security_headers_present(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.get("/api/config")
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert resp.headers["x-frame-options"] == "DENY"
+
+    def test_auth_blocks_without_cookie(self, client, tmp_path):
+        """When auth_salt is set, API calls without a session cookie get 401."""
+        state.config["auth_salt"] = "testuser"
+        resp = client.get("/api/config")
+        assert resp.status_code == 401
+
+    def test_auth_login_sets_cookie(self, client, tmp_path, monkeypatch):
+        """Correct passphrase sets a session cookie that authenticates."""
+        import datetime
+        state.config["auth_salt"] = "testuser"
+        today = datetime.date.today().isoformat()
+        resp = client.post("/api/login",
+                           json={"passphrase": f"{today}-testuser"})
+        assert resp.status_code == 200
+        # The cookie should now work
+        resp = client.get("/api/config")
+        assert resp.status_code == 200
+
+    def test_auth_bad_passphrase(self, client, tmp_path):
+        state.config["auth_salt"] = "testuser"
+        resp = client.post("/api/login",
+                           json={"passphrase": "wrong"})
+        assert resp.status_code == 403
+
+    def test_auth_status_when_disabled(self, client):
+        resp = client.get("/api/auth-status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["auth_required"] is False
+        assert data["authenticated"] is True
+
+    def test_exception_details_not_leaked(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        # Use a path inside the library that doesn't exist
+        fake = os.path.join(library_with_pdfs, "nonexistent.pdf")
+        resp = client.get(f"/api/pdf/pages?path={fake}")
+        assert resp.status_code == 404
+        detail = resp.json().get("detail", "")
+        assert library_with_pdfs not in detail
 
 
 # ---------------------------------------------------------------------------

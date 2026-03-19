@@ -1,0 +1,38 @@
+#+TITLE: Folio — Manual Test Checklist
+#+DATE: 2026-03-19
+#+STARTUP: showall
+
+* Library
+- [ ] Set Folder — enter your music library path, scores populate
+- [ ] Search — type a composer or title, results filter live
+- [ ] Composer dropdown — filters to one composer
+- [ ] Tag chips — click to filter by folder tags
+- [ ] Column sort — click Composer/Title/Tags headers
+
+* Score Viewer
+- [ ] Open a score — click a row, PDF renders
+- [ ] Page navigation — arrow keys, Space, click right/left half, swipe on touch
+- [ ] Side-by-side — click "2-up", or widen to ≥1024px
+- [ ] Pen tool — draw ink strokes, change colour and size
+- [ ] Text tool — place text, try symbol buttons (dynamics, notes)
+- [ ] Eraser — click on an annotation to remove it
+- [ ] Undo — Ctrl+Z
+- [ ] Rotation — =r= / =R= keys, or ↶/↷ buttons; annotations should stay aligned
+- [ ] Export — click Export button, verify downloaded PDF contains your annotations
+- [ ] Back — Escape or Back button returns to library
+
+* Setlists
+- [ ] Switch to Setlists view — click "Setlists" in topbar
+- [ ] Create a setlist — New Setlist button, enter name
+- [ ] Add songs — Add Song, search, select, set page range
+- [ ] Reorder — ↑/↓ buttons in song list
+- [ ] Play — click Play, verify page constraints and song auto-advance
+- [ ] Rename / Delete — verify both work
+- [ ] Back navigation — from setlist detail back to list, from viewer back to setlist detail
+
+* Theme & PWA
+:PROPERTIES:
+:ID:       3735ad4f-ed6c-4258-b151-3afdec82b923
+:END:
+- [ ] Theme toggle — click Light/Dark button, verify it persists on reload
+- [ ] PWA — on iPad, Add to Home Screen, verify standalone mode
