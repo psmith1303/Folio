@@ -908,11 +908,15 @@ dirDialog.addEventListener("close", async () => {
 (async function init() {
   try {
     const cfg = await api("/api/config");
-    if (cfg.library_dir) {
+    if (cfg.library_dir && cfg.score_count > 0) {
+      // Re-use last folder
       dirInput.value = cfg.library_dir;
       await loadLibrary();
     } else {
-      libraryStatus.textContent = 'Click "Set Folder" to choose your music library.';
+      // No library configured (or empty) — prompt immediately
+      dirInput.value = cfg.library_dir || "";
+      dirDialog.showModal();
+      dirInput.focus();
     }
   } catch (err) {
     libraryStatus.textContent = `Error: ${err.message}`;

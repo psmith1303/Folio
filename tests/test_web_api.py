@@ -6,12 +6,14 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+import web.server as srv
 from web.server import app, state
 
 
 @pytest.fixture(autouse=True)
-def reset_state():
-    """Reset server state before each test."""
+def reset_state(tmp_path, monkeypatch):
+    """Reset server state and isolate config writes to a temp file."""
+    monkeypatch.setattr(srv, "WEB_CONFIG_PATH", str(tmp_path / "web_config.json"))
     state.library_dir = ""
     state.scores = []
     yield
