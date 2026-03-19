@@ -1,50 +1,42 @@
 # Music Score Viewer
 
-A Python application to view, navigate, and annotate PDF music scores.
+A web application to view, navigate, and annotate PDF music scores.
+Runs on any device with a browser, including iPad.
 
 ## Features
-- Zoom-to-fit and side-by-side page view
-- Per-page rotation (stored non-destructively in a sidecar file)
-- Annotations: pen, text, eraser, with per-page undo
+- PDF viewing with zoom-to-fit and side-by-side page view
+- Annotations: pen (freehand ink), text, eraser, with per-page undo
+- 7-colour palette, adjustable pen/text size, musical symbol shortcuts
+- Touch and Apple Pencil support (Pointer Events API)
 - Metadata search by composer, title, and folder tags
-- Setlist management: create, reorder, and play through sets of scores
-- Cross-platform: runs as a Windows executable, via Python on WSL/Linux, or as a web app (iPad/browser)
+- Click-to-navigate: right/bottom half = next page, left/top half = previous
+- Keyboard shortcuts for page navigation and tool switching
+- Setlist management (planned)
 
 ## Requirements
 - Python 3.10+
-- Dependencies listed in `requirements.txt`
+- Dependencies: `fastapi`, `uvicorn`, `pymupdf`
 
 ## How to Run
-1. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-2. Run:
-   ```
-   python MusicScoreViewer.py
-   ```
 
-## Running the Web App
+### WSL / Debian / Ubuntu (recommended)
+```
+sudo apt install python3-uvicorn python3-fastapi python3-pymupdf
+```
 
-The web version serves your music library over HTTP, accessible from any
-browser (including iPad).
+### Or via pip
+```
+pip install -r requirements.txt
+```
 
-1. Install web dependencies (WSL / Debian / Ubuntu):
-   ```
-   sudo apt install python3-uvicorn python3-fastapi python3-pymupdf
-   ```
-2. Start the server:
-   ```
-   python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8000
-   ```
-3. Open `http://<your-machine>:8000` in a browser or on your iPad.
+### Start the server
+```
+python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8000
+```
 
-On first launch, click **Set Folder** to point it at your music library
-directory. The setting is remembered across restarts.
-
-## Building the Windows Executable
-Run `make.bat` from the project root. Requires PyInstaller and `icon.ico` to
-be present in the same directory.
+Open `http://<your-machine>:8000` in a browser or on your iPad.
+On first launch, a dialog prompts for your music library path.
+The setting is remembered across restarts.
 
 ## Running the Tests
 
@@ -53,29 +45,17 @@ be present in the same directory.
 pip install -r requirements-dev.txt
 ```
 
-### Linux / WSL
+### Run
 ```
 python3 -m pytest -v
 ```
 
-### Windows
-```
-python -m pytest -v
-```
-
-Some tests are platform-specific. On Linux/WSL, 4 Windows-only path tests
-are skipped (102 of 106 pass). On Windows, 11 Linux/WSL-only tests are skipped
-instead (95 of 106 pass).
-
 ### What the tests cover
 
-| File | Total | Linux passes | Windows passes | What is tested |
-|---|---|---|---|---|
-| `tests/test_path_utils.py` | 22 | 18 | 12 | `normalize_path()` and `portable_path()`, including WSL↔Windows translation and round-trip invariants |
-| `tests/test_rotation.py` | 17 | 17 | 17 | `_rotate_annotation_coords()` rotation transform maths: identity, known corners, CW/CCW inverse, composition, bounds |
-| `tests/test_safe_json.py` | 21 | 21 | 20 | `SafeJSON.load()` and `SafeJSON.save()`: missing files, valid JSON, corrupt JSON, missing directory, cross-device/network-drive write, unicode, round-trips |
-| `tests/test_web_core.py` | 27 | 27 | 27 | `web.core` module: path utils, SafeJSON (exception-based), Score parsing, library scanning, annotation load/save/migration |
-| `tests/test_web_api.py` | 19 | 19 | 19 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, annotation CRUD, path traversal protection |
+| File | Tests | What is tested |
+|---|---|---|
+| `tests/test_web_core.py` | 27 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning, annotation load/save/migration |
+| `tests/test_web_api.py` | 19 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, annotation CRUD, path traversal protection |
 
 ## Emacs Editing
 
@@ -99,32 +79,37 @@ row.  Requires Emacs 27+; no external packages needed.
 3. **C-c C-s** — write the tables back to JSON and save the file.
 4. **C-c C-q** — quit (prompts if there are unsaved changes).
 
-The org buffer is ephemeral (never saved as a file). `C-x C-s` is intercepted
-and redirected to the minibuffer hint. A blank **End** cell round-trips as
-JSON `null` (meaning "last page of the PDF").
-
 ---
 
 ## Architecture
 
-### Key classes and module-level constructs
-
-| Name | Kind | Description |
-|---|---|---|
-| `SetlistSession` | dataclass | Holds all active setlist playback state (`name`, `items`, `index`, `start_page`, `end_page`). `None` on `MusicScoreApp._session` means library mode; set means setlist mode. |
-| `_rotate_annotation_coords` | function | Rotates annotation coordinates in-place by N×90°. Used by `AnnotationManager` and tested directly in `tests/test_rotation.py`. |
-| `AnnotationManager` | class | Owns annotation state (`annotations`, `rotations`, `_undo_stack`, `tool`, `pen_color`, `current_stroke`) and all persistence / mutation logic. Accessed via `app.annot`. |
-| `MusicScoreApp` | class | Main Tk application controller. Delegates annotation work to `self.annot` and setlist state to `self._session`. |
-
-### Web backend (`web/`)
+### Backend (`web/`)
 
 | File | Description |
 |---|---|
-| `web/core.py` | Tk-free business logic: `SafeJSON` (raises exceptions instead of dialogs), `Score`, `scan_library()`, path utilities. Reused by the FastAPI server. |
-| `web/server.py` | FastAPI application — library browsing, PDF serving, config endpoints. |
-| `web/static/` | Vanilla JS frontend with pdf.js for client-side PDF rendering. |
+| `web/core.py` | Business logic: `SafeJSON`, `Score`, `scan_library()`, path utilities, annotation load/save with format migration. |
+| `web/server.py` | FastAPI application — library browsing, PDF serving, annotation CRUD, config endpoints. |
+
+### Frontend (`web/static/`)
+
+| File | Description |
+|---|---|
+| `web/static/app.js` | ES module: pdf.js rendering, annotation canvas overlay (pen/text/eraser/undo), library UI, keyboard/touch navigation. |
+| `web/static/app.css` | Dark theme, responsive layout, annotation toolbar styles. |
+| `web/static/index.html` | Single-page app shell. |
 
 ### File formats
 
-- **`setlists.json`** — setlist definitions, written to the root of the music library folder so setlists travel with the collection; see `docs/setlist-file-format.md` for the full specification.
+- **`setlists.json`** — setlist definitions, written to the root of the music library folder; see `docs/setlist-file-format.md` for the full specification.
 - **`<score>.json`** — annotation sidecar written alongside each PDF; versioned JSON containing per-page annotation lists and rotation overrides.
+
+### Keyboard shortcuts (score viewer)
+
+| Key | Action |
+|---|---|
+| Space, n, →, ↓, PgDn | Next page |
+| Backspace, p, ←, ↑, PgUp | Previous page |
+| Home / End | First / last page |
+| Escape | Back to library |
+| v / d / t / e | Nav / Pen / Text / Eraser tool |
+| Ctrl+Z | Undo |
