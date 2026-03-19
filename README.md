@@ -12,6 +12,8 @@ Runs on any device with a browser, including iPad.
 - Click-to-navigate: right/bottom half = next page, left/top half = previous
 - Keyboard shortcuts for page navigation and tool switching
 - Setlist management: create, edit, reorder, rename, delete, playback with page constraints
+- Dark/light theme toggle (remembered across sessions)
+- Export annotated PDF with annotations baked in
 
 ## Requirements
 - Python 3.10+
@@ -55,7 +57,7 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 27 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning, annotation load/save/migration |
-| `tests/test_web_api.py` | 34 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, setlist CRUD/rename, path traversal |
+| `tests/test_web_api.py` | 38 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, setlist CRUD/rename, PDF export, path traversal |
 
 ## Emacs Editing
 
@@ -95,7 +97,7 @@ row.  Requires Emacs 27+; no external packages needed.
 | File | Description |
 |---|---|
 | `web/static/app.js` | ES module: pdf.js rendering, annotation canvas overlay (pen/text/eraser/undo), library UI, keyboard/touch navigation. |
-| `web/static/app.css` | Dark theme, responsive layout, annotation toolbar styles. |
+| `web/static/app.css` | Dark/light theme, responsive layout, annotation toolbar styles. |
 | `web/static/index.html` | Single-page app shell. |
 
 ### File formats

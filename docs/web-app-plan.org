@@ -58,16 +58,19 @@
 - Responsive toolbar: wraps and compacts on narrow screens (≤768px)
 - 61 tests still passing
 
-* Phase 6 — Quality of life
+** DONE Phase 6 — Quality of life
+- Dark/light theme toggle: button in topbar, CSS custom properties for both themes
+- Theme preference persisted in localStorage, restored on load
+- Export annotated PDF: =/api/pdf/export= endpoint uses pymupdf to bake ink+text annotations into PDF
+- Export button in viewer toolbar triggers blob download
+- =export_annotated_pdf()= in =core.py= renders ink (polylines), text (with musical symbol scaling), and rotation
+- 4 new export tests with real PDF fixture via pymupdf
+- 65 tests passing (27 core + 38 API)
+
+* Backlog
 ** TODO Performance: lazy rendering
 - Only render visible pages + 1 ahead (current approach renders 1–2)
 - Offscreen page cleanup to reduce memory usage
-** TODO Dark/light theme toggle
-- CSS custom properties already used — add a toggle
-- Remember preference in config
-** TODO Export annotations
-- Download annotations as a standalone JSON file
-- Optionally bake annotations into a flattened PDF (pymupdf)
 ** TODO Multi-user awareness
 - Show a warning if two browsers have the same PDF open
 - Alternatively, last-write-wins with a version counter

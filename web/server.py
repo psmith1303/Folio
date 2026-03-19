@@ -12,7 +12,7 @@ import os
 from pathlib import PurePosixPath
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -20,6 +20,7 @@ from .core import (
     SafeJSON,
     SafeJSONError,
     Score,
+    export_annotated_pdf,
     load_annotations,
     normalize_path,
     pdf_page_count,
@@ -224,6 +225,22 @@ def pdf_pages(path: str = Query(..., description="Score filepath")):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"path": portable_path(path), "pages": count}
+
+
+@app.get("/api/pdf/export")
+def export_pdf(path: str = Query(..., description="Score filepath")):
+    """Download a copy of the PDF with annotations baked in."""
+    resolved = _validate_library_path(path)
+    try:
+        pdf_bytes = export_annotated_pdf(resolved)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    filename = f"annotated_{os.path.basename(resolved)}"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 # ---------------------------------------------------------------------------

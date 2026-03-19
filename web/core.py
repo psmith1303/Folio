@@ -271,3 +271,94 @@ def save_annotations(pdf_path: str, pages: dict, rotations: dict) -> None:
         "pages": pages,
     }
     SafeJSON.save(sidecar, data)
+
+
+# ---------------------------------------------------------------------------
+# Annotation export (bake into PDF)
+# ---------------------------------------------------------------------------
+
+_CSS_TO_RGB: dict[str, tuple[float, float, float]] = {
+    "black": (0, 0, 0),
+    "red": (1, 0, 0),
+    "blue": (0, 0, 1),
+    "green": (0, 0.502, 0),
+    "orange": (1, 0.647, 0),
+    "purple": (0.502, 0, 0.502),
+    "magenta": (1, 0, 1),
+}
+
+_MUSICAL_SYMBOLS = {
+    "\U0001D15E", "\u2669", "\u2669.", "\u266A",
+    "pp", "p", "mp", "mf", "f", "ff",
+    "sfz", "cresc", "dim",
+}
+
+
+def export_annotated_pdf(pdf_path: str) -> bytes:
+    """Render annotations onto a copy of the PDF and return the bytes."""
+    import pymupdf as fitz
+
+    data = load_annotations(pdf_path)
+    pages = data.get("pages", {})
+    rots = data.get("rotations", {})
+
+    doc = fitz.open(pdf_path)
+    for pg_str, annots in pages.items():
+        pg_num = int(pg_str)
+        if pg_num >= len(doc):
+            continue
+        page = doc[pg_num]
+        w = page.rect.width
+        h = page.rect.height
+
+        for a in annots:
+            if a.get("type") == "ink":
+                _export_ink(page, a, w, h)
+            elif a.get("type") == "text":
+                _export_text(page, a, w, h)
+
+        rot = rots.get(pg_str, 0) % 360
+        if rot:
+            page.set_rotation((page.rotation + rot) % 360)
+
+    result = doc.tobytes()
+    doc.close()
+    return result
+
+
+def _export_ink(page, annot: dict, w: float, h: float) -> None:
+    import pymupdf as fitz
+
+    pts = annot.get("points", [])
+    if len(pts) < 2:
+        return
+    color = _CSS_TO_RGB.get(annot.get("color", "black"), (0, 0, 0))
+    width = max(0.5, annot.get("width", 2) * 0.75)
+    points = [fitz.Point(p[0] * w, p[1] * h) for p in pts]
+    shape = page.new_shape()
+    shape.draw_polyline(points)
+    shape.finish(color=color, width=width, lineCap=1, lineJoin=1)
+    shape.commit()
+
+
+def _export_text(page, annot: dict, w: float, h: float) -> None:
+    import pymupdf as fitz
+
+    text = annot.get("text", "")
+    if not text:
+        return
+    x = annot.get("x", 0) * w
+    y = annot.get("y", 0) * h
+    color = _CSS_TO_RGB.get(annot.get("color", "black"), (0, 0, 0))
+    size = 12 + (annot.get("size", 2)) * 4
+    if text in _MUSICAL_SYMBOLS:
+        size = round(size * 6)
+    fontname = "helv"
+    text_w = fitz.get_text_length(text, fontname=fontname, fontsize=size)
+    page.insert_text(
+        fitz.Point(x - text_w / 2, y + size * 0.35),
+        text,
+        fontname=fontname,
+        fontsize=size,
+        color=color,
+    )

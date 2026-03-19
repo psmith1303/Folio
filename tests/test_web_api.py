@@ -30,6 +30,17 @@ def client():
 
 
 @pytest.fixture
+def library_with_real_pdf(tmp_path):
+    """Create a temp directory with a real PDF for pymupdf-dependent tests."""
+    import pymupdf as fitz
+    doc = fitz.open()
+    doc.new_page(width=612, height=792)
+    doc.save(str(tmp_path / "Bach - Test Score.pdf"))
+    doc.close()
+    return str(tmp_path)
+
+
+@pytest.fixture
 def library_with_pdfs(tmp_path):
     """Create a temp directory with fake PDFs and set it as library."""
     # Create minimal valid PDF files (pdf.js won't parse these, but
@@ -352,3 +363,55 @@ class TestSetlists:
         resp = client.post("/api/setlists/Nope/rename",
                            json={"new_name": "X"})
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PDF export
+# ---------------------------------------------------------------------------
+
+
+class TestExportPDF:
+    def test_export_unannotated(self, client, library_with_real_pdf):
+        state.set_library(library_with_real_pdf)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+        resp = client.get(f"/api/pdf/export?path={path}")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content[:5] == b"%PDF-"
+
+    def test_export_with_ink_annotation(self, client, library_with_real_pdf):
+        state.set_library(library_with_real_pdf)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        pages = {"0": [{"uuid": "ink-1", "type": "ink",
+                        "points": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]],
+                        "color": "red", "width": 3}]}
+        client.put("/api/annotations", json={
+            "path": path, "pages": pages, "rotations": {}
+        })
+
+        resp = client.get(f"/api/pdf/export?path={path}")
+        assert resp.status_code == 200
+        assert len(resp.content) > 100
+
+    def test_export_with_text_annotation(self, client, library_with_real_pdf):
+        state.set_library(library_with_real_pdf)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        pages = {"0": [{"uuid": "txt-1", "type": "text",
+                        "x": 0.5, "y": 0.5, "text": "ff",
+                        "color": "blue", "size": 4, "font": "serif"}]}
+        client.put("/api/annotations", json={
+            "path": path, "pages": pages, "rotations": {}
+        })
+
+        resp = client.get(f"/api/pdf/export?path={path}")
+        assert resp.status_code == 200
+        assert len(resp.content) > 100
+
+    def test_export_no_library_returns_400(self, client):
+        resp = client.get("/api/pdf/export?path=/some/file.pdf")
+        assert resp.status_code == 400

@@ -22,6 +22,24 @@
   --toolbar-bg: #3a3a3a;
 }
 
+:root.light {
+  --bg: #f0f0f0;
+  --bg-panel: #ffffff;
+  --bg-input: #e0e0e0;
+  --fg: #222222;
+  --fg-dim: #666666;
+  --accent: #2a7ab5;
+  --accent-hover: #1a5a8a;
+  --row-hover: #d8e8f4;
+  --row-stripe: #f5f5f5;
+  --border: #cccccc;
+  --toolbar-bg: #e0e0e0;
+}
+
+:root.light .page-wrap canvas:first-child {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
 html, body {
   height: 100%;
   overflow: hidden;

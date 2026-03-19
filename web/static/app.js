@@ -80,6 +80,8 @@ const songStart = $("#song-start");
 const songEnd = $("#song-end");
 const songPickerCancel = $("#song-picker-cancel");
 const songPickerAdd = $("#song-picker-add");
+const btnTheme = $("#btn-theme");
+const btnExport = $("#btn-export");
 const textDialog = $("#text-dialog");
 const textDialogTitle = $("#text-dialog-title");
 const textInput = $("#text-input");
@@ -1388,6 +1390,50 @@ function checkAutoSideBySide() {
     renderPage();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Theme toggle
+// ---------------------------------------------------------------------------
+
+const savedTheme = localStorage.getItem("msv-theme");
+if (savedTheme === "light") {
+  document.documentElement.classList.add("light");
+  btnTheme.textContent = "Dark";
+}
+
+btnTheme.addEventListener("click", () => {
+  const isLight = document.documentElement.classList.toggle("light");
+  btnTheme.textContent = isLight ? "Dark" : "Light";
+  localStorage.setItem("msv-theme", isLight ? "light" : "dark");
+});
+
+// ---------------------------------------------------------------------------
+// Export annotated PDF
+// ---------------------------------------------------------------------------
+
+btnExport.addEventListener("click", async () => {
+  if (!currentScore) return;
+  try {
+    btnExport.disabled = true;
+    btnExport.textContent = "Exporting…";
+    const resp = await fetch(
+      `/api/pdf/export?path=${encodeURIComponent(currentScore.filepath)}`
+    );
+    if (!resp.ok) throw new Error(`Export failed: ${resp.status}`);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `annotated_${currentScore.filepath.split("/").pop()}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error("Export failed:", err);
+  } finally {
+    btnExport.disabled = false;
+    btnExport.textContent = "Export";
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Service worker
