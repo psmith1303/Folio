@@ -56,6 +56,8 @@ const btnText = $("#btn-text");
 const btnEraser = $("#btn-eraser");
 const btnUndo = $("#btn-undo");
 const sizeSlider = $("#size-slider");
+const btnRotCCW = $("#btn-rot-ccw");
+const btnRotCW = $("#btn-rot-cw");
 const textDialog = $("#text-dialog");
 const textDialogTitle = $("#text-dialog-title");
 const textInput = $("#text-input");
@@ -500,6 +502,23 @@ function doUndo() {
   drawAnnotations();
 }
 
+// ---------------------------------------------------------------------------
+// Page rotation
+// ---------------------------------------------------------------------------
+
+function rotatePage(delta) {
+  if (!pdfDoc) return;
+  const pg = String(currentPage - 1);
+  const current = (rotations[pg] || 0) % 360;
+  const next = (current + delta + 360) % 360;
+  rotations[pg] = next;
+  saveAnnotations();
+  renderPage();
+}
+
+btnRotCW.addEventListener("click", () => rotatePage(90));
+btnRotCCW.addEventListener("click", () => rotatePage(-90));
+
 async function saveAnnotations() {
   if (!currentScore) return;
   try {
@@ -826,6 +845,8 @@ document.addEventListener("keydown", (e) => {
     case "d": setTool("pen"); return;
     case "t": setTool("text"); return;
     case "e": setTool("eraser"); return;
+    case "r": rotatePage(90); return;
+    case "R": rotatePage(-90); return;
   }
 
   // Undo

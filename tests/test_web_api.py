@@ -205,6 +205,38 @@ class TestPutAnnotations:
         assert len(data["pages"]["0"]) == 1
         assert data["pages"]["0"][0]["color"] == "red"
 
+    def test_rotation_round_trip(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        resp = client.put("/api/annotations", json={
+            "path": path, "pages": {},
+            "rotations": {"0": 90, "1": 270}
+        })
+        assert resp.status_code == 200
+
+        resp = client.get(f"/api/annotations?path={path}")
+        data = resp.json()
+        assert data["rotations"]["0"] == 90
+        assert data["rotations"]["1"] == 270
+
+    def test_zero_rotation_not_persisted(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        resp = client.put("/api/annotations", json={
+            "path": path, "pages": {},
+            "rotations": {"0": 360, "1": 90}
+        })
+        assert resp.status_code == 200
+
+        resp = client.get(f"/api/annotations?path={path}")
+        data = resp.json()
+        assert "0" not in data["rotations"]
+        assert data["rotations"]["1"] == 90
+
     def test_path_traversal_blocked(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
         resp = client.put("/api/annotations", json={

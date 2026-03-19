@@ -31,10 +31,10 @@ pip install -r requirements.txt
 
 ### Start the server
 ```
-python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
 ```
 
-Open `http://<your-machine>:8000` in a browser or on your iPad.
+Open `http://<your-machine>:8989` in a browser or on your iPad.
 On first launch, a dialog prompts for your music library path.
 The setting is remembered across restarts.
 
@@ -55,7 +55,7 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 27 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning, annotation load/save/migration |
-| `tests/test_web_api.py` | 19 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, annotation CRUD, path traversal protection |
+| `tests/test_web_api.py` | 21 | FastAPI endpoints: config, library listing/filtering/sorting, PDF serving, annotation CRUD, rotation round-trip, path traversal protection |
 
 ## Emacs Editing
 
@@ -112,4 +112,5 @@ row.  Requires Emacs 27+; no external packages needed.
 | Home / End | First / last page |
 | Escape | Back to library |
 | v / d / t / e | Nav / Pen / Text / Eraser tool |
+| r / R | Rotate page CW / CCW |
 | Ctrl+Z | Undo |

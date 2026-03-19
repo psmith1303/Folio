@@ -26,20 +26,15 @@
 - Consolidated =requirements.txt= at project root
 - Rewrote README for web-only architecture
 - 46 tests passing (27 core + 19 API)
-
-* Phase 3 — Rotation support
-** TODO Backend: rotation endpoint
-- =PUT /api/annotations= already accepts =rotations= dict — verify it round-trips
-- Page rotation stored per-page as multiples of 90° (0, 90, 180, 270)
-** TODO Frontend: rotation UI
-- Add rotate-CW / rotate-CCW buttons to the toolbar
-- On rotate: re-render PDF page with =page.render({rotation: angle})=
-- Transform annotation canvas to match (CSS =transform: rotate(...)=)
-- Coordinate transforms: =transformPt()= and inverse already exist, wire them up
-** TODO Annotation coordinate migration on rotation
-- When a page is rotated, existing annotations need their coordinates remapped
-- Use =_rotate_annotation_coords(annotations, delta)= logic from desktop app
-- Persist updated rotation in sidecar JSON
+** DONE Phase 3 — Rotation support
+- Rotate-CW (↷) and rotate-CCW (↶) toolbar buttons
+- Keyboard shortcuts: =r= (CW), =R= (CCW)
+- pdf.js re-renders page at new rotation via =getViewport({rotation})=
+- Annotations stay in original page space; =transformPt()= handles display mapping
+- No coordinate migration needed — transforms are applied at render/input time
+- Rotation persisted in sidecar JSON; zero rotations cleaned on save
+- 2 new API tests: rotation round-trip and zero-rotation cleanup
+- 48 tests passing (27 core + 21 API)
 
 * Phase 4 — Setlist management
 ** TODO Backend: setlist CRUD API
