@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#333333">
+  <title>Folio</title>
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <!-- ================================================================== -->
+  <!-- Top bar                                                            -->
+  <!-- ================================================================== -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <button id="btn-library" class="nav-btn active" title="Library">Library</button>
+      <button id="btn-setlists" class="nav-btn" title="Setlists">Setlists</button>
+      <button id="btn-back" class="nav-btn hidden" title="Back">&larr; Back</button>
+    </div>
+    <div class="topbar-center">
+      <span id="title-display"></span>
+    </div>
+    <div class="topbar-right">
+      <button id="btn-theme" title="Toggle light/dark theme">Light</button>
+      <button id="btn-set-dir" title="Set music library folder">Set Folder</button>
+    </div>
+  </header>
+
+  <!-- ================================================================== -->
+  <!-- Library view                                                       -->
+  <!-- ================================================================== -->
+  <section id="library-view">
+    <div id="library-toolbar">
+      <input type="text" id="search-input" placeholder="Search titles and composers…">
+      <select id="composer-filter">
+        <option value="">All Composers</option>
+      </select>
+      <button id="btn-reset" title="Clear all filters">Reset</button>
+    </div>
+    <div id="tag-bar"></div>
+    <div id="library-table-wrap">
+      <table id="library-table">
+        <thead>
+          <tr>
+            <th data-col="composer" class="sortable sort-asc">Composer ▲</th>
+            <th data-col="title" class="sortable">Title</th>
+            <th data-col="tags" class="sortable">Tags</th>
+          </tr>
+        </thead>
+        <tbody id="library-body"></tbody>
+      </table>
+    </div>
+    <div id="library-status"></div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Setlist view (two-column: list + detail)                           -->
+  <!-- ================================================================== -->
+  <section id="setlist-view" class="hidden">
+    <div id="setlist-columns">
+      <!-- Left column: setlist list -->
+      <div id="setlist-left">
+        <div id="setlist-toolbar">
+          <button id="btn-new-setlist">New Setlist</button>
+        </div>
+        <div id="setlist-list-wrap">
+          <table id="setlist-table">
+            <thead>
+              <tr>
+                <th>Setlist</th>
+                <th>Songs</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setlist-body"></tbody>
+          </table>
+        </div>
+        <div id="setlist-status"></div>
+      </div>
+      <!-- Right column: selected setlist contents -->
+      <div id="setlist-right">
+        <div id="setlist-detail-toolbar">
+          <span id="setlist-detail-name">Select a setlist</span>
+          <span id="setlist-detail-actions" class="hidden">
+            <button id="btn-rename-setlist" title="Rename setlist">Rename</button>
+            <span class="toolbar-sep"></span>
+            <button id="btn-add-song">Add Song</button>
+            <span class="toolbar-sep"></span>
+            <button id="btn-play-setlist" title="Play this setlist">&#9654; Play</button>
+          </span>
+        </div>
+        <div id="setlist-songs-wrap">
+          <table id="setlist-songs-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Composer</th>
+                <th>Title</th>
+                <th>Start</th>
+                <th>End</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="setlist-songs-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Score viewer                                                       -->
+  <!-- ================================================================== -->
+  <section id="viewer" class="hidden">
+    <div id="viewer-toolbar">
+      <button id="btn-prev" title="Previous page (←)">&larr;</button>
+      <span id="page-display">
+        <input type="number" id="page-input" min="1" value="1"> / <span id="page-total">0</span>
+      </span>
+      <button id="btn-next" title="Next page (→)">&rarr;</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-zoom-fit" title="Zoom to fit" class="active">Fit</button>
+      <button id="btn-side-by-side" title="Side-by-side view">2-up</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-nav" class="tool-btn active" title="Navigate (v)">Nav</button>
+      <button id="btn-pen" class="tool-btn" title="Pen (d)">Pen</button>
+      <button id="btn-text" class="tool-btn" title="Text (t)">Text</button>
+      <button id="btn-eraser" class="tool-btn" title="Eraser (e)">Eraser</button>
+      <span class="toolbar-sep"></span>
+      <span id="color-swatches">
+        <span class="swatch selected" data-color="black" style="background:black" title="Black"></span>
+        <span class="swatch" data-color="red" style="background:red" title="Red"></span>
+        <span class="swatch" data-color="blue" style="background:blue" title="Blue"></span>
+        <span class="swatch" data-color="green" style="background:green" title="Green"></span>
+        <span class="swatch" data-color="orange" style="background:orange" title="Orange"></span>
+        <span class="swatch" data-color="purple" style="background:purple" title="Purple"></span>
+        <span class="swatch" data-color="magenta" style="background:magenta" title="Magenta"></span>
+      </span>
+      <span class="toolbar-sep"></span>
+      <label id="size-label" title="Pen / text size">
+        Size <input type="range" id="size-slider" min="1" max="10" value="2">
+      </label>
+      <span class="toolbar-sep"></span>
+      <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-rot-ccw" title="Rotate page left (R)">&#x21B6;</button>
+      <button id="btn-rot-cw" title="Rotate page right (r)">&#x21B7;</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-export" title="Download PDF with annotations">Export</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-add-to-setlist" title="Add to setlist (s)">+Setlist</button>
+      <span class="toolbar-sep"></span>
+      <button id="btn-fullscreen" title="Toggle fullscreen (f)">Fullscreen</button>
+    </div>
+    <div id="pdf-container">
+      <div id="page-wrap-1" class="page-wrap">
+        <canvas id="pdf-canvas"></canvas>
+        <canvas id="annot-canvas" class="annot-layer"></canvas>
+      </div>
+      <div id="page-wrap-2" class="page-wrap hidden">
+        <canvas id="pdf-canvas-2"></canvas>
+        <canvas id="annot-canvas-2" class="annot-layer"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Set-folder dialog                                                  -->
+  <!-- ================================================================== -->
+  <dialog id="dir-dialog">
+    <form method="dialog">
+      <h3>Set Music Library Folder</h3>
+      <p>Enter the full path to your music score directory:</p>
+      <input type="text" id="dir-input" placeholder="/mnt/z/PARA/Resources/Music" style="width:100%">
+      <div class="dialog-buttons">
+        <button type="button" id="dir-cancel">Cancel</button>
+        <button type="submit" id="dir-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Text annotation dialog                                           -->
+  <!-- ================================================================== -->
+  <dialog id="text-dialog">
+    <form method="dialog">
+      <h3 id="text-dialog-title">Add Text</h3>
+      <div class="dialog-row">
+        <label>Text: <input type="text" id="text-input" style="width:100%"></label>
+      </div>
+      <div class="dialog-row">
+        <label>Font:
+          <select id="text-font">
+            <option>serif</option>
+            <option selected>sans-serif</option>
+            <option>monospace</option>
+            <option>cursive</option>
+          </select>
+        </label>
+      </div>
+      <div class="dialog-row" id="symbol-bar">
+        <button type="button" class="sym-btn" data-sym="&#x1D15E;" title="Minim">&#x1D15E;</button>
+        <button type="button" class="sym-btn" data-sym="&#9833;" title="Crotchet">&#9833;</button>
+        <button type="button" class="sym-btn" data-sym="&#9833;." title="Dotted crotchet">&#9833;.</button>
+        <button type="button" class="sym-btn" data-sym="&#9834;" title="Quaver">&#9834;</button>
+        <button type="button" class="sym-btn dyn" data-sym="pp">pp</button>
+        <button type="button" class="sym-btn dyn" data-sym="p">p</button>
+        <button type="button" class="sym-btn dyn" data-sym="mp">mp</button>
+        <button type="button" class="sym-btn dyn" data-sym="mf">mf</button>
+        <button type="button" class="sym-btn dyn" data-sym="f">f</button>
+        <button type="button" class="sym-btn dyn" data-sym="ff">ff</button>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="text-cancel">Cancel</button>
+        <button type="submit" id="text-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Setlist name dialog (create / rename)                             -->
+  <!-- ================================================================== -->
+  <dialog id="setlist-name-dialog">
+    <form method="dialog">
+      <h3 id="setlist-name-dialog-title">New Setlist</h3>
+      <input type="text" id="setlist-name-input" placeholder="Setlist name" style="width:100%">
+      <div class="dialog-buttons">
+        <button type="button" id="setlist-name-cancel">Cancel</button>
+        <button type="submit" value="ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Song picker dialog                                                -->
+  <!-- ================================================================== -->
+  <dialog id="song-picker-dialog">
+    <form method="dialog">
+      <h3>Add Song</h3>
+      <input type="text" id="song-search" placeholder="Search scores…" style="width:100%;margin-bottom:8px">
+      <div id="song-picker-list"></div>
+      <div class="dialog-row" style="display:flex;gap:12px;margin-top:8px">
+        <label>Start page <input type="number" id="song-start" min="1" value="1" style="width:60px"></label>
+        <label>End page <input type="number" id="song-end" min="0" value="0" style="width:60px"></label>
+        <span style="color:var(--fg-dim);font-size:12px;align-self:center">0 = last</span>
+      </div>
+      <div class="dialog-buttons">
+        <button type="button" id="song-picker-cancel">Cancel</button>
+        <button type="submit" id="song-picker-add" value="add" disabled>Add</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Setlist picker dialog (add current score to a setlist)             -->
+  <!-- ================================================================== -->
+  <dialog id="setlist-picker-dialog">
+    <form method="dialog">
+      <h3>Add to Setlist</h3>
+      <div id="setlist-picker-list"></div>
+      <div class="dialog-buttons">
+        <button type="button" id="setlist-picker-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Conflict dialog (multi-user awareness)                             -->
+  <!-- ================================================================== -->
+  <dialog id="conflict-dialog">
+    <form method="dialog">
+      <h3>Annotation Conflict</h3>
+      <p>These annotations were modified in another session. Your changes could not be saved.</p>
+      <div class="dialog-buttons">
+        <button type="button" id="conflict-reload">Reload (discard mine)</button>
+        <button type="button" id="conflict-force">Save anyway (overwrite)</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Login dialog                                                       -->
+  <!-- ================================================================== -->
+  <dialog id="login-dialog">
+    <form method="dialog">
+      <h3>Login Required</h3>
+      <p>Enter access code:</p>
+      <input type="password" id="login-input" style="width:100%">
+      <div id="login-error" style="color:#f88;font-size:13px;margin-top:6px"></div>
+      <div class="dialog-buttons">
+        <button type="submit" value="login">Login</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

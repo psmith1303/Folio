@@ -1,7 +1,7 @@
 """
-Pytest configuration for MusicScoreViewer tests.
+Pytest configuration for Folio tests.
 
-Adds the project root to sys.path so that `import MusicScoreViewer` works
+Adds the project root to sys.path so that the `web` package is importable
 from within the tests/ directory without an installed package.
 """
 import sys

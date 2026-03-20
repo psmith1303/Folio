@@ -1,32 +1,64 @@
-# Music Score Viewer
+# Folio
 
-A Python application to view, navigate, and annotate PDF music scores.
+A web application to view, navigate, and annotate PDF music scores.
+Runs on any device with a browser, including iPad.
 
 ## Features
-- Zoom-to-fit and side-by-side page view
-- Per-page rotation (stored non-destructively in a sidecar file)
-- Annotations: pen, text, eraser, with per-page undo
+- PDF viewing with zoom-to-fit and side-by-side page view
+- Annotations: pen (freehand ink), text, eraser, with per-page undo
+- 7-colour palette, adjustable pen/text size, musical symbol shortcuts
+- Touch and Apple Pencil support (Pointer Events API)
 - Metadata search by composer, title, and folder tags
-- Setlist management: create, reorder, and play through sets of scores
-- Cross-platform: runs as a Windows executable or via Python on WSL/Linux
+- Add scores to setlists directly from the viewer (`s` key)
+- Click-to-navigate: right/bottom half = next page, left/top half = previous
+- Keyboard shortcuts for page navigation and tool switching
+- Setlist management: create, edit, reorder, rename, delete, playback with page constraints
+- Dark/light theme toggle (remembered across sessions)
+- Export annotated PDF with annotations baked in
+- Fullscreen mode for distraction-free viewing (f key or toolbar button)
+- Directories with a `.exclude` file are hidden from the library
 
 ## Requirements
 - Python 3.10+
-- Dependencies listed in `requirements.txt`
+- Dependencies: `fastapi`, `uvicorn`, `pymupdf`
 
 ## How to Run
-1. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-2. Run:
-   ```
-   python MusicScoreViewer.py
-   ```
 
-## Building the Windows Executable
-Run `make.bat` from the project root. Requires PyInstaller and `icon.ico` to
-be present in the same directory.
+### WSL / Debian / Ubuntu (recommended)
+```
+sudo apt install python3-uvicorn python3-fastapi python3-pymupdf
+```
+
+### Or via pip
+```
+pip install -r requirements.txt
+```
+
+### Start the server
+```
+python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+```
+
+Open `http://<your-machine>:8989` in a browser or on your iPad.
+On first launch, a dialog prompts for your music library path.
+The setting is remembered across restarts.
+
+## Authentication
+
+When exposed to the internet, enable authentication by setting an auth salt.
+The passphrase is `YYYY-MM-DD-<salt>` (today's date + your salt), so it changes
+daily and requires no memorisation.
+
+### Option 1: environment variable
+```
+FOLIO_AUTH_SALT=psmith python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+```
+
+### Option 2: config file
+Add `"auth_salt": "psmith"` to `~/.folio/web_config.json`.
+
+Once authenticated, a 30-day session cookie is set — no need to re-enter
+the passphrase on every visit.  With no salt configured, auth is disabled.
 
 ## Running the Tests
 
@@ -35,27 +67,17 @@ be present in the same directory.
 pip install -r requirements-dev.txt
 ```
 
-### Linux / WSL
+### Run
 ```
 python3 -m pytest -v
 ```
 
-### Windows
-```
-python -m pytest -v
-```
-
-Some tests are platform-specific. On Linux/WSL, 4 Windows-only path tests
-are skipped (56 of 60 pass). On Windows, 11 Linux/WSL-only tests are skipped
-instead (49 of 60 pass).
-
 ### What the tests cover
 
-| File | Total | Linux passes | Windows passes | What is tested |
-|---|---|---|---|---|
-| `tests/test_path_utils.py` | 22 | 18 | 12 | `normalize_path()` and `portable_path()`, including WSL↔Windows translation and round-trip invariants |
-| `tests/test_rotation.py` | 17 | 17 | 17 | `_rotate_annotation_coords()` rotation transform maths: identity, known corners, CW/CCW inverse, composition, bounds |
-| `tests/test_safe_json.py` | 21 | 21 | 20 | `SafeJSON.load()` and `SafeJSON.save()`: missing files, valid JSON, corrupt JSON, missing directory, cross-device/network-drive write, unicode, round-trips |
+| File | Tests | What is tested |
+|---|---|---|
+| `tests/test_web_core.py` | 36 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection |
+| `tests/test_web_api.py` | 53 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, PDF export, path traversal, security, auth |
 
 ## Emacs Editing
 
@@ -67,7 +89,7 @@ row.  Requires Emacs 27+; no external packages needed.
 
 ```elisp
 ;; In your Emacs init file, or load manually with M-x load-file:
-(load "/path/to/MusicScoreViewer/setlist-editor.el")
+(load "/path/to/Folio/setlist-editor.el")
 ```
 
 ### Usage
@@ -79,24 +101,40 @@ row.  Requires Emacs 27+; no external packages needed.
 3. **C-c C-s** — write the tables back to JSON and save the file.
 4. **C-c C-q** — quit (prompts if there are unsaved changes).
 
-The org buffer is ephemeral (never saved as a file). `C-x C-s` is intercepted
-and redirected to the minibuffer hint. A blank **End** cell round-trips as
-JSON `null` (meaning "last page of the PDF").
-
 ---
 
 ## Architecture
 
-### Key classes and module-level constructs
+### Backend (`web/`)
 
-| Name | Kind | Description |
-|---|---|---|
-| `SetlistSession` | dataclass | Holds all active setlist playback state (`name`, `items`, `index`, `start_page`, `end_page`). `None` on `MusicScoreApp._session` means library mode; set means setlist mode. |
-| `_rotate_annotation_coords` | function | Rotates annotation coordinates in-place by N×90°. Used by `AnnotationManager` and tested directly in `tests/test_rotation.py`. |
-| `AnnotationManager` | class | Owns annotation state (`annotations`, `rotations`, `_undo_stack`, `tool`, `pen_color`, `current_stroke`) and all persistence / mutation logic. Accessed via `app.annot`. |
-| `MusicScoreApp` | class | Main Tk application controller. Delegates annotation work to `self.annot` and setlist state to `self._session`. |
+| File | Description |
+|---|---|
+| `web/core.py` | Business logic: `SafeJSON`, `Score`, `scan_library()`, path utilities, annotation load/save with format migration. |
+| `web/server.py` | FastAPI application — library browsing, PDF serving, annotation CRUD, config endpoints. |
+
+### Frontend (`web/static/`)
+
+| File | Description |
+|---|---|
+| `web/static/app.js` | ES module: pdf.js rendering, annotation canvas overlay (pen/text/eraser/undo), library UI, keyboard/touch navigation. |
+| `web/static/app.css` | Dark/light theme, responsive layout, annotation toolbar styles. |
+| `web/static/index.html` | Single-page app shell. |
 
 ### File formats
 
-- **`setlists.json`** — setlist definitions, written to the root of the music library folder so setlists travel with the collection; see `docs/setlist-file-format.md` for the full specification.
+- **`setlists.json`** — setlist definitions, written to the root of the music library folder; see `docs/setlist-file-format.md` for the full specification.
 - **`<score>.json`** — annotation sidecar written alongside each PDF; versioned JSON containing per-page annotation lists and rotation overrides.
+
+### Keyboard shortcuts (score viewer)
+
+| Key | Action |
+|---|---|
+| Space, n, →, ↓, PgDn | Next page |
+| Backspace, p, ←, ↑, PgUp | Previous page |
+| Home / End | First / last page |
+| Escape | Back to library |
+| v / d / t / e | Nav / Pen / Text / Eraser tool |
+| s | Add current score to a setlist |
+| f | Toggle fullscreen |
+| r / R | Rotate page CW / CCW |
+| Ctrl+Z | Undo |

@@ -1,0 +1,79 @@
+#+TITLE: Folio — Implementation Plan
+#+DATE: 2026-03-19
+#+STARTUP: showall
+
+* Completed
+** DONE Phase 1 — Backend API + PDF viewer
+- FastAPI backend with library scanning, PDF serving, annotation CRUD
+- pdf.js viewer with zoom-to-fit and side-by-side page view
+- Library browser: search, composer filter, tag chips, sortable table
+- Auto-load last library directory on startup
+- Config persistence in =~/.folio/web_config.json=
+- Set Folder dialog auto-shown on first launch
+- Path traversal protection on all file-serving endpoints
+** DONE Phase 2 — Annotations (pen, text, eraser, undo)
+- Transparent canvas overlay on each page
+- Pen tool: freehand ink with Pointer Events (mouse + touch + Apple Pencil)
+- Text tool: click-to-place with font selection and musical symbol shortcuts
+- Eraser tool: click near annotation to remove it
+- Undo: per-page, depth 20
+- 7-colour palette, adjustable pen/text size
+- Normalised coordinates (0.0–1.0) for resolution independence
+- Annotations saved as sidecar JSON, compatible with existing format
+** DONE Cleanup — Go web-only
+- Deleted desktop app (=MusicScoreViewer.py=, =make.bat=, =icon.ico=)
+- Deleted desktop-only tests
+- Consolidated =requirements.txt= at project root
+- Rewrote README for web-only architecture
+- 46 tests passing (27 core + 19 API)
+** DONE Phase 3 — Rotation support
+- Rotate-CW (↷) and rotate-CCW (↶) toolbar buttons
+- Keyboard shortcuts: =r= (CW), =R= (CCW)
+- pdf.js re-renders page at new rotation via =getViewport({rotation})=
+- Annotations stay in original page space; =transformPt()= handles display mapping
+- No coordinate migration needed — transforms are applied at render/input time
+- Rotation persisted in sidecar JSON; zero rotations cleaned on save
+- 2 new API tests: rotation round-trip and zero-rotation cleanup
+- 48 tests passing (27 core + 21 API)
+** DONE Phase 4 — Setlist management
+- Backend: full CRUD API (GET/POST/PUT/DELETE + rename) for setlists
+- Data stored in =setlists.json= at library root per existing file format spec
+- Frontend: setlist list view with create/edit/play/delete
+- Setlist detail view: song table with inline start/end page editing, reorder (↑↓), remove
+- Song picker dialog: search library, select score, set page range
+- Setlist playback mode: sequential PDF viewing with page constraints
+- Next/prev at song boundaries auto-advances to adjacent song
+- Title bar shows song position within setlist (e.g. "Composer — Title (2/5)")
+- View management refactored: Library ↔ Setlists toggle, context-aware Back button
+- 13 new setlist API tests (CRUD, validation, rename, edge cases)
+- 61 tests passing (27 core + 34 API)
+
+** DONE Phase 5 — PWA and iPad polish
+- Web app manifest: =manifest.json= with name, icons (192/512), =display: standalone=
+- Service worker: pre-caches app shell, cache-first for CDN (pdf.js), network-first for app shell, pass-through for API
+- Apple meta tags: =apple-mobile-web-app-capable=, =apple-mobile-web-app-status-bar-style=, =theme-color=
+- Safe area insets for standalone mode (notch/home indicator)
+- Swipe left/right for page navigation in nav mode (touch gesture)
+- Auto side-by-side on wide screens (≥1024px) with resize detection
+- Responsive toolbar: wraps and compacts on narrow screens (≤768px)
+- 61 tests still passing
+
+** DONE Phase 6 — Quality of life
+- Dark/light theme toggle: button in topbar, CSS custom properties for both themes
+- Theme preference persisted in localStorage, restored on load
+- Export annotated PDF: =/api/pdf/export= endpoint uses pymupdf to bake ink+text annotations into PDF
+- Export button in viewer toolbar triggers blob download
+- =export_annotated_pdf()= in =core.py= renders ink (polylines), text (with musical symbol scaling), and rotation
+- 4 new export tests with real PDF fixture via pymupdf
+- 65 tests passing (27 core + 38 API)
+
+** DONE Phase 7 — Performance and multi-user awareness
+- Lazy page management: track cached pdf.js page objects, clean up offscreen pages, prefetch next page
+- Multi-user conflict detection: etag-based versioning on annotation saves
+- Backend: =annotations_etag()= hashes sidecar file content; =save_annotations()= checks expected etag
+- Frontend: stores etag on load, sends with saves; 409 triggers conflict dialog (reload or force-save)
+- =AnnotationConflictError= raised on stale saves; API returns 409
+- Stale docstring cleanup in =core.py=
+- Service worker cache bumped to v2
+- 13 new tests (etag, conflict detection, backwards compat)
+- 89 tests passing (36 core + 53 API)

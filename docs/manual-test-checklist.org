@@ -1,0 +1,55 @@
+#+TITLE: Folio — Manual Test Checklist
+#+DATE: 2026-03-20
+#+STARTUP: showall
+
+* Library
+- [ ] Set Folder — enter your music library path, scores populate
+- [ ] Search — type a composer or title, results filter live
+- [ ] Composer dropdown — filters to one composer
+- [ ] Tag chips — click to filter by folder tags
+- [ ] Column sort — click Composer/Title/Tags headers
+- [ ] =.exclude= — put a =.exclude= file in a subdirectory, rescan, verify it's hidden
+
+* Score Viewer
+- [ ] Open a score — click a row, PDF renders in Fit mode (single page)
+- [ ] Page navigation — arrow keys, Space, click right/left half, swipe on touch
+- [ ] Auto 2-up — on a wide screen with portrait PDF, 2-up should engage automatically without shrinking the page; on a narrow screen it should stay in Fit
+- [ ] Manual 2-up — click "2-up" button, verify it forces side-by-side; click "Fit" to go back
+- [ ] Resize — drag browser window wider/narrower; 2-up should toggle based on whether pages would shrink
+- [ ] Pen tool — draw ink strokes, change colour and size
+- [ ] Text tool — place text, try symbol buttons (dynamics, notes)
+- [ ] Eraser — click on an annotation to remove it
+- [ ] Undo — Ctrl+Z
+- [ ] Rotation — =r= / =R= keys, or ↶/↷ buttons; annotations should stay aligned
+- [ ] Export — click Export button, verify downloaded PDF contains your annotations
+- [ ] Fullscreen — press =f= or click Fullscreen button; topbar and toolbar hide; press =f= again to exit
+- [ ] Add to setlist — press =s= while viewing a score, pick a setlist
+- [ ] Back — Escape or Back button returns to library
+
+* Multi-user conflict
+- [ ] Open the same score in two browser tabs
+- [ ] Draw an annotation in tab A, wait for it to save
+- [ ] Draw an annotation in tab B — a "Annotation Conflict" dialog should appear
+- [ ] Click "Reload" — tab B reloads with tab A's annotations
+- [ ] Repeat, but click "Save anyway" — tab B's version overwrites
+
+* Setlists
+- [ ] Switch to Setlists view — click "Setlists" in topbar
+- [ ] Create a setlist — New Setlist button, enter name
+- [ ] Add songs — Add Song, search, select, set page range
+- [ ] Reorder — ↑/↓ buttons in song list, or drag-and-drop
+- [ ] Play — click Play, verify page constraints and song auto-advance
+- [ ] Rename / Delete — verify both work
+- [ ] Back navigation — from setlist detail back to list, from viewer back to setlist detail
+
+* Auth
+- [ ] Without =auth_salt= — app loads without login prompt
+- [ ] Set =FOLIO_AUTH_SALT=test= env var, restart — login dialog appears
+- [ ] Enter wrong passphrase — error shown
+- [ ] Enter =YYYY-MM-DD-test= (today's date) — login succeeds, cookie set
+- [ ] Refresh — stays logged in (30-day cookie)
+
+* Theme & PWA
+- [ ] Theme toggle — click Light/Dark button, verify it persists on reload
+- [ ] PWA — on iPad, Add to Home Screen, verify standalone mode
+- [ ] Offline — after first load, kill the server; the app shell should still load from service worker cache
