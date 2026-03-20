@@ -198,7 +198,7 @@ if _last:
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-app = FastAPI(title="Folio", version="0.1.0", docs_url=None, redoc_url=None)
+app = FastAPI(title="Folio", version="2.0.1", docs_url=None, redoc_url=None)
 
 
 # ---------------------------------------------------------------------------
