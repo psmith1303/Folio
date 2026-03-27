@@ -77,3 +77,22 @@
 - Service worker cache bumped to v2
 - 13 new tests (etag, conflict detection, backwards compat)
 - 89 tests passing (36 core + 53 API)
+
+** DONE Phase 8 — Nested setlists and wide display mode (v2.1.0)
+- Wide display mode: fills screen width, vertical scroll; click/swipe/arrow navigation disabled in wide mode
+- Scroll-boundary page turns in fullscreen wide mode (scroll past bottom = next, past top = prev)
+- Arrow up/down and Space keys pass through to native scroll in wide mode
+- Nested setlists: items can be songs or setlist references (=type: "setlist_ref"=)
+- Backend: =_normalize_items()=, =_detect_cycle()= (DFS), =_flatten_setlist()= (recursive with per-branch visited set, depth cap 10)
+- New endpoint: =GET /api/setlists/{name}/flat= returns fully flattened song list for playback
+- =GET /api/setlists/{name}= returns =items= with type field; setlist refs enriched with =exists= and =flat_count=
+- =GET /api/setlists= includes =flat_count= alongside =count=
+- =PUT /api/setlists/{name}= validates items and rejects circular references (400)
+- Rename cascades to all =setlist_ref= items in other setlists
+- Backward compat: items without =type= field treated as songs; PUT accepts both =items= and =songs= keys
+- Frontend: setlist detail renders refs with distinct styling; "Add Setlist" picker dialog
+- Frontend: playback uses =/flat= endpoint; list view shows flat count when different
+- Emacs editor: =>>Name= syntax in Title column for setlist references; round-trips through JSON → Org → JSON
+- Code review fixes: =_normalize_items= no longer mutates input dicts; Emacs blank =start_page= defaults to 1; frontend guards =data.items= with fallback
+- 19 new API tests for nested setlists (refs, flat, cycle, rename cascade, diamond, backward compat)
+- 108 tests passing (36 core + 72 API)

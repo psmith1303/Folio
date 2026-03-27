@@ -4,15 +4,17 @@ A web application to view, navigate, and annotate PDF music scores.
 Runs on any device with a browser, including iPad.
 
 ## Features
-- PDF viewing with zoom-to-fit and side-by-side page view
+- PDF viewing with three display modes: Fit (single page), Wide (full width, scroll vertically), and 2-up (side-by-side)
 - Annotations: pen (freehand ink), text, eraser, with per-page undo
 - 7-colour palette, adjustable pen/text size, musical symbol shortcuts
 - Touch and Apple Pencil support (Pointer Events API)
 - Metadata search by composer, title, and folder tags
 - Add scores to setlists directly from the viewer (`s` key)
-- Click-to-navigate: right/bottom half = next page, left/top half = previous
+- Click-to-navigate in Fit/2-up modes: right/bottom half = next page, left/top half = previous
+- Wide mode: scroll vertically, arrow/space keys scroll natively; page turns via toolbar, PageUp/PageDown, or scroll-boundary in fullscreen
 - Keyboard shortcuts for page navigation and tool switching
 - Setlist management: create, edit, reorder, rename, delete, playback with page constraints
+- Nested setlists: setlists can reference other setlists as sub-items, with automatic flattening for playback
 - Dark/light theme toggle (remembered across sessions)
 - Export annotated PDF with annotations baked in
 - Fullscreen mode for distraction-free viewing (f key or toolbar button)
@@ -77,13 +79,14 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 36 | `web.core` module: path utils, SafeJSON, Score parsing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection |
-| `tests/test_web_api.py` | 53 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, PDF export, path traversal, security, auth |
+| `tests/test_web_api.py` | 72 | FastAPI endpoints: config, library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, path traversal, security, auth |
 
 ## Emacs Editing
 
 `setlist-editor.el` lets you edit `setlists.json` in Emacs without touching
 raw JSON.  Each setlist becomes an org level-1 heading; each song is a table
-row.  Requires Emacs 27+; no external packages needed.
+row.  Setlist references (nested setlists) appear as `>>Name` in the Title
+column.  Requires Emacs 27+; no external packages needed.
 
 ### Setup
 
@@ -110,7 +113,7 @@ row.  Requires Emacs 27+; no external packages needed.
 | File | Description |
 |---|---|
 | `web/core.py` | Business logic: `SafeJSON`, `Score`, `scan_library()`, path utilities, annotation load/save with format migration. |
-| `web/server.py` | FastAPI application — library browsing, PDF serving, annotation CRUD, config endpoints. |
+| `web/server.py` | FastAPI application — library browsing, PDF serving, annotation CRUD, setlist CRUD with nested references, config endpoints. |
 
 ### Frontend (`web/static/`)
 
@@ -129,10 +132,10 @@ row.  Requires Emacs 27+; no external packages needed.
 
 | Key | Action |
 |---|---|
-| Space, n, →, ↓, PgDn | Next page |
+| Space, n, →, ↓, PgDn | Next page (in Wide mode, ↓/↑/Space scroll natively) |
 | Backspace, p, ←, ↑, PgUp | Previous page |
 | Home / End | First / last page |
-| Escape | Back to library |
+| Escape | Back to library (or exit fullscreen) |
 | v / d / t / e | Nav / Pen / Text / Eraser tool |
 | s | Add current score to a setlist |
 | f | Toggle fullscreen |

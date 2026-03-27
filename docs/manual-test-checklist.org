@@ -13,6 +13,8 @@
 * Score Viewer
 - [ ] Open a score — click a row, PDF renders in Fit mode (single page)
 - [ ] Page navigation — arrow keys, Space, click right/left half, swipe on touch
+- [ ] Wide mode — click "Wide" button, page fills width, scroll vertically; click/swipe navigation disabled; arrow up/down/space scroll natively
+- [ ] Wide fullscreen — enter fullscreen in wide mode; scroll past bottom triggers next page, scroll past top triggers previous
 - [ ] Auto 2-up — on a wide screen with portrait PDF, 2-up should engage automatically without shrinking the page; on a narrow screen it should stay in Fit
 - [ ] Manual 2-up — click "2-up" button, verify it forces side-by-side; click "Fit" to go back
 - [ ] Resize — drag browser window wider/narrower; 2-up should toggle based on whether pages would shrink
@@ -37,9 +39,14 @@
 - [ ] Switch to Setlists view — click "Setlists" in topbar
 - [ ] Create a setlist — New Setlist button, enter name
 - [ ] Add songs — Add Song, search, select, set page range
-- [ ] Reorder — ↑/↓ buttons in song list, or drag-and-drop
+- [ ] Add setlist reference — Add Setlist, pick another setlist; verify it appears as italic row with song count
+- [ ] Nested playback — play a setlist containing a sub-setlist; songs from the sub-setlist should play inline
+- [ ] Dangling reference — delete a referenced sub-setlist; parent should show "(missing)" for that ref
+- [ ] Circular reference — try to add A as sub-setlist of B when B is already in A; should be rejected
+- [ ] List view counts — setlists with sub-setlists should show e.g. "2 (5 songs)" in the Songs column
+- [ ] Reorder — ↑/↓ buttons in song list, or drag-and-drop; works for both songs and setlist refs
 - [ ] Play — click Play, verify page constraints and song auto-advance
-- [ ] Rename / Delete — verify both work
+- [ ] Rename / Delete — rename a referenced setlist; verify parent's reference updates
 - [ ] Back navigation — from setlist detail back to list, from viewer back to setlist detail
 
 * Auth
