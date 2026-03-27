@@ -198,7 +198,7 @@ if _last:
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-app = FastAPI(title="Folio", version="2.0.1", docs_url=None, redoc_url=None)
+app = FastAPI(title="Folio", version="2.1.0", docs_url=None, redoc_url=None)
 
 
 # ---------------------------------------------------------------------------
@@ -379,6 +379,18 @@ def set_library(req: SetLibraryRequest):
     }
 
 
+@app.post("/api/library/rescan")
+def rescan_library():
+    """Re-scan the current library directory to pick up added/removed files."""
+    if not state.library_dir:
+        raise HTTPException(status_code=400, detail="No library directory set")
+    state.set_library(state.library_dir)
+    return {
+        "library_dir": portable_path(state.library_dir),
+        "score_count": len(state.scores),
+    }
+
+
 @app.get("/api/library")
 def get_library(
     q: str = Query("", description="Text search (title or composer)"),
@@ -534,15 +546,97 @@ def _save_setlists(data: dict) -> None:
     SafeJSON.save(state.setlist_path(), data)
 
 
+_MAX_NESTING_DEPTH = 10
+
+
+def _normalize_items(items: list[dict]) -> list[dict]:
+    """Ensure every item has a 'type' field. Legacy items get type='song'.
+
+    Returns a new list; input dicts without 'type' are shallow-copied
+    to avoid mutating the on-disk data structure.
+    """
+    result = []
+    for item in items:
+        if "type" not in item:
+            result.append({**item, "type": "song"})
+        else:
+            result.append(item)
+    return result
+
+
+def _validate_setlist_items(items: list[dict]) -> None:
+    """Validate item types and required fields. Raises 400 on bad data."""
+    for item in items:
+        item_type = item.get("type", "song")
+        if item_type == "song":
+            # Songs are loosely validated — frontend controls the shape
+            pass
+        elif item_type == "setlist_ref":
+            ref_name = item.get("setlist_name", "")
+            if not isinstance(ref_name, str) or not ref_name.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="setlist_ref requires a non-empty setlist_name",
+                )
+        else:
+            raise HTTPException(
+                status_code=400, detail=f"Unknown item type: {item_type}"
+            )
+
+
+def _detect_cycle(
+    data: dict, setlist_name: str, items: list[dict],
+    visited: set[str] | None = None,
+) -> bool:
+    """Return True if items (or transitive sub-setlist refs) reference setlist_name."""
+    if visited is None:
+        visited = {setlist_name}
+    for item in items:
+        if item.get("type") == "setlist_ref":
+            ref = item["setlist_name"]
+            if ref in visited:
+                return True
+            ref_items = data.get(ref, [])
+            if _detect_cycle(data, setlist_name, ref_items, visited | {ref}):
+                return True
+    return False
+
+
+def _flatten_setlist(
+    data: dict, name: str, _expanding: frozenset[str] | None = None,
+    _depth: int = 0,
+) -> list[dict]:
+    """Recursively expand setlist_ref items into a flat song list."""
+    if _expanding is None:
+        _expanding = frozenset()
+    if name not in data or name in _expanding or _depth > _MAX_NESTING_DEPTH:
+        return []
+    _expanding = _expanding | {name}
+    result: list[dict] = []
+    for item in _normalize_items(list(data[name])):
+        if item.get("type") == "setlist_ref":
+            result.extend(
+                _flatten_setlist(
+                    data, item["setlist_name"], _expanding, _depth + 1,
+                )
+            )
+        else:
+            result.append(item)
+    return result
+
+
 @app.get("/api/setlists")
 def get_setlists():
     data = _load_setlists()
-    return {
-        "setlists": [
-            {"name": name, "count": len(songs)}
-            for name, songs in sorted(data.items())
-        ],
-    }
+    result = []
+    for name, items in sorted(data.items()):
+        flat = _flatten_setlist(data, name)
+        result.append({
+            "name": name,
+            "count": len(items),
+            "flat_count": len(flat),
+        })
+    return {"setlists": result}
 
 
 @app.get("/api/setlists/{name}")
@@ -550,7 +644,27 @@ def get_setlist(name: str):
     data = _load_setlists()
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
-    return {"name": name, "songs": data[name]}
+    items = _normalize_items(list(data[name]))
+    enriched: list[dict] = []
+    for item in items:
+        if item.get("type") == "setlist_ref":
+            ref_name = item["setlist_name"]
+            exists = ref_name in data
+            flat = _flatten_setlist(data, ref_name) if exists else []
+            enriched.append({**item, "exists": exists, "flat_count": len(flat)})
+        else:
+            enriched.append(item)
+    return {"name": name, "items": enriched}
+
+
+@app.get("/api/setlists/{name}/flat")
+def get_setlist_flat(name: str):
+    """Return the fully flattened song list (all setlist_refs expanded)."""
+    data = _load_setlists()
+    if name not in data:
+        raise HTTPException(status_code=404, detail="Setlist not found")
+    songs = _flatten_setlist(data, name)
+    return {"name": name, "songs": songs}
 
 
 class CreateSetlistRequest(BaseModel):
@@ -568,16 +682,27 @@ def create_setlist(req: CreateSetlistRequest):
     return {"ok": True, "name": name}
 
 
-class UpdateSetlistSongsRequest(BaseModel):
-    songs: list[dict]
+class UpdateSetlistItemsRequest(BaseModel):
+    items: list[dict] | None = None
+    # Backward compat: accept "songs" as an alias for "items"
+    songs: list[dict] | None = None
+
+    def resolved_items(self) -> list[dict]:
+        return self.items if self.items is not None else (self.songs or [])
 
 
 @app.put("/api/setlists/{name}")
-def update_setlist(name: str, req: UpdateSetlistSongsRequest):
+def update_setlist(name: str, req: UpdateSetlistItemsRequest):
     data = _load_setlists()
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
-    data[name] = req.songs
+    items = _normalize_items(req.resolved_items())
+    _validate_setlist_items(items)
+    if _detect_cycle(data, name, items):
+        raise HTTPException(
+            status_code=400, detail="Circular setlist reference detected"
+        )
+    data[name] = items
     _save_setlists(data)
     return {"ok": True}
 
@@ -607,6 +732,11 @@ def rename_setlist(name: str, req: RenameSetlistRequest):
     new_data = {}
     for k, v in data.items():
         new_data[new_name if k == name else k] = v
+    # Cascade: update setlist_ref items in all setlists that reference old name
+    for items in new_data.values():
+        for item in items:
+            if item.get("type") == "setlist_ref" and item.get("setlist_name") == name:
+                item["setlist_name"] = new_name
     _save_setlists(new_data)
     return {"ok": True, "name": new_name}
 

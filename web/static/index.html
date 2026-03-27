@@ -90,6 +90,7 @@
             <button id="btn-rename-setlist" title="Rename setlist">Rename</button>
             <span class="toolbar-sep"></span>
             <button id="btn-add-song">Add Song</button>
+            <button id="btn-add-setlist-ref">Add Setlist</button>
             <span class="toolbar-sep"></span>
             <button id="btn-play-setlist" title="Play this setlist">&#9654; Play</button>
           </span>
@@ -125,6 +126,7 @@
       <button id="btn-next" title="Next page (→)">&rarr;</button>
       <span class="toolbar-sep"></span>
       <button id="btn-zoom-fit" title="Zoom to fit" class="active">Fit</button>
+      <button id="btn-zoom-wide" title="Full width">Wide</button>
       <button id="btn-side-by-side" title="Side-by-side view">2-up</button>
       <span class="toolbar-sep"></span>
       <button id="btn-nav" class="tool-btn active" title="Navigate (v)">Nav</button>
@@ -265,6 +267,19 @@
       <div id="setlist-picker-list"></div>
       <div class="dialog-buttons">
         <button type="button" id="setlist-picker-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Setlist-ref picker dialog (add sub-setlist to a setlist)           -->
+  <!-- ================================================================== -->
+  <dialog id="setlist-ref-picker-dialog">
+    <form method="dialog">
+      <h3>Add Setlist Reference</h3>
+      <div id="setlist-ref-picker-list"></div>
+      <div class="dialog-buttons">
+        <button type="button" id="setlist-ref-picker-cancel">Cancel</button>
       </div>
     </form>
   </dialog>

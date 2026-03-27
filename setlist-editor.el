@@ -27,10 +27,12 @@
 ;; Columns:
 ;;   #        — decorative row number; ignored when parsing back.
 ;;   Title    — song title (may contain spaces and most punctuation).
-;;   Composer — composer name.
-;;   Start    — start_page integer (1-based).
+;;              A title starting with ">>" denotes a setlist reference
+;;              (e.g. ">>Warm-up" references the setlist named "Warm-up").
+;;   Composer — composer name (blank for setlist references).
+;;   Start    — start_page integer (1-based; blank for setlist references).
 ;;   End      — end_page integer, or blank for JSON null ("last page").
-;;   Path     — full portable path to the PDF; editable.
+;;   Path     — full portable path to the PDF; editable (blank for refs).
 ;;
 ;; Limitation: pipe characters (|) in titles or paths will corrupt the
 ;; table and should be avoided.
@@ -127,19 +129,25 @@ FILE is the source path shown in the header comment."
       (insert "|---+-------+----------+-------+-----+------|\n")
       (let ((i 1))
         (dolist (item items)
-          (let* ((path     (or (alist-get 'path      item) ""))
-                 (composer (or (alist-get 'composer  item) ""))
-                 (title    (or (alist-get 'title     item) ""))
-                 (start-pg (or (alist-get 'start_page item) 1))
-                 (end-pg      (alist-get 'end_page   item)))
-            (insert (format "| %d | %s | %s | %d | %s | %s |\n"
-                            i
-                            title
-                            composer
-                            start-pg
-                            (if (numberp end-pg) (number-to-string end-pg) "")
-                            path))
-            (setq i (1+ i)))))
+          (let ((item-type (or (alist-get 'type item) "song")))
+            (if (string= item-type "setlist_ref")
+                ;; Setlist reference: >>Name in Title column, rest blank.
+                (let ((ref-name (or (alist-get 'setlist_name item) "")))
+                  (insert (format "| %d | >>%s | | | | |\n" i ref-name)))
+              ;; Song item.
+              (let* ((path     (or (alist-get 'path      item) ""))
+                     (composer (or (alist-get 'composer  item) ""))
+                     (title    (or (alist-get 'title     item) ""))
+                     (start-pg (or (alist-get 'start_page item) 1))
+                     (end-pg      (alist-get 'end_page   item)))
+                (insert (format "| %d | %s | %s | %d | %s | %s |\n"
+                                i
+                                title
+                                composer
+                                start-pg
+                                (if (numberp end-pg) (number-to-string end-pg) "")
+                                path)))))
+          (setq i (1+ i))))
       ;; Blank line separating setlists.
       (insert "\n"))))
 
@@ -176,21 +184,30 @@ become the keyword `:null' (encoded as JSON null)."
               ;; Cell layout: 0=# 1=Title 2=Composer 3=Start 4=End 5=Path
               ;; Skip the header row (cell 0 is the literal "#").
               (unless (string= (nth 0 cells) "#")
-                (let* ((title    (nth 1 cells))
-                       (composer (nth 2 cells))
-                       (start-s  (nth 3 cells))
-                       (end-s    (nth 4 cells))
-                       (path     (nth 5 cells))
-                       (start-n  (string-to-number start-s))
-                       (end-val  (if (string= end-s "")
-                                     :null
-                                   (string-to-number end-s))))
-                  (push `((path       . ,path)
-                          (composer   . ,composer)
-                          (title      . ,title)
-                          (start_page . ,start-n)
-                          (end_page   . ,end-val))
-                        current-items)))))))
+                (let* ((title (nth 1 cells)))
+                  (if (string-prefix-p ">>" title)
+                      ;; Setlist reference: >>Name
+                      (let ((ref-name (string-trim (substring title 2))))
+                        (push `((type         . "setlist_ref")
+                                (setlist_name . ,ref-name))
+                              current-items))
+                    ;; Song item.
+                    (let* ((composer (nth 2 cells))
+                           (start-s  (nth 3 cells))
+                           (end-s    (nth 4 cells))
+                           (path     (nth 5 cells))
+                           (start-n  (if (string= start-s "") 1
+                                       (string-to-number start-s)))
+                           (end-val  (if (string= end-s "")
+                                         :null
+                                       (string-to-number end-s))))
+                      (push `((type       . "song")
+                              (path       . ,path)
+                              (composer   . ,composer)
+                              (title      . ,title)
+                              (start_page . ,start-n)
+                              (end_page   . ,end-val))
+                            current-items)))))))))
         (forward-line 1)))
     ;; Flush the last setlist.
     (when current-name

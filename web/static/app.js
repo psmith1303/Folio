@@ -109,6 +109,7 @@ const btnNext = $("#btn-next");
 const pageInput = $("#page-input");
 const pageTotal = $("#page-total");
 const btnZoomFit = $("#btn-zoom-fit");
+const btnZoomWide = $("#btn-zoom-wide");
 const btnSideBySide = $("#btn-side-by-side");
 const pdfContainer = $("#pdf-container");
 const canvas1 = $("#pdf-canvas");
@@ -167,6 +168,10 @@ const btnAddToSetlist = $("#btn-add-to-setlist");
 const setlistPickerDialog = $("#setlist-picker-dialog");
 const setlistPickerList = $("#setlist-picker-list");
 const setlistPickerCancel = $("#setlist-picker-cancel");
+const btnAddSetlistRef = $("#btn-add-setlist-ref");
+const setlistRefPickerDialog = $("#setlist-ref-picker-dialog");
+const setlistRefPickerList = $("#setlist-ref-picker-list");
+const setlistRefPickerCancel = $("#setlist-ref-picker-cancel");
 
 // ---------------------------------------------------------------------------
 // State
@@ -183,7 +188,9 @@ let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 0;
 let currentScore = null;
-let sideBySide = false;
+// Display modes: "fit" | "wide" | "2up"
+let displayMode = "fit";
+let userLockedMode = false; // true when user manually picks a mode
 let rendering = false;
 
 // Annotation state
@@ -206,7 +213,7 @@ let currentView = "library";
 let returnView = "library";
 let setlistPlayback = null;    // null or {name, songs, index}
 let editingSetlistName = null;
-let editingSetlistSongs = [];
+let editingSetlistItems = [];
 let pickerSelectedScore = null;
 let setlistNameMode = "create"; // "create" or "rename"
 
@@ -405,6 +412,7 @@ async function openScore(score) {
   }
   undoStacks = {};
   cachedPages.clear();
+  userLockedMode = false;
 
   try {
     const loadingTask = pdfjsLib.getDocument(`/api/pdf?path=${encodeURIComponent(score.filepath)}`);
@@ -417,17 +425,28 @@ async function openScore(score) {
     await autoSideBySide();
     renderPage();
   } catch (err) {
-    pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
+    if (err.message && err.message.includes("404")) {
+      // File disappeared — rescan library and return to list
+      try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
+      await loadLibrary();
+      showView("library");
+      libraryStatus.textContent = `"${score.title}" is no longer available — library refreshed`;
+    } else {
+      pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
+    }
   }
 }
 
 async function autoSideBySide() {
+  // If the user manually selected a mode, don't override it.
+  if (userLockedMode) return;
+
   // Only use 2-up when two pages fit without reducing the zoom level.
   // Compare the fit-scale (full width for one page) with the dual-scale
   // (half width for each page).  If height is the limiting dimension in
   // both cases the scales are equal and 2-up is free.
   if (!pdfDoc || totalPages < 2 || currentPage >= totalPages) {
-    sideBySide = false;
+    displayMode = "fit";
   } else {
     const page = await pdfDoc.getPage(currentPage);
     cachedPages.set(currentPage, page);
@@ -441,10 +460,15 @@ async function autoSideBySide() {
     const fitScale = Math.min(fitW / vp.width, containerH / vp.height);
     const dualScale = Math.min(dualW / vp.width, containerH / vp.height);
 
-    sideBySide = dualScale >= fitScale;
+    displayMode = dualScale >= fitScale ? "2up" : "fit";
   }
-  btnSideBySide.classList.toggle("active", sideBySide);
-  btnZoomFit.classList.toggle("active", !sideBySide);
+  updateModeButtons();
+}
+
+function updateModeButtons() {
+  btnZoomFit.classList.toggle("active", displayMode === "fit");
+  btnZoomWide.classList.toggle("active", displayMode === "wide");
+  btnSideBySide.classList.toggle("active", displayMode === "2up");
 }
 
 function closeScore() {
@@ -473,6 +497,8 @@ function closeScore() {
   showView(returnView);
 }
 
+let scrollToBottomAfterRender = false;
+
 async function renderPage() {
   if (!pdfDoc || rendering) return;
   rendering = true;
@@ -484,7 +510,7 @@ async function renderPage() {
     const layout1 = await renderSinglePage(currentPage, canvas1, annotCanvas1);
     pageLayouts.push({ page: currentPage, ...layout1 });
 
-    if (sideBySide && currentPage + 1 <= totalPages) {
+    if (displayMode === "2up" && currentPage + 1 <= totalPages) {
       pageWrap2.classList.remove("hidden");
       const layout2 = await renderSinglePage(currentPage + 1, canvas2, annotCanvas2);
       pageLayouts.push({ page: currentPage + 1, ...layout2 });
@@ -499,6 +525,13 @@ async function renderPage() {
     drawAnnotations();
     cleanupOldPages();
     prefetchNextPage();
+
+    if (scrollToBottomAfterRender) {
+      pdfContainer.scrollTop = pdfContainer.scrollHeight;
+      scrollToBottomAfterRender = false;
+    } else {
+      pdfContainer.scrollTop = 0;
+    }
   } finally {
     rendering = false;
   }
@@ -529,7 +562,7 @@ function cleanupAllPages() {
 
 async function prefetchNextPage() {
   if (!pdfDoc) return;
-  const step = sideBySide ? 2 : 1;
+  const step = displayMode === "2up" ? 2 : 1;
   const next = currentPage + step;
   if (next <= totalPages && !cachedPages.has(next)) {
     try {
@@ -546,14 +579,15 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
 
   // Calculate scale to fit the container
   const containerHeight = pdfContainer.clientHeight - 16;
-  const containerWidth = sideBySide
+  const containerWidth = displayMode === "2up"
     ? (pdfContainer.clientWidth - 20) / 2
     : pdfContainer.clientWidth - 16;
 
   const unscaledViewport = page.getViewport({ scale: 1, rotation: rot });
   const scaleW = containerWidth / unscaledViewport.width;
   const scaleH = containerHeight / unscaledViewport.height;
-  const scale = Math.min(scaleW, scaleH);
+  // Wide mode: fill width and scroll vertically. Fit/2up: fit both dimensions.
+  const scale = displayMode === "wide" ? scaleW : Math.min(scaleW, scaleH);
 
   const viewport = page.getViewport({ scale, rotation: rot });
   const dpr = window.devicePixelRatio || 1;
@@ -598,7 +632,7 @@ function goToPage(n) {
 }
 
 function nextPage() {
-  const step = sideBySide ? 2 : 1;
+  const step = displayMode === "2up" ? 2 : 1;
   const range = getPageRange();
   if (currentPage + step > range.max) {
     if (setlistPlayback && setlistPlayback.index < setlistPlayback.songs.length - 1) {
@@ -610,7 +644,7 @@ function nextPage() {
 }
 
 function prevPage() {
-  const step = sideBySide ? 2 : 1;
+  const step = displayMode === "2up" ? 2 : 1;
   const range = getPageRange();
   if (currentPage - step < range.min) {
     if (setlistPlayback && setlistPlayback.index > 0) {
@@ -815,6 +849,8 @@ function canvasCoords(e, annotCanvas) {
 
 function onPointerDown(e, annotCanvas, layoutIndex) {
   if (activeTool === "nav") {
+    // Wide mode: user scrolls instead of clicking to navigate
+    if (displayMode === "wide") return;
     // Click on right/bottom half → next page, left/top half → previous page
     const { x, y } = canvasCoords(e, annotCanvas);
     const layout = pageLayouts[layoutIndex];
@@ -1072,16 +1108,23 @@ pageInput.addEventListener("change", () => {
 });
 
 btnZoomFit.addEventListener("click", () => {
-  sideBySide = false;
-  btnZoomFit.classList.add("active");
-  btnSideBySide.classList.remove("active");
+  displayMode = "fit";
+  userLockedMode = true;
+  updateModeButtons();
+  renderPage();
+});
+
+btnZoomWide.addEventListener("click", () => {
+  displayMode = "wide";
+  userLockedMode = true;
+  updateModeButtons();
   renderPage();
 });
 
 btnSideBySide.addEventListener("click", () => {
-  sideBySide = true;
-  btnSideBySide.classList.add("active");
-  btnZoomFit.classList.remove("active");
+  displayMode = "2up";
+  userLockedMode = true;
+  updateModeButtons();
   renderPage();
 });
 
@@ -1098,7 +1141,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   // Dialog open — don't handle
-  if (textDialog.open || dirDialog.open || setlistNameDialog.open || songPickerDialog.open || setlistPickerDialog.open || loginDialog.open || conflictDialog.open) return;
+  if (textDialog.open || dirDialog.open || setlistNameDialog.open || songPickerDialog.open || setlistPickerDialog.open || setlistRefPickerDialog.open || loginDialog.open || conflictDialog.open) return;
 
   if (!pdfDoc) return;
 
@@ -1119,6 +1162,11 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     doUndo();
     return;
+  }
+
+  // In wide mode, let arrow up/down and space scroll the container natively
+  if (displayMode === "wide" && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === " ")) {
+    return; // don't prevent default — allow native scroll
   }
 
   switch (e.key) {
@@ -1147,7 +1195,8 @@ document.addEventListener("keydown", (e) => {
       goToPage(totalPages);
       break;
     case "Escape":
-      closeScore();
+      if (pseudoFullscreen) { applyFullscreen(false); }
+      else { closeScore(); }
       break;
   }
 });
@@ -1176,7 +1225,15 @@ searchInput.addEventListener("input", () => {
 
 composerFilter.addEventListener("change", loadLibrary);
 
+let lastResetTime = 0;
 btnReset.addEventListener("click", () => {
+  const now = Date.now();
+  if (now - lastResetTime < 500) {
+    // Double-press: reload the app
+    location.reload();
+    return;
+  }
+  lastResetTime = now;
   searchInput.value = "";
   composerFilter.value = "";
   selectedTags.clear();
@@ -1210,9 +1267,12 @@ function renderSetlistList(setlists) {
     if (sl.name === editingSetlistName) {
       tr.classList.add("selected-setlist");
     }
+    const countLabel = sl.count === sl.flat_count
+      ? `${sl.count}`
+      : `${sl.count} (${sl.flat_count} songs)`;
     tr.innerHTML = `
       <td>${esc(sl.name)}</td>
-      <td>${sl.count}</td>
+      <td>${countLabel}</td>
       <td class="setlist-actions">
         <button class="small-btn del-btn" title="Delete">&#10005;</button>
       </td>
@@ -1224,9 +1284,7 @@ function renderSetlistList(setlists) {
     });
     // Double-click starts playback
     const playSetlist = async () => {
-      const detail = await api(`/api/setlists/${encodeURIComponent(sl.name)}`);
-      if (detail.songs.length === 0) return;
-      startSetlistPlayback(sl.name, detail.songs);
+      startSetlistPlayback(sl.name);
     };
     tr.addEventListener("dblclick", playSetlist);
     tr.querySelector(".del-btn").addEventListener("click", async (e) => {
@@ -1235,7 +1293,7 @@ function renderSetlistList(setlists) {
       await api(`/api/setlists/${encodeURIComponent(sl.name)}`, { method: "DELETE" });
       if (editingSetlistName === sl.name) {
         editingSetlistName = null;
-        editingSetlistSongs = [];
+        editingSetlistItems = [];
         renderSetlistDetail();
       }
       loadSetlists();
@@ -1302,7 +1360,7 @@ async function openSetlistDetail(name) {
   try {
     const data = await api(`/api/setlists/${encodeURIComponent(name)}`);
     editingSetlistName = data.name;
-    editingSetlistSongs = data.songs;
+    editingSetlistItems = data.items || [];
     renderSetlistDetail();
     // Highlight the selected row in the left column
     setlistBody.querySelectorAll("tr").forEach((row) => {
@@ -1328,32 +1386,51 @@ function renderSetlistDetail() {
 
   let dragSrcIndex = null;
 
-  editingSetlistSongs.forEach((song, i) => {
+  editingSetlistItems.forEach((item, i) => {
     const tr = document.createElement("tr");
     tr.draggable = true;
     tr.dataset.index = i;
-    tr.innerHTML = `
-      <td>${i + 1}</td>
-      <td>${esc(song.composer || "")}</td>
-      <td>${esc(song.title || "")}</td>
-      <td><input type="number" class="page-input start-pg" min="1" value="${song.start_page || 1}"></td>
-      <td><input type="number" class="page-input end-pg" min="0" value="${song.end_page || 0}"></td>
-      <td class="song-actions">
-        <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
-        <button class="small-btn down-btn" title="Move down" ${i === editingSetlistSongs.length - 1 ? "disabled" : ""}>&#8595;</button>
-        <button class="small-btn del-btn" title="Remove">&#10005;</button>
-      </td>
-    `;
 
-    tr.querySelector(".start-pg").addEventListener("change", (e) => {
-      song.start_page = parseInt(e.target.value, 10) || 1;
-      saveSetlistSongs();
-    });
-    tr.querySelector(".end-pg").addEventListener("change", (e) => {
-      const val = parseInt(e.target.value, 10) || 0;
-      song.end_page = val === 0 ? null : val;
-      saveSetlistSongs();
-    });
+    if (item.type === "setlist_ref") {
+      const refName = item.setlist_name || "";
+      const label = item.exists === false
+        ? `${esc(refName)} <span class="missing-ref">(missing)</span>`
+        : `${esc(refName)} (${item.flat_count ?? "?"} songs)`;
+      tr.classList.add("setlist-ref-row");
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td colspan="4" class="setlist-ref-label">&#9654; Setlist: ${label}</td>
+        <td class="song-actions">
+          <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
+          <button class="small-btn down-btn" title="Move down" ${i === editingSetlistItems.length - 1 ? "disabled" : ""}>&#8595;</button>
+          <button class="small-btn del-btn" title="Remove">&#10005;</button>
+        </td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${esc(item.composer || "")}</td>
+        <td>${esc(item.title || "")}</td>
+        <td><input type="number" class="page-input start-pg" min="1" value="${item.start_page || 1}"></td>
+        <td><input type="number" class="page-input end-pg" min="0" value="${item.end_page || 0}"></td>
+        <td class="song-actions">
+          <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
+          <button class="small-btn down-btn" title="Move down" ${i === editingSetlistItems.length - 1 ? "disabled" : ""}>&#8595;</button>
+          <button class="small-btn del-btn" title="Remove">&#10005;</button>
+        </td>
+      `;
+
+      tr.querySelector(".start-pg").addEventListener("change", (e) => {
+        item.start_page = parseInt(e.target.value, 10) || 1;
+        saveSetlistItems();
+      });
+      tr.querySelector(".end-pg").addEventListener("change", (e) => {
+        const val = parseInt(e.target.value, 10) || 0;
+        item.end_page = val === 0 ? null : val;
+        saveSetlistItems();
+      });
+    }
+
     tr.querySelector(".up-btn").addEventListener("click", () => moveSong(i, -1));
     tr.querySelector(".down-btn").addEventListener("click", () => moveSong(i, 1));
     tr.querySelector(".del-btn").addEventListener("click", () => removeSong(i));
@@ -1382,9 +1459,9 @@ function renderSetlistDetail() {
       e.preventDefault();
       const destIndex = parseInt(tr.dataset.index, 10);
       if (dragSrcIndex !== null && dragSrcIndex !== destIndex) {
-        const moved = editingSetlistSongs.splice(dragSrcIndex, 1)[0];
-        editingSetlistSongs.splice(destIndex, 0, moved);
-        saveSetlistSongs();
+        const moved = editingSetlistItems.splice(dragSrcIndex, 1)[0];
+        editingSetlistItems.splice(destIndex, 0, moved);
+        saveSetlistItems();
         renderSetlistDetail();
       }
     });
@@ -1395,26 +1472,26 @@ function renderSetlistDetail() {
 
 function moveSong(index, direction) {
   const newIndex = index + direction;
-  if (newIndex < 0 || newIndex >= editingSetlistSongs.length) return;
-  [editingSetlistSongs[index], editingSetlistSongs[newIndex]] =
-    [editingSetlistSongs[newIndex], editingSetlistSongs[index]];
-  saveSetlistSongs();
+  if (newIndex < 0 || newIndex >= editingSetlistItems.length) return;
+  [editingSetlistItems[index], editingSetlistItems[newIndex]] =
+    [editingSetlistItems[newIndex], editingSetlistItems[index]];
+  saveSetlistItems();
   renderSetlistDetail();
 }
 
 function removeSong(index) {
-  editingSetlistSongs.splice(index, 1);
-  saveSetlistSongs();
+  editingSetlistItems.splice(index, 1);
+  saveSetlistItems();
   renderSetlistDetail();
 }
 
-async function saveSetlistSongs() {
+async function saveSetlistItems() {
   if (!editingSetlistName) return;
   try {
     await api(`/api/setlists/${encodeURIComponent(editingSetlistName)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ songs: editingSetlistSongs }),
+      body: JSON.stringify({ items: editingSetlistItems }),
     });
   } catch (err) {
     console.error("Failed to save setlist:", err);
@@ -1480,7 +1557,8 @@ songPickerDialog.addEventListener("close", () => {
   const startPage = parseInt(songStart.value, 10) || 1;
   const endVal = parseInt(songEnd.value, 10) || 0;
 
-  editingSetlistSongs.push({
+  editingSetlistItems.push({
+    type: "song",
     path: pickerSelectedScore.filepath,
     title: pickerSelectedScore.title,
     composer: pickerSelectedScore.composer,
@@ -1489,7 +1567,7 @@ songPickerDialog.addEventListener("close", () => {
   });
 
   pickerSelectedScore = null;
-  saveSetlistSongs();
+  saveSetlistItems();
   renderSetlistDetail();
 });
 
@@ -1498,16 +1576,21 @@ songPickerDialog.addEventListener("close", () => {
 // ---------------------------------------------------------------------------
 
 btnPlaySetlist.addEventListener("click", () => {
-  if (editingSetlistSongs.length === 0) return;
-  startSetlistPlayback(editingSetlistName, editingSetlistSongs);
+  if (editingSetlistItems.length === 0) return;
+  startSetlistPlayback(editingSetlistName);
 });
 
-function startSetlistPlayback(name, songs) {
-  if (songs.length === 0) return;
-  returnView = currentView;
-  setlistPlayback = { name, songs, index: 0 };
-  showView("viewer");
-  openSetlistSong(0);
+async function startSetlistPlayback(name) {
+  try {
+    const data = await api(`/api/setlists/${encodeURIComponent(name)}/flat`);
+    if (data.songs.length === 0) return;
+    returnView = currentView;
+    setlistPlayback = { name, songs: data.songs, index: 0 };
+    showView("viewer");
+    openSetlistSong(0);
+  } catch (err) {
+    console.error("Failed to start playback:", err);
+  }
 }
 
 async function openSetlistSong(index, goToEnd = false) {
@@ -1531,6 +1614,7 @@ async function openSetlistSong(index, goToEnd = false) {
   }
   undoStacks = {};
   cachedPages.clear();
+  userLockedMode = false;
 
   try {
     const loadingTask = pdfjsLib.getDocument(`/api/pdf?path=${encodeURIComponent(song.path)}`);
@@ -1545,7 +1629,14 @@ async function openSetlistSong(index, goToEnd = false) {
     await autoSideBySide();
     renderPage();
   } catch (err) {
-    pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
+    if (err.message && err.message.includes("404")) {
+      try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
+      await loadLibrary();
+      showView("library");
+      libraryStatus.textContent = `"${song.title}" is no longer available — library refreshed`;
+    } else {
+      pdfContainer.innerHTML = `<p style="color:#f88;padding:20px">Failed to load PDF: ${esc(err.message)}</p>`;
+    }
   }
 }
 
@@ -1583,23 +1674,28 @@ dirDialog.addEventListener("close", async () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Touch gestures (swipe navigation in nav mode)
+// Touch gestures
 // ---------------------------------------------------------------------------
 
 let touchStartX = null;
 let touchStartY = null;
 const SWIPE_THRESHOLD = 50; // minimum px to register a swipe
 
+function isFullscreen() {
+  return pseudoFullscreen || !!document.fullscreenElement;
+}
+
 for (const ac of [annotCanvas1, annotCanvas2]) {
+  // Swipe navigation — disabled in fullscreen (use tap zones instead)
   ac.addEventListener("touchstart", (e) => {
-    if (activeTool !== "nav") return;
+    if (activeTool !== "nav" || isFullscreen() || displayMode === "wide") return;
     if (e.touches.length !== 1) return;
     touchStartX = e.touches[0].clientX;
     touchStartY = e.touches[0].clientY;
   }, { passive: true });
 
   ac.addEventListener("touchend", (e) => {
-    if (activeTool !== "nav" || touchStartX === null) return;
+    if (activeTool !== "nav" || isFullscreen() || displayMode === "wide" || touchStartX === null) return;
     if (e.changedTouches.length !== 1) return;
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
@@ -1614,17 +1710,47 @@ for (const ac of [annotCanvas1, annotCanvas2]) {
   }, { passive: true });
 }
 
+// Double-tap on the PDF exits pseudo-fullscreen (touch devices with no keyboard)
+pdfContainer.addEventListener("dblclick", () => {
+  if (pseudoFullscreen) applyFullscreen(false);
+});
+
+// Scroll-boundary page turns in fullscreen: scrolling past the bottom of the
+// page triggers next-page, scrolling past the top triggers prev-page.
+// A short debounce prevents rapid-fire page turns.
+let scrollPageTurnCooldown = false;
+
+pdfContainer.addEventListener("scroll", () => {
+  if (!isFullscreen() || !pdfDoc || scrollPageTurnCooldown) return;
+  if (displayMode !== "wide") return; // only meaningful when page is taller than viewport
+
+  const el = pdfContainer;
+  const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+  const atTop = el.scrollTop <= 0;
+
+  if (atBottom && currentPage < totalPages) {
+    scrollPageTurnCooldown = true;
+    nextPage();
+    setTimeout(() => { scrollPageTurnCooldown = false; }, 500);
+  } else if (atTop && currentPage > 1) {
+    scrollPageTurnCooldown = true;
+    scrollToBottomAfterRender = true;
+    prevPage();
+    setTimeout(() => { scrollPageTurnCooldown = false; }, 500);
+  }
+}, { passive: true });
+
 // ---------------------------------------------------------------------------
 // Auto side-by-side on wide screens
 // ---------------------------------------------------------------------------
 
 async function checkAutoSideBySide() {
   if (!pdfDoc) return;
-  const prev = sideBySide;
+  const prev = displayMode;
   await autoSideBySide();
   // Only trigger re-render from the resize handler if the mode changed;
   // the resize handler already calls renderPage() unconditionally.
-  return prev !== sideBySide;
+  return prev !== displayMode;
 }
 
 // ---------------------------------------------------------------------------
@@ -1710,8 +1836,9 @@ async function addCurrentScoreToSetlist(setlistName) {
   setlistPickerDialog.close();
   try {
     const data = await api(`/api/setlists/${encodeURIComponent(setlistName)}`);
-    const songs = data.songs || [];
-    songs.push({
+    const items = data.items || [];
+    items.push({
+      type: "song",
       path: currentScore.filepath,
       title: currentScore.title || "",
       composer: currentScore.composer || "",
@@ -1721,7 +1848,7 @@ async function addCurrentScoreToSetlist(setlistName) {
     await api(`/api/setlists/${encodeURIComponent(setlistName)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ songs }),
+      body: JSON.stringify({ items }),
     });
     titleDisplay.textContent += ` — added to ${setlistName}`;
     setTimeout(() => {
@@ -1737,27 +1864,86 @@ async function addCurrentScoreToSetlist(setlistName) {
 setlistPickerCancel.addEventListener("click", () => setlistPickerDialog.close());
 
 // ---------------------------------------------------------------------------
+// Add setlist reference (sub-setlist picker)
+// ---------------------------------------------------------------------------
+
+btnAddSetlistRef.addEventListener("click", async () => {
+  if (!editingSetlistName) return;
+  try {
+    const data = await api("/api/setlists");
+    setlistRefPickerList.innerHTML = "";
+    const available = data.setlists.filter(
+      (sl) => sl.name !== editingSetlistName
+    );
+    if (available.length === 0) {
+      setlistRefPickerList.innerHTML =
+        '<p style="padding:10px;color:var(--fg-dim)">No other setlists available.</p>';
+    } else {
+      for (const sl of available) {
+        const div = document.createElement("div");
+        div.className = "picker-item";
+        const countLabel = sl.count === sl.flat_count
+          ? `${sl.count} songs`
+          : `${sl.count} items, ${sl.flat_count} songs`;
+        div.textContent = `${sl.name} (${countLabel})`;
+        div.addEventListener("click", () => {
+          editingSetlistItems.push({
+            type: "setlist_ref",
+            setlist_name: sl.name,
+          });
+          setlistRefPickerDialog.close();
+          saveSetlistItems();
+          renderSetlistDetail();
+        });
+        setlistRefPickerList.appendChild(div);
+      }
+    }
+    setlistRefPickerDialog.showModal();
+  } catch (err) {
+    console.error("Failed to load setlists for ref picker:", err);
+  }
+});
+
+setlistRefPickerCancel.addEventListener("click", () =>
+  setlistRefPickerDialog.close()
+);
+
+// ---------------------------------------------------------------------------
 // Fullscreen toggle
 // ---------------------------------------------------------------------------
 
+let pseudoFullscreen = false;
+
+function applyFullscreen(fs) {
+  pseudoFullscreen = fs;
+  if (fs) setTool("nav"); // no toolbar in fullscreen, so force nav mode
+  btnFullscreen.textContent = fs ? "Exit FS" : "Fullscreen";
+  document.getElementById("topbar").classList.toggle("hidden", fs);
+  document.getElementById("viewer-toolbar").classList.toggle("hidden", fs);
+  if (pdfDoc) renderPage();
+}
+
 function toggleFullscreen() {
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen().catch(function () {});
+  // Use native Fullscreen API when available (not on iPhone Safari)
+  if (document.fullscreenEnabled) {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function () {
+        // Native request failed — fall back to pseudo-fullscreen
+        applyFullscreen(!pseudoFullscreen);
+      });
+    } else {
+      document.exitFullscreen();
+    }
   } else {
-    document.exitFullscreen();
+    // No native support (iPhone) — toggle pseudo-fullscreen
+    applyFullscreen(!pseudoFullscreen);
   }
 }
 
 btnFullscreen.addEventListener("click", toggleFullscreen);
 
 document.addEventListener("fullscreenchange", () => {
-  const fs = !!document.fullscreenElement;
-  btnFullscreen.textContent = fs ? "Exit FS" : "Fullscreen";
-  // In fullscreen, hide topbar and viewer toolbar — PDF only
-  document.getElementById("topbar").classList.toggle("hidden", fs);
-  document.getElementById("viewer-toolbar").classList.toggle("hidden", fs);
-  // Re-render to fill the freed space
-  if (pdfDoc) renderPage();
+  applyFullscreen(!!document.fullscreenElement);
 });
 
 // ---------------------------------------------------------------------------

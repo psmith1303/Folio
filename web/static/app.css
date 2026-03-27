@@ -375,6 +375,20 @@ th.sortable:hover {
   border-top: 2px solid var(--accent);
 }
 
+#setlist-songs-table tbody tr.setlist-ref-row {
+  background: var(--bg-input);
+  font-style: italic;
+}
+
+.setlist-ref-label {
+  padding-left: 8px;
+}
+
+.missing-ref {
+  color: #f88;
+  font-style: normal;
+}
+
 #setlist-table, #setlist-songs-table {
   width: 100%;
   border-collapse: collapse;

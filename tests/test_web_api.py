@@ -20,6 +20,7 @@ def reset_state(tmp_path, monkeypatch):
     state.library_dir = ""
     state.scores = []
     state.config = {"last_directory": "", "allowed_roots": []}
+    srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
@@ -384,7 +385,7 @@ class TestSetlists:
         resp = client.get("/api/setlists/Test")
         assert resp.status_code == 200
         assert resp.json()["name"] == "Test"
-        assert resp.json()["songs"] == []
+        assert resp.json()["items"] == []
 
     def test_get_nonexistent_returns_404(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
@@ -400,8 +401,9 @@ class TestSetlists:
         assert resp.status_code == 200
 
         resp = client.get("/api/setlists/Gig")
-        assert len(resp.json()["songs"]) == 1
-        assert resp.json()["songs"][0]["title"] == "A"
+        assert len(resp.json()["items"]) == 1
+        assert resp.json()["items"][0]["title"] == "A"
+        assert resp.json()["items"][0]["type"] == "song"
 
     def test_update_nonexistent_returns_404(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
@@ -458,6 +460,239 @@ class TestSetlists:
         state.set_library(library_with_pdfs)
         resp = client.post("/api/setlists", json={"name": "x" * 201})
         assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Nested setlists
+# ---------------------------------------------------------------------------
+
+
+def _song(title: str = "S", composer: str = "C") -> dict:
+    return {"type": "song", "path": f"{title}.pdf", "title": title,
+            "composer": composer, "start_page": 1, "end_page": None}
+
+
+def _ref(name: str) -> dict:
+    return {"type": "setlist_ref", "setlist_name": name}
+
+
+class TestNestedSetlists:
+    def test_create_with_setlist_ref(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Warm-up"})
+        client.put("/api/setlists/Warm-up",
+                   json={"items": [_song("Scales")]})
+        client.post("/api/setlists", json={"name": "Monday"})
+        resp = client.put("/api/setlists/Monday",
+                          json={"items": [_ref("Warm-up"), _song("Etude")]})
+        assert resp.status_code == 200
+
+        resp = client.get("/api/setlists/Monday")
+        items = resp.json()["items"]
+        assert len(items) == 2
+        assert items[0]["type"] == "setlist_ref"
+        assert items[0]["setlist_name"] == "Warm-up"
+        assert items[1]["type"] == "song"
+
+    def test_get_setlist_enriches_refs(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Sub"})
+        client.put("/api/setlists/Sub",
+                   json={"items": [_song("A"), _song("B")]})
+        client.post("/api/setlists", json={"name": "Main"})
+        client.put("/api/setlists/Main", json={"items": [_ref("Sub")]})
+
+        resp = client.get("/api/setlists/Main")
+        ref_item = resp.json()["items"][0]
+        assert ref_item["exists"] is True
+        assert ref_item["flat_count"] == 2
+
+    def test_get_setlist_enriches_dangling_ref(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Main"})
+        client.put("/api/setlists/Main",
+                   json={"items": [_ref("Ghost")]})
+
+        resp = client.get("/api/setlists/Main")
+        ref_item = resp.json()["items"][0]
+        assert ref_item["exists"] is False
+        assert ref_item["flat_count"] == 0
+
+    def test_flat_simple(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Solo"})
+        client.put("/api/setlists/Solo",
+                   json={"items": [_song("A"), _song("B")]})
+
+        resp = client.get("/api/setlists/Solo/flat")
+        assert resp.status_code == 200
+        songs = resp.json()["songs"]
+        assert len(songs) == 2
+        assert songs[0]["title"] == "A"
+
+    def test_flat_nested(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Warm-up"})
+        client.put("/api/setlists/Warm-up",
+                   json={"items": [_song("Scales"), _song("LongTones")]})
+        client.post("/api/setlists", json={"name": "Monday"})
+        client.put("/api/setlists/Monday",
+                   json={"items": [_ref("Warm-up"), _song("Etude")]})
+
+        resp = client.get("/api/setlists/Monday/flat")
+        songs = resp.json()["songs"]
+        assert len(songs) == 3
+        assert [s["title"] for s in songs] == ["Scales", "LongTones", "Etude"]
+
+    def test_flat_deeply_nested(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "C"})
+        client.put("/api/setlists/C", json={"items": [_song("Deep")]})
+        client.post("/api/setlists", json={"name": "B"})
+        client.put("/api/setlists/B", json={"items": [_ref("C")]})
+        client.post("/api/setlists", json={"name": "A"})
+        client.put("/api/setlists/A", json={"items": [_ref("B")]})
+
+        resp = client.get("/api/setlists/A/flat")
+        songs = resp.json()["songs"]
+        assert len(songs) == 1
+        assert songs[0]["title"] == "Deep"
+
+    def test_flat_dangling_ref_skipped(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Main"})
+        client.put("/api/setlists/Main",
+                   json={"items": [_song("A"), _ref("Gone"), _song("B")]})
+
+        resp = client.get("/api/setlists/Main/flat")
+        songs = resp.json()["songs"]
+        assert len(songs) == 2
+        assert [s["title"] for s in songs] == ["A", "B"]
+
+    def test_flat_diamond_includes_both(self, client, library_with_pdfs):
+        """Diamond: A->B->D, A->C->D. D's songs appear twice."""
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "D"})
+        client.put("/api/setlists/D", json={"items": [_song("Shared")]})
+        client.post("/api/setlists", json={"name": "B"})
+        client.put("/api/setlists/B", json={"items": [_ref("D")]})
+        client.post("/api/setlists", json={"name": "C"})
+        client.put("/api/setlists/C", json={"items": [_ref("D")]})
+        client.post("/api/setlists", json={"name": "A"})
+        client.put("/api/setlists/A", json={"items": [_ref("B"), _ref("C")]})
+
+        resp = client.get("/api/setlists/A/flat")
+        songs = resp.json()["songs"]
+        assert len(songs) == 2
+        assert all(s["title"] == "Shared" for s in songs)
+
+    def test_circular_reference_rejected(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "A"})
+        client.post("/api/setlists", json={"name": "B"})
+        client.put("/api/setlists/A", json={"items": [_ref("B")]})
+        resp = client.put("/api/setlists/B", json={"items": [_ref("A")]})
+        assert resp.status_code == 400
+        assert "Circular" in resp.json()["detail"]
+
+    def test_self_reference_rejected(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Loop"})
+        resp = client.put("/api/setlists/Loop",
+                          json={"items": [_ref("Loop")]})
+        assert resp.status_code == 400
+        assert "Circular" in resp.json()["detail"]
+
+    def test_rename_cascades_to_refs(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Sub"})
+        client.put("/api/setlists/Sub", json={"items": [_song("X")]})
+        client.post("/api/setlists", json={"name": "Parent"})
+        client.put("/api/setlists/Parent", json={"items": [_ref("Sub")]})
+
+        resp = client.post("/api/setlists/Sub/rename",
+                           json={"new_name": "NewSub"})
+        assert resp.status_code == 200
+
+        resp = client.get("/api/setlists/Parent")
+        ref = resp.json()["items"][0]
+        assert ref["setlist_name"] == "NewSub"
+
+    def test_delete_leaves_dangling_refs(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Sub"})
+        client.put("/api/setlists/Sub", json={"items": [_song("X")]})
+        client.post("/api/setlists", json={"name": "Parent"})
+        client.put("/api/setlists/Parent",
+                   json={"items": [_ref("Sub"), _song("Y")]})
+
+        client.delete("/api/setlists/Sub")
+        resp = client.get("/api/setlists/Parent/flat")
+        songs = resp.json()["songs"]
+        assert len(songs) == 1
+        assert songs[0]["title"] == "Y"
+
+    def test_backward_compat_items_without_type(self, client, library_with_pdfs):
+        """Items without a type field are treated as songs."""
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Legacy"})
+        legacy = [{"path": "a.pdf", "title": "A", "composer": "X",
+                   "start_page": 1, "end_page": None}]
+        client.put("/api/setlists/Legacy", json={"songs": legacy})
+
+        resp = client.get("/api/setlists/Legacy")
+        assert resp.json()["items"][0]["type"] == "song"
+
+    def test_list_includes_flat_count(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Sub"})
+        client.put("/api/setlists/Sub",
+                   json={"items": [_song("A"), _song("B")]})
+        client.post("/api/setlists", json={"name": "Parent"})
+        client.put("/api/setlists/Parent",
+                   json={"items": [_ref("Sub"), _song("C")]})
+
+        resp = client.get("/api/setlists")
+        by_name = {s["name"]: s for s in resp.json()["setlists"]}
+        assert by_name["Parent"]["count"] == 2
+        assert by_name["Parent"]["flat_count"] == 3
+        assert by_name["Sub"]["count"] == 2
+        assert by_name["Sub"]["flat_count"] == 2
+
+    def test_mixed_types_roundtrip(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Sub"})
+        client.post("/api/setlists", json={"name": "Mix"})
+        items = [_song("First"), _ref("Sub"), _song("Last")]
+        resp = client.put("/api/setlists/Mix", json={"items": items})
+        assert resp.status_code == 200
+
+        resp = client.get("/api/setlists/Mix")
+        result = resp.json()["items"]
+        assert len(result) == 3
+        assert result[0]["type"] == "song"
+        assert result[1]["type"] == "setlist_ref"
+        assert result[2]["type"] == "song"
+
+    def test_setlist_ref_empty_name_returns_400(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Bad"})
+        resp = client.put("/api/setlists/Bad",
+                          json={"items": [{"type": "setlist_ref",
+                                           "setlist_name": ""}]})
+        assert resp.status_code == 400
+
+    def test_unknown_item_type_returns_400(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Bad"})
+        resp = client.put("/api/setlists/Bad",
+                          json={"items": [{"type": "widget"}]})
+        assert resp.status_code == 400
+
+    def test_flat_nonexistent_returns_404(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.get("/api/setlists/Nope/flat")
+        assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
