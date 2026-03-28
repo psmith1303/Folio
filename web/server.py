@@ -209,31 +209,86 @@ def _log_startup():
 
 
 # ---------------------------------------------------------------------------
-# Security: rate limiting (simple in-memory per-IP, per-endpoint bucket)
+# Security: rate limiting
 # ---------------------------------------------------------------------------
 
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
 _RATE_WINDOW = 5.0  # seconds
 _RATE_LIMIT = 30  # max requests per window per key
 
+# Stricter limits for login: 5 attempts per 60 seconds per IP
+_LOGIN_WINDOW = 60.0
+_LOGIN_LIMIT = 5
+_login_buckets: dict[str, list[float]] = defaultdict(list)
+
+# Lockout after repeated failures: 15 failures in 5 min → 15 min lockout
+_LOCKOUT_THRESHOLD = 15
+_LOCKOUT_WINDOW = 300.0  # 5 minutes
+_LOCKOUT_DURATION = 900.0  # 15 minutes
+_login_failures: dict[str, list[float]] = defaultdict(list)
+_lockouts: dict[str, float] = {}
+
 
 def _check_rate_limit(key: str) -> None:
     now = time.monotonic()
     bucket = _rate_buckets[key]
-    # Evict old entries
     _rate_buckets[key] = bucket = [t for t in bucket if now - t < _RATE_WINDOW]
     if len(bucket) >= _RATE_LIMIT:
         raise HTTPException(status_code=429, detail="Too many requests")
     bucket.append(now)
 
 
+def _check_login_rate(client_ip: str) -> None:
+    """Rate-limit and lockout check for login attempts."""
+    now = time.monotonic()
+
+    # Check lockout first
+    lockout_until = _lockouts.get(client_ip, 0)
+    if now < lockout_until:
+        remaining = int(lockout_until - now)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {remaining}s",
+        )
+
+    # Sliding window rate limit
+    bucket = _login_buckets[client_ip]
+    _login_buckets[client_ip] = bucket = [
+        t for t in bucket if now - t < _LOGIN_WINDOW
+    ]
+    if len(bucket) >= _LOGIN_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many login attempts. Wait 60 seconds",
+        )
+    bucket.append(now)
+
+
+def _record_login_failure(client_ip: str) -> None:
+    """Track failed login and trigger lockout if threshold exceeded."""
+    now = time.monotonic()
+    failures = _login_failures[client_ip]
+    _login_failures[client_ip] = failures = [
+        t for t in failures if now - t < _LOCKOUT_WINDOW
+    ]
+    failures.append(now)
+    if len(failures) >= _LOCKOUT_THRESHOLD:
+        _lockouts[client_ip] = now + _LOCKOUT_DURATION
+        logging.warning("Login lockout triggered for %s", client_ip)
+
+
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     path = request.url.path
+    client = request.client.host if request.client else "unknown"
 
-    # Rate-limit write endpoints
+    # Login gets its own stricter rate limit + lockout
+    if path == "/api/login" and request.method == "POST":
+        _check_login_rate(client)
+
+    # Rate-limit write endpoints (login already checked above, but general
+    # limit still applies to prevent abuse of other write endpoints)
     if request.method in ("POST", "PUT", "DELETE"):
-        client = request.client.host if request.client else "unknown"
         _check_rate_limit(f"{client}:{path}")
 
     # Auth check: protect /api/* except /api/login and /api/auth-status
@@ -248,9 +303,25 @@ async def security_middleware(request: Request, call_next):
             )
 
     response = await call_next(request)
+
+    # Security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=()"
+    )
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdnjs.cloudflare.com; "
+        "style-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "img-src 'self' blob: data:; "
+        "font-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
     return response
 
 
@@ -277,12 +348,21 @@ def auth_status(request: Request):
 
 
 @app.post("/api/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
     salt = _get_auth_salt()
     if not salt:
         return {"ok": True}
+
+    client_ip = request.client.host if request.client else "unknown"
+
     if req.passphrase.strip() != _expected_passphrase(salt):
+        _record_login_failure(client_ip)
         raise HTTPException(status_code=403, detail="Invalid passphrase")
+
+    # Successful login — clear failure tracking for this IP
+    _login_failures.pop(client_ip, None)
+    _lockouts.pop(client_ip, None)
+
     token = _make_session_token()
     response = JSONResponse(content={"ok": True})
     response.set_cookie(
@@ -291,6 +371,7 @@ def login(req: LoginRequest):
         max_age=_SESSION_MAX_AGE,
         httponly=True,
         samesite="strict",
+        secure=True,
     )
     return response
 
