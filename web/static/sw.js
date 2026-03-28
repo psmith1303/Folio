@@ -1,8 +1,21 @@
-const CACHE_NAME = "folio-v2";
+const CACHE_NAME = "folio-v3";
 const SHELL_URLS = [
   "/",
   "/app.css",
   "/app.js",
+  "/modules/state.js",
+  "/modules/utils.js",
+  "/modules/dom.js",
+  "/modules/api.js",
+  "/modules/views.js",
+  "/modules/theme.js",
+  "/modules/library.js",
+  "/modules/viewer.js",
+  "/modules/annotations.js",
+  "/modules/setlists.js",
+  "/modules/dialog-handlers.js",
+  "/modules/keyboard.js",
+  "/modules/touch.js",
   "/manifest.json",
   "/favicon.ico",
   "/apple-touch-icon.png",
