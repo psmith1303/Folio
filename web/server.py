@@ -371,7 +371,6 @@ def login(req: LoginRequest, request: Request):
         max_age=_SESSION_MAX_AGE,
         httponly=True,
         samesite="strict",
-        secure=True,
     )
     return response
 
