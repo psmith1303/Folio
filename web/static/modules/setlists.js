@@ -6,7 +6,7 @@ import { getState } from "./state.js";
 import {
   setlistBody, setlistStatus, setlistDetailActions, setlistDetailName,
   setlistSongsBody, btnNewSetlist, btnRenameSetlist, btnAddSong,
-  btnPlaySetlist, btnAddSetlistRef,
+  btnPlaySetlist, btnAddSetlistRef, btnCacheSetlist,
   setlistNameDialog, setlistNameDialogTitle, setlistNameInput, setlistNameCancel,
   songPickerDialog, songSearch, songPickerList, songStart, songEnd,
   songPickerCancel, songPickerAdd,
@@ -17,6 +17,7 @@ import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
 import { openSetlistSong } from "./viewer.js";
+import { cachePdf, getCacheStatus } from "./cache.js";
 
 // ---------------------------------------------------------------------------
 // Setlist list
@@ -413,6 +414,38 @@ export function initSetlistEvents() {
   btnPlaySetlist.addEventListener("click", () => {
     if (s.editingSetlistItems.length === 0) return;
     startSetlistPlayback(s.editingSetlistName);
+  });
+
+  // Cache all PDFs in setlist
+  btnCacheSetlist.addEventListener("click", async () => {
+    if (!s.editingSetlistName) return;
+    btnCacheSetlist.disabled = true;
+    btnCacheSetlist.textContent = "Caching\u2026";
+    try {
+      const data = await api(`/api/setlists/${encodeURIComponent(s.editingSetlistName)}/flat`);
+      const paths = [...new Set(data.songs.map((song) => song.path))];
+      const cached = await getCacheStatus();
+      const needed = paths.filter((p) => !cached.has(p));
+      let done = 0;
+      for (const path of needed) {
+        btnCacheSetlist.textContent = `${++done}/${needed.length}\u2026`;
+        await cachePdf(path);
+      }
+      btnCacheSetlist.textContent = needed.length > 0
+        ? `\u2713 ${paths.length} cached`
+        : "\u2713 All cached";
+      setTimeout(() => {
+        btnCacheSetlist.textContent = "\u2B07 Cache";
+        btnCacheSetlist.disabled = false;
+      }, 2000);
+    } catch (err) {
+      console.error("Setlist cache failed:", err);
+      btnCacheSetlist.textContent = "Failed";
+      setTimeout(() => {
+        btnCacheSetlist.textContent = "\u2B07 Cache";
+        btnCacheSetlist.disabled = false;
+      }, 2000);
+    }
   });
 
   // Add setlist reference

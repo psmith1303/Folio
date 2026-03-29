@@ -65,6 +65,7 @@ export const btnRenameSetlist = $("#btn-rename-setlist");
 export const btnAddSong = $("#btn-add-song");
 export const btnPlaySetlist = $("#btn-play-setlist");
 export const btnAddSetlistRef = $("#btn-add-setlist-ref");
+export const btnCacheSetlist = $("#btn-cache-setlist");
 
 // Dialogs — set-folder
 export const dirDialog = $("#dir-dialog");
