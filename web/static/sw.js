@@ -1,6 +1,6 @@
-const SHELL_CACHE = "folio-v5";
+const SHELL_CACHE = "folio-v6";
 const PDF_CACHE = "folio-pdfs-v1";
-const MAX_CACHED_PDFS = 30;
+const MAX_AUTO_CACHED = 30;
 
 const SHELL_URLS = [
   "/",
@@ -33,12 +33,11 @@ const SHELL_URLS = [
 
 function openLruDb() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open("folio-lru", 1);
+    const req = indexedDB.open("folio-lru", 2);
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains("entries")) {
-        const store = db.createObjectStore("entries", { keyPath: "path" });
-        store.createIndex("lastUsed", "lastUsed");
+        db.createObjectStore("entries", { keyPath: "path" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -46,11 +45,22 @@ function openLruDb() {
   });
 }
 
-async function touchLruEntry(path, size) {
+async function touchLruEntry(path, size, pinned) {
   const db = await openLruDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("entries", "readwrite");
-    tx.objectStore("entries").put({ path, lastUsed: Date.now(), size: size || 0 });
+    const store = tx.objectStore("entries");
+    const getReq = store.get(path);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      store.put({
+        path,
+        lastUsed: Date.now(),
+        size: size || (existing && existing.size) || 0,
+        // Preserve pinned status: only upgrade to pinned, never downgrade
+        pinned: pinned || (existing && existing.pinned) || false,
+      });
+    };
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -70,7 +80,7 @@ async function getAllLruEntries() {
   const db = await openLruDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction("entries", "readonly");
-    const req = tx.objectStore("entries").index("lastUsed").getAll();
+    const req = tx.objectStore("entries").getAll();
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -87,15 +97,19 @@ async function clearAllLruEntries() {
 }
 
 // ---------------------------------------------------------------------------
-// LRU eviction — remove oldest entries to stay at or below MAX_CACHED_PDFS
+// LRU eviction — only evict unpinned (auto-cached) entries
 // ---------------------------------------------------------------------------
 
 async function evictIfNeeded() {
-  const entries = await getAllLruEntries(); // sorted by lastUsed ascending
-  if (entries.length <= MAX_CACHED_PDFS) return;
+  const entries = await getAllLruEntries();
+  const unpinned = entries
+    .filter((e) => !e.pinned)
+    .sort((a, b) => a.lastUsed - b.lastUsed);
+
+  if (unpinned.length <= MAX_AUTO_CACHED) return;
 
   const cache = await caches.open(PDF_CACHE);
-  const toEvict = entries.slice(0, entries.length - MAX_CACHED_PDFS);
+  const toEvict = unpinned.slice(0, unpinned.length - MAX_AUTO_CACHED);
   for (const entry of toEvict) {
     const cacheKey = "/api/pdf?path=" + encodeURIComponent(entry.path);
     await cache.delete(cacheKey);
@@ -104,7 +118,7 @@ async function evictIfNeeded() {
 }
 
 // ---------------------------------------------------------------------------
-// URL normalization — strip cache-buster _t param from PDF URLs
+// URL helpers
 // ---------------------------------------------------------------------------
 
 function pdfCacheKey(url) {
@@ -203,24 +217,44 @@ async function handlePdfFetch(request) {
   const pdfPath = getPathFromPdfUrl(request.url);
   const cache = await caches.open(PDF_CACHE);
 
-  // Check cache first
+  // Check cache for full response
   const cached = await cache.match(cacheKey);
   if (cached) {
-    // Update LRU timestamp in background
-    if (pdfPath) touchLruEntry(pdfPath, 0).catch(() => {});
+    // Return full cached response (works even if browser sent Range header)
+    if (pdfPath) touchLruEntry(pdfPath, 0, false).catch(() => {});
     return cached;
   }
 
-  // Network fetch
+  // Not cached — pass original request through to network
   const resp = await fetch(request);
-  if (resp.ok && pdfPath) {
-    const clone = resp.clone();
-    await cache.put(cacheKey, clone);
-    const size = parseInt(resp.headers.get("content-length") || "0", 10);
-    await touchLruEntry(pdfPath, size);
-    evictIfNeeded().catch(() => {});
+
+  if (pdfPath) {
+    if (resp.status === 200) {
+      // Full response — cache directly
+      const clone = resp.clone();
+      await cache.put(cacheKey, clone);
+      const size = parseInt(resp.headers.get("content-length") || "0", 10);
+      await touchLruEntry(pdfPath, size, false);
+      evictIfNeeded().catch(() => {});
+    } else if (resp.status === 206) {
+      // Partial (Range) response — fetch full file in background for caching
+      cacheFullPdfInBackground(pdfPath, cacheKey);
+    }
   }
+
   return resp;
+}
+
+function cacheFullPdfInBackground(pdfPath, cacheKey) {
+  const url = "/api/pdf?path=" + encodeURIComponent(pdfPath);
+  fetch(url).then(async (resp) => {
+    if (resp.status !== 200) return;
+    const cache = await caches.open(PDF_CACHE);
+    await cache.put(cacheKey, resp);
+    const size = parseInt(resp.headers.get("content-length") || "0", 10);
+    await touchLruEntry(pdfPath, size, false);
+    await evictIfNeeded();
+  }).catch(() => {});
 }
 
 async function handleApiGetFetch(request) {
@@ -274,7 +308,7 @@ async function handleCachePdf(path, port) {
 
     await cache.put(cacheKey, resp.clone());
     const size = parseInt(resp.headers.get("content-length") || "0", 10);
-    await touchLruEntry(path, size);
+    await touchLruEntry(path, size, true);  // pinned — explicit download
     await evictIfNeeded();
 
     port.postMessage({ ok: true });
@@ -299,9 +333,10 @@ async function handleGetCacheStatus(port) {
   try {
     const entries = await getAllLruEntries();
     const paths = new Set(entries.map((e) => e.path));
-    port.postMessage({ ok: true, cachedPaths: Array.from(paths) });
+    const pinned = new Set(entries.filter((e) => e.pinned).map((e) => e.path));
+    port.postMessage({ ok: true, cachedPaths: Array.from(paths), pinnedPaths: Array.from(pinned) });
   } catch (err) {
-    port.postMessage({ ok: false, error: err.message, cachedPaths: [] });
+    port.postMessage({ ok: false, error: err.message, cachedPaths: [], pinnedPaths: [] });
   }
 }
 

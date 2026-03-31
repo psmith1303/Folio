@@ -242,6 +242,11 @@ th.sortable:hover {
   border-color: var(--accent);
 }
 
+.cache-btn.auto-cached {
+  color: var(--fg-dim);
+  border-color: var(--fg-dim);
+}
+
 #library-status {
   padding: 4px 12px;
   font-size: 12px;

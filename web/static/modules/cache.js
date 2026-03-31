@@ -5,6 +5,8 @@
 import { getState } from "./state.js";
 import { libraryBody, libraryStatus } from "./dom.js";
 
+const MAX_AUTO_CACHED = 30;
+
 // ---------------------------------------------------------------------------
 // SW communication
 // ---------------------------------------------------------------------------
@@ -41,9 +43,12 @@ export async function evictPdf(path) {
 export async function getCacheStatus() {
   try {
     const result = await swMessage("get-cache-status");
-    return new Set(result.cachedPaths || []);
+    return {
+      cached: new Set(result.cachedPaths || []),
+      pinned: new Set(result.pinnedPaths || []),
+    };
   } catch {
-    return new Set();
+    return { cached: new Set(), pinned: new Set() };
   }
 }
 
@@ -60,9 +65,12 @@ export async function cacheLibrary() {
 // ---------------------------------------------------------------------------
 
 let _cachedPaths = new Set();
+let _pinnedPaths = new Set();
 
 export async function refreshCacheStatus() {
-  _cachedPaths = await getCacheStatus();
+  const status = await getCacheStatus();
+  _cachedPaths = status.cached;
+  _pinnedPaths = status.pinned;
   updateCacheButtons();
 }
 
@@ -73,11 +81,25 @@ function updateCacheButtons() {
     if (!filepath) continue;
     const btn = row.querySelector(".cache-btn");
     if (!btn) continue;
-    const cached = _cachedPaths.has(filepath);
-    btn.textContent = cached ? "\u2713" : "\u2B07";
-    btn.title = cached ? "Remove from offline cache" : "Download for offline use";
-    btn.classList.toggle("cached", cached);
+    applyCacheButtonState(btn, filepath);
   }
+}
+
+function applyCacheButtonState(btn, filepath) {
+  const cached = _cachedPaths.has(filepath);
+  const pinned = _pinnedPaths.has(filepath);
+  if (pinned) {
+    btn.textContent = "\u2713";
+    btn.title = "Pinned for offline use (click to remove)";
+  } else if (cached) {
+    btn.textContent = "\u25CB";
+    btn.title = "Auto-cached (click to pin, or will be evicted when space is needed)";
+  } else {
+    btn.textContent = "\u2B07";
+    btn.title = "Download for offline use";
+  }
+  btn.classList.toggle("cached", pinned);
+  btn.classList.toggle("auto-cached", cached && !pinned);
 }
 
 export function isCached(filepath) {
@@ -85,18 +107,23 @@ export function isCached(filepath) {
 }
 
 export async function toggleCache(filepath, btn) {
+  const pinned = _pinnedPaths.has(filepath);
   const cached = _cachedPaths.has(filepath);
   btn.disabled = true;
   btn.textContent = "\u2026";
 
   try {
-    if (cached) {
+    if (pinned) {
+      // Pinned → remove entirely
       await evictPdf(filepath);
       _cachedPaths.delete(filepath);
+      _pinnedPaths.delete(filepath);
     } else {
+      // Not pinned (uncached or auto-cached) → pin it
       const result = await cachePdf(filepath);
       if (result.ok) {
         _cachedPaths.add(filepath);
+        _pinnedPaths.add(filepath);
       } else {
         throw new Error(result.error || "Cache failed");
       }
@@ -105,10 +132,7 @@ export async function toggleCache(filepath, btn) {
     console.error("Cache toggle failed:", err);
   } finally {
     btn.disabled = false;
-    const nowCached = _cachedPaths.has(filepath);
-    btn.textContent = nowCached ? "\u2713" : "\u2B07";
-    btn.title = nowCached ? "Remove from offline cache" : "Download for offline use";
-    btn.classList.toggle("cached", nowCached);
+    applyCacheButtonState(btn, filepath);
   }
 }
 
@@ -129,8 +153,15 @@ export function initCacheUI() {
   btnOffline.addEventListener("click", async () => {
     offlineStatus.textContent = "Checking cache\u2026";
     offlineDialog.showModal();
-    const paths = await getCacheStatus();
-    offlineStatus.textContent = `${paths.size} PDF${paths.size !== 1 ? "s" : ""} cached for offline use (max ${30}).`;
+    const status = await getCacheStatus();
+    const pinCount = status.pinned.size;
+    const autoCount = status.cached.size - pinCount;
+    const parts = [];
+    if (pinCount > 0) parts.push(`${pinCount} pinned`);
+    if (autoCount > 0) parts.push(`${autoCount} auto-cached`);
+    offlineStatus.textContent = parts.length > 0
+      ? `${status.cached.size} PDFs cached (${parts.join(", ")}). Auto-cache limit: ${MAX_AUTO_CACHED}.`
+      : "No PDFs cached.";
   });
 
   offlineClose.addEventListener("click", () => offlineDialog.close());

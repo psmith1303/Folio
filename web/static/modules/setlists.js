@@ -424,8 +424,8 @@ export function initSetlistEvents() {
     try {
       const data = await api(`/api/setlists/${encodeURIComponent(s.editingSetlistName)}/flat`);
       const paths = [...new Set(data.songs.map((song) => song.path))];
-      const cached = await getCacheStatus();
-      const needed = paths.filter((p) => !cached.has(p));
+      const status = await getCacheStatus();
+      const needed = paths.filter((p) => !status.cached.has(p));
       let done = 0;
       for (const path of needed) {
         btnCacheSetlist.textContent = `${++done}/${needed.length}\u2026`;
