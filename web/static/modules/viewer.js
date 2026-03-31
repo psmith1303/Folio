@@ -370,16 +370,13 @@ export function applyFullscreen(fs) {
 
 export function toggleFullscreen() {
   const s = getState();
-  if (document.fullscreenEnabled) {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(function () {
-        applyFullscreen(!s.pseudoFullscreen);
-      });
-    } else {
-      document.exitFullscreen();
-    }
-  } else {
-    applyFullscreen(!s.pseudoFullscreen);
+  const entering = !s.pseudoFullscreen;
+  applyFullscreen(entering);
+  // Also try native fullscreen (hides browser chrome on desktop)
+  if (entering && document.fullscreenEnabled) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else if (!entering && document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
   }
 }
 
