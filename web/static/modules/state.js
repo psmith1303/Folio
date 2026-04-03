@@ -49,6 +49,9 @@ const state = {
 
   // Fullscreen
   pseudoFullscreen: false,
+
+  // App info
+  appTitle: "Folio",
 };
 
 export function getState() {

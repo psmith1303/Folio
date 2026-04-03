@@ -25,17 +25,17 @@ export function showView(view) {
     case "library":
       libraryView.classList.remove("hidden");
       btnLibrary.classList.add("active");
-      titleDisplay.textContent = "";
+      titleDisplay.textContent = s.appTitle;
       break;
     case "setlists":
       setlistView.classList.remove("hidden");
       btnSetlists.classList.add("active");
-      titleDisplay.textContent = "";
+      titleDisplay.textContent = s.appTitle;
       break;
     case "recent":
       recentView.classList.remove("hidden");
       btnRecent.classList.add("active");
-      titleDisplay.textContent = "";
+      titleDisplay.textContent = s.appTitle;
       break;
     case "viewer":
       viewerView.classList.remove("hidden");

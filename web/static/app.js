@@ -74,8 +74,9 @@ if (typeof crypto !== "undefined" && !crypto.randomUUID) {
 // Module imports and init
 // ---------------------------------------------------------------------------
 
+import { getState } from "./modules/state.js";
 import { api, getAuthStatus } from "./modules/api.js";
-import { dirInput, libraryStatus } from "./modules/dom.js";
+import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary, setLoadSetlistsFn } from "./modules/library.js";
 import { initViewerEvents, setLoadLibraryFn, openScore, cleanupScore } from "./modules/viewer.js";
@@ -122,6 +123,11 @@ if ("serviceWorker" in navigator) {
 async function initApp() {
   try {
     const cfg = await api("/api/config");
+    if (cfg.version) {
+      const s = getState();
+      s.appTitle = `Folio v${cfg.version}`;
+      titleDisplay.textContent = s.appTitle;
+    }
     if (cfg.library_dir && cfg.score_count > 0) {
       dirInput.value = cfg.library_dir;
       await loadLibrary();
