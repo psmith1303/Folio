@@ -44,7 +44,9 @@ export function initKeyboardShortcuts() {
           ? document.getElementById("library-table-wrap")
           : s.currentView === "setlists"
             ? document.getElementById("setlist-list-wrap")
-            : null;
+            : s.currentView === "recent"
+              ? document.getElementById("recent-table-wrap")
+              : null;
         if (wrap) {
           e.preventDefault();
           wrap.scrollTop = e.key === "Home" ? 0 : wrap.scrollHeight;

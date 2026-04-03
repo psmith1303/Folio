@@ -2,23 +2,25 @@
 // PDF viewer — rendering, page navigation, display modes, fullscreen
 // ---------------------------------------------------------------------------
 
-import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.min.mjs";
+const PDFJS_CDN = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.149";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.149/pdf.worker.min.mjs";
+import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.149/build/pdf.min.mjs";
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_CDN + "/build/pdf.worker.min.mjs";
 
 import { getState, resetViewerState, resetAnnotationState } from "./state.js";
 import {
   pdfContainer, canvas1, canvas2, annotCanvas1, annotCanvas2,
   pageWrap2, pageInput, pageTotal, titleDisplay,
   btnZoomFit, btnZoomWide, btnSideBySide,
-  btnPrev, btnNext, btnBack, btnExport, btnFullscreen,
+  btnPrev, btnNext, btnExport, btnFullscreen,
   libraryStatus,
 } from "./dom.js";
 import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
 import { drawAnnotations, setTool, setNavCallbacks, setRenderPageFn } from "./annotations.js";
+import { addToRecent } from "./recent.js";
 
 // Register callbacks so annotations module can trigger navigation
 setNavCallbacks(nextPage, prevPage);
@@ -42,9 +44,10 @@ async function loadAndRenderPdf(filepath, { startPage = 1, goToEnd = false } = {
     // annotations remain at defaults from resetAnnotationState
   }
 
-  const loadingTask = pdfjsLib.getDocument(
-    `/api/pdf?path=${encodeURIComponent(filepath)}&_t=${Date.now()}`
-  );
+  const loadingTask = pdfjsLib.getDocument({
+    url: `/api/pdf?path=${encodeURIComponent(filepath)}&_t=${Date.now()}`,
+    wasmUrl: PDFJS_CDN + "/wasm/",
+  });
   s.pdfDoc = await loadingTask.promise;
   s.totalPages = s.pdfDoc.numPages;
   pageTotal.textContent = s.totalPages;
@@ -82,6 +85,7 @@ export async function openScore(score) {
 
   try {
     await loadAndRenderPdf(score.filepath);
+    addToRecent(score);
   } catch (err) {
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
@@ -94,9 +98,7 @@ export async function openScore(score) {
   }
 }
 
-export function closeScore() {
-  const s = getState();
-  const returnTo = s.returnView;
+export function cleanupScore() {
   cleanupAllPages();
   resetViewerState();
   setTool("nav");
@@ -106,6 +108,11 @@ export function closeScore() {
   annotCanvas2.width = 0;  annotCanvas2.height = 0;
   pageWrap2.classList.add("hidden");
   titleDisplay.textContent = "";
+}
+
+export function closeScore() {
+  const returnTo = getState().returnView;
+  cleanupScore();
   showView(returnTo);
 }
 
@@ -128,6 +135,7 @@ export async function openSetlistSong(index, goToEnd = false) {
       startPage: goToEnd ? undefined : range_min,
       goToEnd,
     });
+    addToRecent({ filepath: song.path, composer: song.composer, title: song.title });
   } catch (err) {
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
@@ -418,10 +426,6 @@ async function handleExport() {
 // ---------------------------------------------------------------------------
 
 export function initViewerEvents() {
-  btnBack.addEventListener("click", () => {
-    if (getState().currentView === "viewer") closeScore();
-  });
-
   btnPrev.addEventListener("click", prevPage);
   btnNext.addEventListener("click", nextPage);
 
@@ -463,7 +467,11 @@ export function initViewerEvents() {
   btnFullscreen.addEventListener("click", toggleFullscreen);
 
   document.addEventListener("fullscreenchange", () => {
-    applyFullscreen(!!document.fullscreenElement);
+    // Only handle native fullscreen exit — don't let spurious events
+    // (e.g. iPad PWA standalone mode) trigger fullscreen entry.
+    if (!document.fullscreenElement && getState().pseudoFullscreen) {
+      applyFullscreen(false);
+    }
   });
 
   // Resize handler — debounced

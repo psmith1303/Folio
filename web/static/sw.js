@@ -1,4 +1,4 @@
-const SHELL_CACHE = "folio-v7";
+const SHELL_CACHE = "folio-v9";
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 30;
 
@@ -20,6 +20,7 @@ const SHELL_URLS = [
   "/modules/keyboard.js",
   "/modules/touch.js",
   "/modules/cache.js",
+  "/modules/recent.js",
   "/manifest.json",
   "/favicon.ico",
   "/apple-touch-icon.png",

@@ -20,7 +20,7 @@
     <div class="topbar-left">
       <button id="btn-library" class="nav-btn active" title="Library">Library</button>
       <button id="btn-setlists" class="nav-btn" title="Setlists">Setlists</button>
-      <button id="btn-back" class="nav-btn hidden" title="Back">&larr; Back</button>
+      <button id="btn-recent" class="nav-btn" title="Recent">Recent</button>
     </div>
     <div class="topbar-center">
       <span id="title-display"></span>
@@ -115,6 +115,25 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- ================================================================== -->
+  <!-- Recent view                                                        -->
+  <!-- ================================================================== -->
+  <section id="recent-view" class="hidden">
+    <div id="recent-table-wrap">
+      <table id="recent-table">
+        <thead>
+          <tr>
+            <th>Composer</th>
+            <th>Title</th>
+            <th>Last Opened</th>
+          </tr>
+        </thead>
+        <tbody id="recent-body"></tbody>
+      </table>
+    </div>
+    <div id="recent-status"></div>
   </section>
 
   <!-- ================================================================== -->

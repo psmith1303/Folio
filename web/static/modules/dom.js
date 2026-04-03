@@ -16,11 +16,16 @@ export const btnOffline = $("#btn-offline");
 
 // Top bar
 export const btnLibrary = $("#btn-library");
-export const btnBack = $("#btn-back");
-export const btnSetDir = $("#btn-set-dir");
 export const btnSetlists = $("#btn-setlists");
+export const btnRecent = $("#btn-recent");
+export const btnSetDir = $("#btn-set-dir");
 export const titleDisplay = $("#title-display");
 export const btnTheme = $("#btn-theme");
+
+// Recent view
+export const recentView = $("#recent-view");
+export const recentBody = $("#recent-body");
+export const recentStatus = $("#recent-status");
 
 // Viewer
 export const viewerView = $("#viewer");

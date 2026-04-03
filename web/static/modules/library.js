@@ -10,8 +10,8 @@ import {
 import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
-import { openScore } from "./viewer.js";
-import { isCached, toggleCache, refreshCacheStatus } from "./cache.js";
+import { openScore, cleanupScore } from "./viewer.js";
+import { CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus } from "./cache.js";
 
 // ---------------------------------------------------------------------------
 // Load and render
@@ -39,7 +39,7 @@ export async function loadLibrary() {
     renderComposerFilter();
     renderTags();
     libraryStatus.textContent = `${data.total} scores`;
-    refreshCacheStatus();
+    if (CACHE_AVAILABLE) refreshCacheStatus();
   } catch (err) {
     libraryStatus.textContent = `Error: ${err.message}`;
   }
@@ -56,16 +56,19 @@ function renderLibrary() {
       <td title="${esc(sc.composer)}">${esc(sc.composer)}</td>
       <td title="${esc(sc.title)}">${esc(sc.title)}</td>
       <td title="${esc(sc.tags.join(", "))}">${esc(sc.tags.join(", "))}</td>
-      <td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? "\u2713" : "\u2B07"}</button></td>
+      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? "\u2713" : "\u2B07"}</button></td>` : ""}
     `;
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".cache-btn")) return;
       openScore(sc);
     });
-    tr.querySelector(".cache-btn").addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleCache(sc.filepath, e.target);
-    });
+    const cacheBtn = tr.querySelector(".cache-btn");
+    if (cacheBtn) {
+      cacheBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleCache(sc.filepath, e.target);
+      });
+    }
     libraryBody.appendChild(tr);
   }
 }
@@ -170,8 +173,13 @@ export function initLibraryEvents() {
     document.getElementById("library-table-wrap").scrollTop = 0;
   });
 
-  btnLibrary.addEventListener("click", () => { showView("library"); loadLibrary(); });
+  btnLibrary.addEventListener("click", () => {
+    if (getState().currentView === "viewer") cleanupScore();
+    showView("library");
+    loadLibrary();
+  });
   btnSetlists.addEventListener("click", () => {
+    if (getState().currentView === "viewer") cleanupScore();
     showView("setlists");
     if (_loadSetlists) _loadSetlists();
   });

@@ -78,7 +78,7 @@ import { api, getAuthStatus } from "./modules/api.js";
 import { dirInput, libraryStatus } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary, setLoadSetlistsFn } from "./modules/library.js";
-import { initViewerEvents, setLoadLibraryFn } from "./modules/viewer.js";
+import { initViewerEvents, setLoadLibraryFn, openScore, cleanupScore } from "./modules/viewer.js";
 import { initAnnotationEvents } from "./modules/annotations.js";
 import { initSetlistEvents, loadSetlists } from "./modules/setlists.js";
 import {
@@ -88,11 +88,13 @@ import {
 import { initKeyboardShortcuts } from "./modules/keyboard.js";
 import { initTouchHandlers } from "./modules/touch.js";
 import { initCacheUI } from "./modules/cache.js";
+import { initRecentEvents, setRecentCallbacks } from "./modules/recent.js";
 
 // Wire cross-module callbacks to break circular dependencies
 setLoadLibraryFn(loadLibrary);
 setDialogLoadLibraryFn(loadLibrary);
 setLoadSetlistsFn(loadSetlists);
+setRecentCallbacks(openScore, cleanupScore);
 
 // Init all event listeners
 initTheme();
@@ -104,6 +106,7 @@ initDialogHandlers();
 initKeyboardShortcuts();
 initTouchHandlers();
 initCacheUI();
+initRecentEvents();
 
 // Service worker
 if ("serviceWorker" in navigator) {
