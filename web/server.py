@@ -313,9 +313,10 @@ async def security_middleware(request: Request, call_next):
     )
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "script-src 'self' https://cdnjs.cloudflare.com; "
+        "script-src 'self' https://cdn.jsdelivr.net; "
+        "worker-src 'self' blob:; "
         "style-src 'self' 'unsafe-inline'; "
-        "connect-src 'self'; "
+        "connect-src 'self' https://cdn.jsdelivr.net; "
         "img-src 'self' blob: data:; "
         "font-src 'self'; "
         "frame-ancestors 'none'; "

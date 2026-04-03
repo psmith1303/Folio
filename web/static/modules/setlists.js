@@ -17,7 +17,7 @@ import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
 import { openSetlistSong } from "./viewer.js";
-import { cachePdf, getCacheStatus } from "./cache.js";
+import { CACHE_AVAILABLE, cachePdf, getCacheStatus } from "./cache.js";
 
 // ---------------------------------------------------------------------------
 // Setlist list
@@ -316,6 +316,8 @@ async function renderSongPicker(query) {
 
 export function initSetlistEvents() {
   const s = getState();
+
+  if (!CACHE_AVAILABLE) btnCacheSetlist.classList.add("hidden");
 
   // New setlist
   btnNewSetlist.addEventListener("click", () => {

@@ -7,6 +7,9 @@ import { libraryBody } from "./dom.js";
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 30;
 
+// Cache API and Service Workers require a secure context (HTTPS or localhost).
+export const CACHE_AVAILABLE = window.isSecureContext && "caches" in window;
+
 // ---------------------------------------------------------------------------
 // IndexedDB helpers (same schema as sw.js, shared database)
 // ---------------------------------------------------------------------------
@@ -218,9 +221,23 @@ export function initCacheUI() {
 
   if (!btnOffline || !offlineDialog) return;
 
+  if (!CACHE_AVAILABLE) {
+    btnOffline.title = "Offline caching requires HTTPS";
+    // Hide cache column header in library table
+    const cacheHeader = document.querySelector("th.cache-col");
+    if (cacheHeader) cacheHeader.classList.add("hidden");
+  }
+
   btnOffline.addEventListener("click", async () => {
-    offlineStatus.textContent = "Checking cache\u2026";
     offlineDialog.showModal();
+    if (!CACHE_AVAILABLE) {
+      offlineStatus.textContent =
+        "Offline caching requires HTTPS. Access Folio via https:// or localhost.";
+      btnRefreshLibrary.disabled = true;
+      btnClearPdfs.disabled = true;
+      return;
+    }
+    offlineStatus.textContent = "Checking cache\u2026";
     const status = await getCacheStatus();
     const pinCount = status.pinned.size;
     const autoCount = status.cached.size - pinCount;
