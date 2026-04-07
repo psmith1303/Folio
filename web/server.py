@@ -209,8 +209,10 @@ def _log_startup():
     # Update format on uvicorn's existing formatters (preserves color support)
     for name, fmt in [("uvicorn", LOG_FORMAT), ("uvicorn.access", ACCESS_FORMAT)]:
         for handler in logging.getLogger(name).handlers:
-            handler.formatter._fmt = fmt
-            handler.formatter.datefmt = LOG_DATEFMT
+            f = handler.formatter
+            f._fmt = fmt
+            f._style._fmt = fmt
+            f.datefmt = LOG_DATEFMT
     logging.info("Folio v%s starting", app.version)
 
 
