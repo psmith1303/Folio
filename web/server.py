@@ -43,8 +43,8 @@ from .core import (
 # ---------------------------------------------------------------------------
 
 LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
-LOG_FORMAT = "%(levelname)s:    %(asctime)s %(message)s"
-ACCESS_FORMAT = '%(levelname)s:    %(asctime)s %(client_addr)s - "%(request_line)s" %(status_code)s'
+LOG_FORMAT = "%(levelname)s:     %(asctime)s %(message)s"
+ACCESS_FORMAT = '%(levelname)s:     %(asctime)s %(client_addr)s - "%(request_line)s" %(status_code)s'
 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
 
