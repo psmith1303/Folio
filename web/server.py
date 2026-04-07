@@ -46,7 +46,7 @@ LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 LOG_FORMAT = "%(levelname)s:     %(asctime)s %(message)s"
 ACCESS_FORMAT = '%(levelname)s:     %(asctime)s %(client_addr)s - "%(request_line)s" %(status_code)s'
 
-logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
+log = logging.getLogger("folio")
 
 # ---------------------------------------------------------------------------
 # Application state
@@ -173,7 +173,7 @@ class AppState:
         self.scores = scan_library(path)
         self.config["last_directory"] = portable_path(path)
         _save_config(self.config)
-        logging.info(
+        log.info(
             f"Library set to {path} — {len(self.scores)} scores found"
         )
 
@@ -193,7 +193,7 @@ if _last:
         try:
             state.set_library(_resolved)
         except Exception as e:
-            logging.warning(f"Could not auto-load library {_resolved}: {e}")
+            log.warning(f"Could not auto-load library {_resolved}: {e}")
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -213,13 +213,12 @@ def _log_startup():
             f._fmt = fmt
             f._style._fmt = fmt
             f.datefmt = LOG_DATEFMT
-    # Apply uvicorn's colorized formatter to the root logger too
-    uvicorn_handler = logging.getLogger("uvicorn").handlers
-    if uvicorn_handler:
-        color_cls = type(uvicorn_handler[0].formatter)
-        for handler in logging.root.handlers:
-            handler.setFormatter(color_cls(LOG_FORMAT, datefmt=LOG_DATEFMT))
-    logging.info("Folio v%s starting", app.version)
+    # Route app logging through uvicorn's logger so all output is colored
+    uv = logging.getLogger("uvicorn")
+    log.handlers = uv.handlers
+    log.setLevel(uv.level)
+    log.propagate = False
+    log.info("Folio v%s starting", app.version)
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +287,7 @@ def _record_login_failure(client_ip: str) -> None:
     failures.append(now)
     if len(failures) >= _LOCKOUT_THRESHOLD:
         _lockouts[client_ip] = now + _LOCKOUT_DURATION
-        logging.warning("Login lockout triggered for %s", client_ip)
+        log.warning("Login lockout triggered for %s", client_ip)
 
 
 @app.middleware("http")
@@ -616,7 +615,7 @@ def pdf_pages(path: str = Query(..., description="Score filepath")):
     try:
         count = pdf_page_count(resolved)
     except Exception:
-        logging.exception("Page count failed for %s", resolved)
+        log.exception("Page count failed for %s", resolved)
         raise HTTPException(status_code=500, detail="Failed to read PDF")
     return {"path": portable_path(path), "pages": count}
 
@@ -628,7 +627,7 @@ def export_pdf(path: str = Query(..., description="Score filepath")):
     try:
         pdf_bytes = export_annotated_pdf(resolved)
     except Exception:
-        logging.exception("PDF export failed for %s", resolved)
+        log.exception("PDF export failed for %s", resolved)
         raise HTTPException(status_code=500, detail="Export failed")
     basename = re.sub(r'[^\w.\- ]', '_', os.path.basename(resolved))
     filename = f"annotated_{basename}"
@@ -658,7 +657,7 @@ def get_annotations(path: str = Query(..., description="PDF filepath")):
     try:
         data = load_annotations(resolved)
     except Exception:
-        logging.exception("Failed to load annotations for %s", resolved)
+        log.exception("Failed to load annotations for %s", resolved)
         raise HTTPException(status_code=500, detail="Failed to load annotations")
     return data
 
@@ -686,7 +685,7 @@ def put_annotations(req: SaveAnnotationsRequest):
             detail="Annotations were modified by another session",
         )
     except SafeJSONError:
-        logging.exception("Failed to save annotations for %s", resolved)
+        log.exception("Failed to save annotations for %s", resolved)
         raise HTTPException(status_code=500, detail="Failed to save annotations")
     return {"ok": True, "etag": new_etag}
 
