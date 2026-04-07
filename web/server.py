@@ -213,6 +213,12 @@ def _log_startup():
             f._fmt = fmt
             f._style._fmt = fmt
             f.datefmt = LOG_DATEFMT
+    # Apply uvicorn's colorized formatter to the root logger too
+    uvicorn_handler = logging.getLogger("uvicorn").handlers
+    if uvicorn_handler:
+        color_cls = type(uvicorn_handler[0].formatter)
+        for handler in logging.root.handlers:
+            handler.setFormatter(color_cls(LOG_FORMAT, datefmt=LOG_DATEFMT))
     logging.info("Folio v%s starting", app.version)
 
 
