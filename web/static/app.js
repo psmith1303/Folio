@@ -114,6 +114,14 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch((err) => {
     console.warn("SW registration failed:", err);
   });
+  // Auto-reload when a new SW takes control (ensures fresh shell + data)
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!reloading) {
+      reloading = true;
+      window.location.reload();
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------

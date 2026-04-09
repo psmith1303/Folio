@@ -1,4 +1,4 @@
-const SHELL_CACHE = "folio-v10";
+const SHELL_CACHE = "folio-v13";
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 30;
 
@@ -162,7 +162,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // PDF fetch: cache-first with LRU tracking
+  // PDF fetch: stale-while-revalidate with LRU tracking
   if (url.pathname === "/api/pdf" && e.request.method === "GET") {
     e.respondWith(handlePdfFetch(e.request));
     return;
@@ -218,7 +218,15 @@ async function handlePdfFetch(request) {
   const pdfPath = getPathFromPdfUrl(request.url);
   const cache = await caches.open(PDF_CACHE);
 
-  // Network-first: serve fresh PDFs when online, fall back to cache offline
+  // Stale-while-revalidate: serve cached immediately, refresh in background
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    if (pdfPath) touchLruEntry(pdfPath, 0, false).catch(() => {});
+    revalidateInBackground(request, pdfPath, cacheKey);
+    return cached;
+  }
+
+  // Cache miss — fetch from network
   try {
     const resp = await fetch(request);
 
@@ -236,17 +244,26 @@ async function handlePdfFetch(request) {
 
     return resp;
   } catch {
-    // Network failure — serve from cache for offline use
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      if (pdfPath) touchLruEntry(pdfPath, 0, false).catch(() => {});
-      return cached;
-    }
     return new Response("Offline — PDF not cached", {
       status: 503,
       headers: { "Content-Type": "text/plain" },
     });
   }
+}
+
+function revalidateInBackground(request, pdfPath, cacheKey) {
+  fetch(request).then(async (resp) => {
+    if (!pdfPath) return;
+    if (resp.status === 200) {
+      const cache = await caches.open(PDF_CACHE);
+      await cache.put(cacheKey, resp);
+      const size = parseInt(resp.headers.get("content-length") || "0", 10);
+      await touchLruEntry(pdfPath, size, false);
+      evictIfNeeded().catch(() => {});
+    } else if (resp.status === 206) {
+      cacheFullPdfInBackground(pdfPath, cacheKey);
+    }
+  }).catch(() => {});
 }
 
 function cacheFullPdfInBackground(pdfPath, cacheKey) {
@@ -263,7 +280,7 @@ function cacheFullPdfInBackground(pdfPath, cacheKey) {
 
 async function handleApiGetFetch(request) {
   try {
-    const resp = await fetch(request);
+    const resp = await fetch(request, { cache: "no-store" });
     if (resp.ok) {
       const clone = resp.clone();
       const cache = await caches.open(SHELL_CACHE);

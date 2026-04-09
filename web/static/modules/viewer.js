@@ -12,7 +12,7 @@ import { getState, resetViewerState, resetAnnotationState } from "./state.js";
 import {
   pdfContainer, canvas1, canvas2, annotCanvas1, annotCanvas2,
   pageWrap2, pageInput, pageTotal, titleDisplay,
-  btnZoomFit, btnZoomWide, btnSideBySide,
+  btnClose, btnZoomFit, btnZoomWide, btnSideBySide,
   btnPrev, btnNext, btnExport, btnFullscreen,
   libraryStatus,
 } from "./dom.js";
@@ -429,6 +429,7 @@ async function handleExport() {
 // ---------------------------------------------------------------------------
 
 export function initViewerEvents() {
+  btnClose.addEventListener("click", closeScore);
   btnPrev.addEventListener("click", prevPage);
   btnNext.addEventListener("click", nextPage);
 

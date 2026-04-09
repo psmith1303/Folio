@@ -124,7 +124,7 @@ input:focus, select:focus {
 #library-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
 }
 
 #library-toolbar {
@@ -261,7 +261,7 @@ th.sortable:hover {
 #recent-view {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
 }
 
 #recent-table-wrap {
@@ -318,11 +318,11 @@ th.sortable:hover {
 #viewer {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
 }
 
 #viewer.pseudo-fullscreen {
-  height: 100vh;
+  height: 100dvh;
 }
 
 #viewer-toolbar {
@@ -392,7 +392,7 @@ th.sortable:hover {
 /* ================================================================== */
 
 #setlist-view {
-  height: calc(100vh - 40px);
+  height: calc(100dvh - 40px);
 }
 
 #setlist-columns {
@@ -722,10 +722,10 @@ dialog p {
     height: calc(40px + env(safe-area-inset-top));
   }
   #library-view, #setlist-view, #recent-view, #viewer {
-    height: calc(100vh - 40px - env(safe-area-inset-top));
+    height: calc(100dvh - 40px - env(safe-area-inset-top));
   }
   #viewer.pseudo-fullscreen {
-    height: 100vh;
+    height: 100dvh;
   }
   #viewer-toolbar, #setlist-detail-toolbar {
     padding-left: max(12px, env(safe-area-inset-left));

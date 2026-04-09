@@ -29,6 +29,7 @@ export const recentStatus = $("#recent-status");
 
 // Viewer
 export const viewerView = $("#viewer");
+export const btnClose = $("#btn-close");
 export const btnPrev = $("#btn-prev");
 export const btnNext = $("#btn-next");
 export const pageInput = $("#page-input");

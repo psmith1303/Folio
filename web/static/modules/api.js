@@ -9,6 +9,7 @@ export function setLoginHandler(fn) {
 }
 
 export async function api(url, options = {}) {
+  options.cache = "no-store";
   let resp;
   try {
     resp = await fetch(url, options);
@@ -39,6 +40,6 @@ export async function login(passphrase) {
 }
 
 export async function getAuthStatus() {
-  const resp = await fetch("/api/auth-status");
+  const resp = await fetch("/api/auth-status", { cache: "no-store" });
   return resp.json();
 }

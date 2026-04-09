@@ -211,6 +211,7 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
   const s = getState();
 
   if (s.activeTool === "nav") {
+    if (s.displayMode === "wide") return; // wide mode scrolls; use buttons to navigate
     if (s.displayMode === "2up" && s.pageLayouts.length === 2) {
       if (layoutIndex === 0) _prevPage();
       else _nextPage();
