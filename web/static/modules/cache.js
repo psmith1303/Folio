@@ -102,10 +102,27 @@ export async function cachePdf(path) {
   const url = cacheKey + "&_t=" + Date.now();
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  // Read the whole body before caching so we can verify it's complete.
+  // A streaming cache.put on a mid-flight-truncated response (e.g. Tailscale
+  // proxy dropping the connection) silently stores partial bytes, producing
+  // a "cached" PDF that later fails with "Bad end offset" in pdf.js.
+  const expected = parseInt(resp.headers.get("content-length") || "0", 10);
+  const buf = await resp.arrayBuffer();
+  if (expected > 0 && buf.byteLength !== expected) {
+    throw new Error(
+      `Incomplete download: got ${buf.byteLength} of ${expected} bytes — not caching`
+    );
+  }
+
+  const verified = new Response(buf, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: resp.headers,
+  });
   const cache = await caches.open(PDF_CACHE);
-  await cache.put(cacheKey, resp);
-  const size = parseInt(resp.headers.get("content-length") || "0", 10);
-  await touchLruEntry(path, size, true);
+  await cache.put(cacheKey, verified);
+  await touchLruEntry(path, buf.byteLength, true);
   await evictIfNeeded();
 }
 

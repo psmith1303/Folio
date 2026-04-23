@@ -2,11 +2,15 @@
 // PDF viewer — rendering, page navigation, display modes, fullscreen
 // ---------------------------------------------------------------------------
 
-const PDFJS_CDN = "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.149";
+// pdf.js is self-hosted under /lib/pdfjs/ (vendored copy of pdfjs-dist@5.4.149).
+// Same-origin loading means real error messages — cross-origin scripts get
+// their errors masked as "Script error." with no detail, which made debugging
+// pdf.js failures over Tailscale impossible.
+const PDFJS_BASE = "/lib/pdfjs";
 
-import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.149/build/pdf.min.mjs";
+import * as pdfjsLib from "/lib/pdfjs/build/pdf.min.mjs";
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_CDN + "/build/pdf.worker.min.mjs";
+pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + "/build/pdf.worker.min.mjs";
 
 import { getState, resetViewerState, resetAnnotationState } from "./state.js";
 import {
@@ -14,53 +18,131 @@ import {
   pageWrap2, pageInput, pageTotal, titleDisplay,
   btnClose, btnZoomFit, btnZoomWide, btnSideBySide,
   btnPrev, btnNext, btnExport, btnFullscreen,
-  libraryStatus,
+  libraryStatus, viewerToast,
 } from "./dom.js";
 import { api } from "./api.js";
 import { showView } from "./views.js";
 import { drawAnnotations, setTool, setNavCallbacks, setRenderPageFn } from "./annotations.js";
 import { addToRecent } from "./recent.js";
+import { CACHE_AVAILABLE, refreshCacheStatus } from "./cache.js";
 
 // Register callbacks so annotations module can trigger navigation
 setNavCallbacks(nextPage, prevPage);
 setRenderPageFn(renderPage);
 
+// Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
+const VIEWER_TAG = "[viewer v2.5.8]";
+function dbg(...args) {
+  if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
+    console.log(VIEWER_TAG, ...args);
+  }
+}
+console.log(VIEWER_TAG, "module loaded — set localStorage.folioDebug='1' for verbose logs");
+
+// ---------------------------------------------------------------------------
+// Toast helper — transient status message inside the viewer
+// ---------------------------------------------------------------------------
+
+let _toastTimer = null;
+
+export function showToast(msg, { duration = 4000 } = {}) {
+  if (!viewerToast) return;
+  viewerToast.textContent = msg;
+  viewerToast.classList.remove("hidden");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  if (duration > 0) {
+    _toastTimer = setTimeout(() => hideToast(), duration);
+  }
+}
+
+export function hideToast() {
+  if (!viewerToast) return;
+  viewerToast.classList.add("hidden");
+  if (_toastTimer) {
+    clearTimeout(_toastTimer);
+    _toastTimer = null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Shared PDF loading logic (used by openScore and openSetlistSong)
+//
+// Loads annotations + PDF first, only mutating viewer state after both
+// succeed. A failure mid-load therefore leaves the current viewer intact
+// so callers can recover (e.g. stay on the previous song during setlist
+// auto-advance) instead of being bounced back to the library.
 // ---------------------------------------------------------------------------
 
-async function loadAndRenderPdf(filepath, { startPage = 1, goToEnd = false } = {}) {
+async function loadAndRenderPdf(filepath, { startPage = 1 } = {}) {
   const s = getState();
-  resetAnnotationState();
 
-  // Load annotations
+  // Fetch annotations first — failure falls back to empty defaults
+  let annotData = { pages: {}, rotations: {}, etag: null };
   try {
-    const data = await api(`/api/annotations?path=${encodeURIComponent(filepath)}`);
-    s.annotations = data.pages || {};
-    s.rotations = data.rotations || {};
-    s.annotationEtag = data.etag || null;
+    annotData = await api(`/api/annotations?path=${encodeURIComponent(filepath)}`);
   } catch {
-    // annotations remain at defaults from resetAnnotationState
+    // keep defaults
   }
 
-  const loadingTask = pdfjsLib.getDocument({
-    url: `/api/pdf?path=${encodeURIComponent(filepath)}&_t=${Date.now()}`,
-    wasmUrl: PDFJS_CDN + "/wasm/",
-  });
-  s.pdfDoc = await loadingTask.promise;
+  // Load PDF with one retry on transport failure.
+  //
+  // disableRange + disableStream: fetch the PDF as a single full GET. HTTPS
+  // proxies (Tailscale Serve, cloudflared, etc.) can truncate chunked-stream
+  // range responses mid-flight, which surfaces as "Bad end offset" errors
+  // from pdf.js. A single-shot GET paired with the service worker's cache
+  // avoids the proxy-streaming failure mode at the cost of a slower first
+  // open for large PDFs — which the SW cache then makes instant next time.
+  //
+  // Self-heal: before retrying, purge the PDF_CACHE entry for this path.
+  // A prior truncated write can poison the cache; dropping it forces the
+  // next attempt to go back to the network instead of replaying corruption.
+  let newDoc = null;
+  let lastErr = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const loadingTask = pdfjsLib.getDocument({
+        url: `/api/pdf?path=${encodeURIComponent(filepath)}&_t=${Date.now()}`,
+        wasmUrl: PDFJS_BASE + "/wasm/",
+        disableRange: true,
+        disableStream: true,
+      });
+      newDoc = await loadingTask.promise;
+      break;
+    } catch (err) {
+      lastErr = err;
+      console.warn(VIEWER_TAG, `PDF load attempt ${attempt + 1} failed:`, err);
+      if (attempt + 1 < 2) {
+        try {
+          const cache = await caches.open("folio-pdfs-v1");
+          const purged = await cache.delete(
+            "/api/pdf?path=" + encodeURIComponent(filepath)
+          );
+          if (purged) console.warn(VIEWER_TAG, "purged corrupt cache entry for", filepath);
+        } catch (e) {
+          console.warn(VIEWER_TAG, "cache purge failed:", e);
+        }
+        showToast(`Load failed — retrying…`, { duration: 0 });
+        await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+  }
+  if (!newDoc) throw lastErr;
+
+  // Commit state only after successful load
+  resetAnnotationState();
+  s.pdfDoc = newDoc;
+  s.annotations = annotData.pages || {};
+  s.rotations = annotData.rotations || {};
+  s.annotationEtag = annotData.etag || null;
   s.totalPages = s.pdfDoc.numPages;
   pageTotal.textContent = s.totalPages;
   pageInput.max = s.totalPages;
 
-  if (goToEnd) {
-    const range = getPageRange();
-    s.currentPage = range.max;
-  } else {
-    // Clamp startPage to actual page count (it may have been set before totalPages was known)
-    s.currentPage = Math.max(1, Math.min(startPage, s.totalPages));
-  }
+  // Clamp startPage — pass Number.MAX_SAFE_INTEGER to land on the last page.
+  s.currentPage = Math.max(1, Math.min(startPage, s.totalPages));
   pageInput.value = s.currentPage;
 
+  hideToast();
   await autoSideBySide();
   renderPage();
   pdfContainer.focus();
@@ -76,16 +158,21 @@ export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
 
 export async function openScore(score) {
   const s = getState();
+  dbg("openScore", score.filepath);
   s.currentScore = score;
   s.setlistPlayback = null;
   s.returnView = s.currentView;
   titleDisplay.textContent = `${score.composer} — ${score.title}`;
   showView("viewer");
+  // Indefinite toast — cleared by loadAndRenderPdf's hideToast() on success,
+  // or overwritten by the catch branch on failure.
+  showToast(`Loading "${score.title}"…`, { duration: 0 });
 
   try {
     await loadAndRenderPdf(score.filepath);
     addToRecent(score);
   } catch (err) {
+    console.warn(VIEWER_TAG, "openScore failed → bouncing to library:", err);
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
       if (_loadLibrary) await _loadLibrary();
@@ -115,29 +202,45 @@ export function closeScore() {
   const returnTo = getState().returnView;
   cleanupScore();
   showView(returnTo);
+  // The SW auto-caches PDFs on first open; refresh button states so the
+  // library reflects the new cache entry without needing a second visit.
+  if (CACHE_AVAILABLE) refreshCacheStatus().catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
 // Setlist song opening
 // ---------------------------------------------------------------------------
 
-export async function openSetlistSong(index, goToEnd = false) {
+export async function openSetlistSong(index, goToEnd = false, { autoAdvance = false } = {}) {
   const s = getState();
-  s.setlistPlayback.index = index;
   const song = s.setlistPlayback.songs[index];
   const total = s.setlistPlayback.songs.length;
+  dbg("openSetlistSong", { index, goToEnd, autoAdvance, path: song.path });
 
-  s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
-  titleDisplay.textContent = `${song.composer} — ${song.title} (${index + 1}/${total})`;
+  const targetPage = goToEnd
+    ? (song.end_page || Number.MAX_SAFE_INTEGER)
+    : Math.max(1, song.start_page || 1);
+
+  const prevTitle = titleDisplay.textContent;
+  titleDisplay.textContent = `Loading ${song.composer} — ${song.title}…`;
 
   try {
-    const range_min = Math.max(1, song.start_page || 1);
-    await loadAndRenderPdf(song.path, {
-      startPage: goToEnd ? undefined : range_min,
-      goToEnd,
-    });
+    await loadAndRenderPdf(song.path, { startPage: targetPage });
+    // Commit setlist position and title only after load succeeds
+    s.setlistPlayback.index = index;
+    s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
+    titleDisplay.textContent = `${song.composer} — ${song.title} (${index + 1}/${total})`;
     addToRecent({ filepath: song.path, composer: song.composer, title: song.title });
   } catch (err) {
+    // Auto-advance at a song boundary: keep the user on the current song
+    // and surface the failure as a toast — don't bounce to the library.
+    if (autoAdvance) {
+      titleDisplay.textContent = prevTitle;
+      console.warn(VIEWER_TAG, "auto-advance failed (staying in viewer):", err);
+      showToast(`Couldn't load "${song.title}" — press ${goToEnd ? "←" : "→"} to retry`);
+      return;
+    }
+    console.warn(VIEWER_TAG, "openSetlistSong failed → bouncing to library:", err);
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
       if (_loadLibrary) await _loadLibrary();
@@ -161,9 +264,11 @@ export async function renderPage() {
   s.rendering = true;
 
   pageInput.value = s.currentPage;
-  s.pageLayouts = [];
+  dbg("renderPage", { page: s.currentPage, mode: s.displayMode });
 
   try {
+    s.pageLayouts = [];
+
     const layout1 = await renderSinglePage(s.currentPage, canvas1, annotCanvas1);
     s.pageLayouts.push({ page: s.currentPage, ...layout1 });
 
@@ -187,6 +292,12 @@ export async function renderPage() {
     } else {
       pdfContainer.scrollTop = 0;
     }
+    hideToast();
+  } catch (err) {
+    console.error(VIEWER_TAG, "renderPage failed:", err);
+    cleanupAllPages();
+    const detail = err && err.message ? `: ${err.message}` : "";
+    showToast(`Page ${s.currentPage} failed to render${detail} — press ←/→ to retry`);
   } finally {
     s.rendering = false;
   }
@@ -301,7 +412,7 @@ export function nextPage() {
   const range = getPageRange();
   if (s.currentPage + step > range.max) {
     if (s.setlistPlayback && s.setlistPlayback.index < s.setlistPlayback.songs.length - 1) {
-      openSetlistSong(s.setlistPlayback.index + 1);
+      openSetlistSong(s.setlistPlayback.index + 1, false, { autoAdvance: true });
     }
     return;
   }
@@ -314,7 +425,7 @@ export function prevPage() {
   const range = getPageRange();
   if (s.currentPage - step < range.min) {
     if (s.setlistPlayback && s.setlistPlayback.index > 0) {
-      openSetlistSong(s.setlistPlayback.index - 1, true);
+      openSetlistSong(s.setlistPlayback.index - 1, true, { autoAdvance: true });
     }
     return;
   }

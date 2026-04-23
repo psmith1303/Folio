@@ -44,6 +44,7 @@ export const annotCanvas1 = $("#annot-canvas");
 export const annotCanvas2 = $("#annot-canvas-2");
 export const pageWrap1 = $("#page-wrap-1");
 export const pageWrap2 = $("#page-wrap-2");
+export const viewerToast = $("#viewer-toast");
 export const btnExport = $("#btn-export");
 export const btnFullscreen = $("#btn-fullscreen");
 

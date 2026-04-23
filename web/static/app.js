@@ -97,6 +97,21 @@ setDialogLoadLibraryFn(loadLibrary);
 setLoadSetlistsFn(loadSetlists);
 setRecentCallbacks(openScore, cleanupScore);
 
+// Surface any unhandled async failure as a viewer toast — keeps the user in
+// the viewer instead of letting silent errors corrupt later interactions.
+import { showToast } from "./modules/viewer.js";
+window.addEventListener("unhandledrejection", (e) => {
+  const msg = (e.reason && (e.reason.message || e.reason.toString())) || "unknown error";
+  console.error("Unhandled rejection:", e.reason);
+  if (getState().currentView === "viewer") showToast(`Background error: ${msg}`);
+});
+window.addEventListener("error", (e) => {
+  console.error("Window error:", e.error || e.message);
+  if (getState().currentView === "viewer") {
+    showToast(`Error: ${e.message || "unknown"}`);
+  }
+});
+
 // Init all event listeners
 initTheme();
 initLibraryEvents();

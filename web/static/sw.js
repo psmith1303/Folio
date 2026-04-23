@@ -1,4 +1,4 @@
-const SHELL_CACHE = "folio-v15";
+const SHELL_CACHE = "folio-v22";
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 30;
 
@@ -21,6 +21,8 @@ const SHELL_URLS = [
   "/modules/touch.js",
   "/modules/cache.js",
   "/modules/recent.js",
+  "/lib/pdfjs/build/pdf.min.mjs",
+  "/lib/pdfjs/build/pdf.worker.min.mjs",
   "/manifest.json",
   "/favicon.ico",
   "/apple-touch-icon.png",
@@ -213,6 +215,29 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
+// Read the response body fully and verify Content-Length before caching.
+// Tailscale (and other proxies) can truncate a streaming response mid-flight;
+// cache.put on such a response silently stores partial bytes, producing a
+// "cached" PDF that later fails with "Bad end offset" in pdf.js. Validating
+// the byte count prevents poisoning the cache with corrupt data.
+async function safeCachePut(cache, cacheKey, resp) {
+  const expected = parseInt(resp.headers.get("content-length") || "0", 10);
+  const buf = await resp.clone().arrayBuffer();
+  if (expected > 0 && buf.byteLength !== expected) {
+    console.warn(
+      `[sw] not caching ${cacheKey}: got ${buf.byteLength} of ${expected} bytes`
+    );
+    return false;
+  }
+  const verified = new Response(buf, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers: resp.headers,
+  });
+  await cache.put(cacheKey, verified);
+  return true;
+}
+
 async function handlePdfFetch(request) {
   const cacheKey = pdfCacheKey(request.url);
   const pdfPath = getPathFromPdfUrl(request.url);
@@ -226,17 +251,19 @@ async function handlePdfFetch(request) {
     return cached;
   }
 
-  // Cache miss — fetch from network
+  // Cache miss — fetch from network. Retries happen at the viewer layer,
+  // which can also purge the cache between attempts to self-heal corruption.
   try {
     const resp = await fetch(request);
 
     if (pdfPath) {
       if (resp.status === 200) {
-        const clone = resp.clone();
-        await cache.put(cacheKey, clone);
-        const size = parseInt(resp.headers.get("content-length") || "0", 10);
-        await touchLruEntry(pdfPath, size, false);
-        evictIfNeeded().catch(() => {});
+        const stored = await safeCachePut(cache, cacheKey, resp);
+        if (stored) {
+          const size = parseInt(resp.headers.get("content-length") || "0", 10);
+          await touchLruEntry(pdfPath, size, false);
+          evictIfNeeded().catch(() => {});
+        }
       } else if (resp.status === 206) {
         cacheFullPdfInBackground(pdfPath, cacheKey);
       }
@@ -256,10 +283,12 @@ function revalidateInBackground(request, pdfPath, cacheKey) {
     if (!pdfPath) return;
     if (resp.status === 200) {
       const cache = await caches.open(PDF_CACHE);
-      await cache.put(cacheKey, resp);
-      const size = parseInt(resp.headers.get("content-length") || "0", 10);
-      await touchLruEntry(pdfPath, size, false);
-      evictIfNeeded().catch(() => {});
+      const stored = await safeCachePut(cache, cacheKey, resp);
+      if (stored) {
+        const size = parseInt(resp.headers.get("content-length") || "0", 10);
+        await touchLruEntry(pdfPath, size, false);
+        evictIfNeeded().catch(() => {});
+      }
     } else if (resp.status === 206) {
       cacheFullPdfInBackground(pdfPath, cacheKey);
     }
@@ -271,10 +300,12 @@ function cacheFullPdfInBackground(pdfPath, cacheKey) {
   fetch(url).then(async (resp) => {
     if (resp.status !== 200) return;
     const cache = await caches.open(PDF_CACHE);
-    await cache.put(cacheKey, resp);
-    const size = parseInt(resp.headers.get("content-length") || "0", 10);
-    await touchLruEntry(pdfPath, size, false);
-    await evictIfNeeded();
+    const stored = await safeCachePut(cache, cacheKey, resp);
+    if (stored) {
+      const size = parseInt(resp.headers.get("content-length") || "0", 10);
+      await touchLruEntry(pdfPath, size, false);
+      await evictIfNeeded();
+    }
   }).catch(() => {});
 }
 
