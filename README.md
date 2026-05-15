@@ -5,9 +5,9 @@ Runs on any device with a browser, including iPad.
 
 ## Features
 - PDF viewing with three display modes: Fit (single page), Wide (full width, scroll vertically), and 2-up (side-by-side)
-- Annotations: pen (freehand ink), text, eraser, with per-page undo
+- Annotations: pen (freehand ink), text, eraser, per-page undo, Clear Page (one-click erase of all annotations on the current page, with confirmation and undo)
 - 7-colour palette, adjustable pen/text size, musical symbol shortcuts
-- Touch and Apple Pencil support (Pointer Events API)
+- Touch and Apple Pencil support (Pointer Events API), with optional Pencil-only mode that ignores finger/mouse input on the pen tool for palm-rejection during writing
 - Metadata search by composer, title, and folder tags
 - Add scores to setlists directly from the viewer (`s` key)
 - Click-to-navigate in Fit/2-up modes: right/bottom half = next page, left/top half = previous
@@ -128,8 +128,8 @@ python3 -m pytest -v
 
 | File | Tests | What is tested |
 |---|---|---|
-| `tests/test_web_core.py` | 50 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
-| `tests/test_web_api.py` | 93 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security, auth |
+| `tests/test_web_core.py` | 67 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming, PDF export with intrinsic-rotation handling |
+| `tests/test_web_api.py` | 106 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security, auth |
 
 ## Emacs Editing
 
@@ -215,8 +215,13 @@ Each PDF gets a fast content hash (SHA-256 of first/last 4 KB + file size). A pe
 ### File formats
 
 - **`setlists.json`** — setlist definitions, written to the root of the music library folder; see `docs/setlist-file-format.md` for the full specification.
-- **`<score>.json`** — annotation sidecar written alongside each PDF; versioned JSON containing per-page annotation lists and rotation overrides.
+- **`<score>.json`** — annotation sidecar written alongside each PDF; versioned JSON containing per-page annotation lists and rotation overrides.  Stored rotations are *additive on top of* the PDF's intrinsic `/Rotate` (i.e. relative to the canonical Acrobat orientation).
 - **`_hash_index.json`** — content-hash-to-path index, auto-generated in the library directory; used to detect renames between scans.
+
+### One-off scripts
+
+- **`scripts/sort_tags.py`** — alphabetises tag lists in PDF filenames; updates hash index and setlists in lockstep.
+- **`scripts/migrate_rotations.py`** — one-shot migration after the rotation-handling fix.  Subtracts each PDF's intrinsic `/Rotate` from the user-stored rotation in annotation sidecars, so previously-compensated pages stay visually identical after the fix.  Dry-run by default; `--apply` writes.  Only needs to be run once per library, and only matters if you'd previously rotated pages to compensate for upside-down PDFs.
 
 ### Keyboard shortcuts
 

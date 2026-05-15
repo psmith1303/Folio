@@ -5,7 +5,8 @@
 import { getState } from "./state.js";
 import {
   annotCanvas1, annotCanvas2, sizeSlider,
-  btnNav, btnPen, btnText, btnEraser, btnUndo, btnRotCCW, btnRotCW,
+  btnNav, btnPen, btnText, btnEraser, btnPencilOnly, btnUndo,
+  btnRotCCW, btnRotCW,
 } from "./dom.js";
 import { api } from "./api.js";
 import {
@@ -127,6 +128,48 @@ export function doUndo() {
 }
 
 // ---------------------------------------------------------------------------
+// Clear all annotations on the current page (undoable)
+// ---------------------------------------------------------------------------
+
+export function clearCurrentPageAnnotations() {
+  const s = getState();
+  if (!s.pdfDoc) return false;
+  const pg = String(s.currentPage - 1);
+  const pageAnnots = s.annotations[pg];
+  if (!pageAnnots || pageAnnots.length === 0) return false;
+  pushUndo(pg);
+  s.annotations[pg] = [];
+  saveAnnotations();
+  drawAnnotations();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pencil-only mode (palm rejection for the pen tool)
+// ---------------------------------------------------------------------------
+
+const PENCIL_ONLY_STORAGE_KEY = "folio.pencilOnly";
+
+export function setPencilOnly(enabled) {
+  const s = getState();
+  s.pencilOnly = !!enabled;
+  btnPencilOnly.classList.toggle("active", s.pencilOnly);
+  try {
+    localStorage.setItem(PENCIL_ONLY_STORAGE_KEY, s.pencilOnly ? "1" : "0");
+  } catch (_) {
+    // localStorage may be unavailable (private mode); ignore.
+  }
+}
+
+function loadPencilOnlyPref() {
+  try {
+    return localStorage.getItem(PENCIL_ONLY_STORAGE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Page rotation
 // ---------------------------------------------------------------------------
 
@@ -225,6 +268,13 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
     }
     return;
   }
+  // Pencil-only mode: pen tool ignores anything that isn't an Apple Pencil
+  // (pointerType !== "pen"). Other tools are unaffected so the user can still
+  // erase/text/navigate with finger or mouse.
+  if (s.activeTool === "pen" && s.pencilOnly && e.pointerType !== "pen") {
+    return;
+  }
+
   e.preventDefault();
 
   const layout = s.pageLayouts[layoutIndex];
@@ -436,6 +486,13 @@ export function initAnnotationEvents() {
   btnPen.addEventListener("click", () => setTool("pen"));
   btnText.addEventListener("click", () => setTool("text"));
   btnEraser.addEventListener("click", () => setTool("eraser"));
+
+  // Pencil-only toggle — restored from localStorage so iPad users don't
+  // re-enable on every reload.
+  setPencilOnly(loadPencilOnlyPref());
+  btnPencilOnly.addEventListener("click", () => {
+    setPencilOnly(!getState().pencilOnly);
+  });
 
   document.querySelectorAll(".swatch").forEach((sw) => {
     sw.addEventListener("click", () => {

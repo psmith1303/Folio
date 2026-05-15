@@ -30,6 +30,7 @@ const state = {
   // Annotations
   activeTool: "nav",
   penColor: "black",
+  pencilOnly: false,
   annotations: {},
   rotations: {},
   currentStroke: [],
@@ -41,6 +42,7 @@ const state = {
   setlistPlayback: null,
   editingSetlistName: null,
   editingSetlistItems: [],
+  editingSetlistShuffle: false,
   setlistNameMode: "create",
   pickerSelectedScore: null,
   _pickerSelectedSetlist: null,

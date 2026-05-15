@@ -1,4 +1,4 @@
-const SHELL_CACHE = "folio-v22";
+const SHELL_CACHE = "folio-v25";
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 30;
 

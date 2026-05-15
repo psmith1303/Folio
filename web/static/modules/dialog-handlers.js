@@ -7,6 +7,7 @@ import { getState } from "./state.js";
 import {
   dirDialog, dirInput, dirCancel,
   textDialog, textDialogTitle, textInput, textFont, textCancel,
+  clearPageDialog, clearPageCancel, btnClearPage,
   conflictDialog, conflictReload, conflictForce,
   loginDialog, loginInput, loginError,
   btnSetDir, btnAddToSetlist, btnEditTags,
@@ -18,11 +19,11 @@ import {
 } from "./dom.js";
 import { api, login, setLoginHandler } from "./api.js";
 import { esc } from "./utils.js";
-import { updateRecentFilepath } from "./recent.js";
 import {
   saveAnnotations, drawAnnotations,
   setConflictHandler, setTextDialogHandler,
   commitTextAnnotation, cancelTextAnnotation,
+  clearCurrentPageAnnotations,
 } from "./annotations.js";
 import { renderPage } from "./viewer.js";
 
@@ -116,6 +117,28 @@ function initTextDialog() {
       return;
     }
     commitTextAnnotation(text, textFont.value);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Clear-page confirmation dialog
+// ---------------------------------------------------------------------------
+
+function initClearPageDialog() {
+  btnClearPage.addEventListener("click", () => {
+    const s = getState();
+    if (!s.pdfDoc) return;
+    const pg = String(s.currentPage - 1);
+    const pageAnnots = s.annotations[pg];
+    if (!pageAnnots || pageAnnots.length === 0) return;
+    clearPageDialog.showModal();
+  });
+
+  clearPageCancel.addEventListener("click", () => clearPageDialog.close());
+
+  clearPageDialog.addEventListener("close", () => {
+    if (clearPageDialog.returnValue !== "clear") return;
+    clearCurrentPageAnnotations();
   });
 }
 
@@ -296,7 +319,6 @@ function initTagEditorDialog() {
   tagEditorDialog.addEventListener("close", async () => {
     if (tagEditorDialog.returnValue !== "save") return;
     const s = getState();
-    const oldPath = s.currentScore.filepath;
     try {
       const data = await api("/api/scores/tags", {
         method: "PUT",
@@ -312,9 +334,6 @@ function initTagEditorDialog() {
       s.currentScore.folder_tags = data.score.folder_tags;
       s.currentScore.filename_tags = data.score.filename_tags;
       titleDisplay.textContent = `${s.currentScore.composer} \u2014 ${s.currentScore.title}`;
-      if (oldPath !== data.score.filepath) {
-        updateRecentFilepath(oldPath, data.score.filepath);
-      }
     } catch (err) {
       console.error("Failed to update tags:", err);
       alert("Failed to update tags: " + err.message);
@@ -331,6 +350,7 @@ function initTagEditorDialog() {
 export function initDialogHandlers() {
   initDirDialog();
   initTextDialog();
+  initClearPageDialog();
   initConflictDialog();
   initLoginDialog();
   initSetlistPickerDialog();

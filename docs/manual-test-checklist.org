@@ -21,9 +21,13 @@
 - [ ] Pen tool — draw ink strokes, change colour and size
 - [ ] Text tool — place text, try symbol buttons (dynamics, notes)
 - [ ] Eraser — click on an annotation to remove it
+- [ ] Clear Page — toolbar button erases all annotations on the current page after confirmation; Undo restores them
+- [ ] Pencil-only toggle — on iPad with Apple Pencil, enable; finger drawing is ignored on the pen tool while erase/text/nav still work with finger; setting persists across reloads (localStorage)
 - [ ] Undo — Ctrl+Z
 - [ ] Rotation — =r= / =R= keys, or ↶/↷ buttons; annotations should stay aligned
+- [ ] Intrinsic rotation — open a PDF with a non-zero ~/Rotate~ in its metadata (e.g. some scanner output); verify it appears the same way up as in Acrobat, with no manual rotation needed
 - [ ] Export — click Export button, verify downloaded PDF contains your annotations
+- [ ] Export of intrinsic-rotated PDF — annotate a PDF with non-zero ~/Rotate~, export, open in Acrobat; annotations land at the same canonical positions, text reads horizontally
 - [ ] Fullscreen — press =f= or click Fullscreen button; topbar and toolbar hide; press =f= again to exit
 - [ ] Add to setlist — press =s= while viewing a score, pick a setlist
 - [ ] Back — Escape or Back button returns to library

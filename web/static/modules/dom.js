@@ -53,6 +53,8 @@ export const btnNav = $("#btn-nav");
 export const btnPen = $("#btn-pen");
 export const btnText = $("#btn-text");
 export const btnEraser = $("#btn-eraser");
+export const btnClearPage = $("#btn-clear-page");
+export const btnPencilOnly = $("#btn-pencil-only");
 export const btnUndo = $("#btn-undo");
 export const sizeSlider = $("#size-slider");
 export const btnRotCCW = $("#btn-rot-ccw");
@@ -69,10 +71,12 @@ export const setlistDetailActions = $("#setlist-detail-actions");
 export const setlistDetailName = $("#setlist-detail-name");
 export const setlistSongsBody = $("#setlist-songs-body");
 export const btnRenameSetlist = $("#btn-rename-setlist");
+export const btnDeleteSetlist = $("#btn-delete-setlist");
 export const btnAddSong = $("#btn-add-song");
 export const btnPlaySetlist = $("#btn-play-setlist");
 export const btnAddSetlistRef = $("#btn-add-setlist-ref");
 export const btnCacheSetlist = $("#btn-cache-setlist");
+export const btnToggleShuffle = $("#btn-toggle-shuffle");
 
 // Dialogs — set-folder
 export const dirDialog = $("#dir-dialog");
@@ -113,6 +117,10 @@ export const setlistPickerAdd = $("#setlist-picker-add");
 export const setlistRefPickerDialog = $("#setlist-ref-picker-dialog");
 export const setlistRefPickerList = $("#setlist-ref-picker-list");
 export const setlistRefPickerCancel = $("#setlist-ref-picker-cancel");
+
+// Dialogs — clear-page confirmation
+export const clearPageDialog = $("#clear-page-dialog");
+export const clearPageCancel = $("#clear-page-cancel");
 
 // Dialogs — conflict
 export const conflictDialog = $("#conflict-dialog");

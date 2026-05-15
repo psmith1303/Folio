@@ -307,19 +307,24 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
   const s = getState();
   const page = await s.pdfDoc.getPage(pageNum);
   s.cachedPages.set(pageNum, page);
-  const rot = (s.rotations[String(pageNum - 1)] || 0) % 360;
+  // PDF.js's getViewport({rotation}) OVERRIDES the page's intrinsic /Rotate
+  // rather than adding to it. Combine them so PDFs that declare a non-zero
+  // intrinsic rotation render in their canonical (Acrobat) orientation, with
+  // the user's stored rotation applied on top.
+  const userRot = (s.rotations[String(pageNum - 1)] || 0) % 360;
+  const totalRot = (((page.rotate || 0) + userRot) % 360 + 360) % 360;
 
   const containerHeight = pdfContainer.clientHeight - 16;
   const containerWidth = s.displayMode === "2up"
     ? (pdfContainer.clientWidth - 20) / 2
     : pdfContainer.clientWidth - 16;
 
-  const unscaledViewport = page.getViewport({ scale: 1, rotation: rot });
+  const unscaledViewport = page.getViewport({ scale: 1, rotation: totalRot });
   const scaleW = containerWidth / unscaledViewport.width;
   const scaleH = containerHeight / unscaledViewport.height;
   const scale = s.displayMode === "wide" ? scaleW : Math.min(scaleW, scaleH);
 
-  const viewport = page.getViewport({ scale, rotation: rot });
+  const viewport = page.getViewport({ scale, rotation: totalRot });
   const dpr = window.devicePixelRatio || 1;
 
   const cssW = Math.floor(viewport.width);
@@ -445,8 +450,9 @@ async function autoSideBySide() {
   } else {
     const page = await s.pdfDoc.getPage(s.currentPage);
     s.cachedPages.set(s.currentPage, page);
-    const rot = (s.rotations[String(s.currentPage - 1)] || 0) % 360;
-    const vp = page.getViewport({ scale: 1, rotation: rot });
+    const userRot = (s.rotations[String(s.currentPage - 1)] || 0) % 360;
+    const totalRot = (((page.rotate || 0) + userRot) % 360 + 360) % 360;
+    const vp = page.getViewport({ scale: 1, rotation: totalRot });
 
     const containerH = pdfContainer.clientHeight - 16;
     const fitW = pdfContainer.clientWidth - 16;

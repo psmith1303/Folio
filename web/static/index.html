@@ -90,10 +90,12 @@
           <span id="setlist-detail-name">Select a setlist</span>
           <span id="setlist-detail-actions" class="hidden">
             <button id="btn-rename-setlist" title="Rename setlist">Rename</button>
+            <button id="btn-delete-setlist" title="Delete setlist">Delete</button>
             <span class="toolbar-sep"></span>
             <button id="btn-add-song">Add Song</button>
             <button id="btn-add-setlist-ref">Add Setlist</button>
             <span class="toolbar-sep"></span>
+            <button id="btn-toggle-shuffle" title="Play in random order each time">&#x21C4; Shuffle</button>
             <button id="btn-play-setlist" title="Play this setlist">&#9654; Play</button>
             <button id="btn-cache-setlist" title="Download all PDFs for offline use">&#x2B07; Cache</button>
           </span>
@@ -157,6 +159,8 @@
       <button id="btn-pen" class="tool-btn" title="Pen (d)">Pen</button>
       <button id="btn-text" class="tool-btn" title="Text (t)">Text</button>
       <button id="btn-eraser" class="tool-btn" title="Eraser (e)">Eraser</button>
+      <button id="btn-clear-page" title="Clear all annotations on this page">Clear Page</button>
+      <button id="btn-pencil-only" title="Pen tool only accepts Apple Pencil (ignore finger/mouse)">Pencil</button>
       <span class="toolbar-sep"></span>
       <span id="color-swatches">
         <span class="swatch selected" data-color="black" style="background:black" title="Black"></span>
@@ -312,6 +316,20 @@
       <div id="setlist-ref-picker-list"></div>
       <div class="dialog-buttons">
         <button type="button" id="setlist-ref-picker-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Clear-page confirmation dialog                                     -->
+  <!-- ================================================================== -->
+  <dialog id="clear-page-dialog">
+    <form method="dialog">
+      <h3>Clear Page Annotations</h3>
+      <p>Erase all annotations on this page? This can be undone with Undo.</p>
+      <div class="dialog-buttons">
+        <button type="button" id="clear-page-cancel">Cancel</button>
+        <button type="submit" value="clear">Clear</button>
       </div>
     </form>
   </dialog>

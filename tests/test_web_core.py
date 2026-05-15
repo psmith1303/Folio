@@ -16,6 +16,7 @@ from web.core import (
     annotations_etag,
     build_tagged_filename,
     compute_content_hash,
+    export_annotated_pdf,
     load_annotations,
     normalize_path,
     portable_path,
@@ -230,6 +231,60 @@ class TestScanLibrary:
         result = scan_library(str(tmp_path))
         assert len(result) == 0
 
+    def test_hash_cache_reuse_skips_recompute(self, tmp_path, monkeypatch):
+        """Files unchanged by size+mtime reuse the cached hash."""
+        from web import core
+
+        f = tmp_path / "score.pdf"
+        f.write_bytes(b"%PDF-1.4 original")
+        cache: dict = {}
+        first = scan_library(str(tmp_path), hash_cache=cache)
+        assert len(first) == 1
+        assert len(cache) == 1
+
+        calls: list[str] = []
+        orig = core.compute_content_hash
+
+        def spy(path, size=None):
+            calls.append(path)
+            return orig(path, size=size)
+
+        monkeypatch.setattr(core, "compute_content_hash", spy)
+        second = scan_library(str(tmp_path), hash_cache=cache)
+        assert calls == []  # nothing recomputed
+        assert second[0].content_hash == first[0].content_hash
+
+    def test_hash_cache_invalidates_on_mtime_change(self, tmp_path):
+        """Changing a file's mtime forces a fresh hash."""
+        f = tmp_path / "score.pdf"
+        f.write_bytes(b"%PDF-1.4 a")
+        cache: dict = {}
+        scan_library(str(tmp_path), hash_cache=cache)
+        old = next(iter(cache.values()))
+
+        f.write_bytes(b"%PDF-1.4 b changed")
+        # Force an mtime newer than the cached value
+        os.utime(str(f), (old["mtime"] + 10, old["mtime"] + 10))
+        scan_library(str(tmp_path), hash_cache=cache)
+        new = next(iter(cache.values()))
+        assert new["mtime"] != old["mtime"]
+        assert new["hash"] != old["hash"]
+
+    def test_hash_cache_prunes_deleted_files(self, tmp_path):
+        """Files removed from disk drop out of the cache."""
+        f1 = tmp_path / "a.pdf"
+        f2 = tmp_path / "b.pdf"
+        f1.write_bytes(b"%PDF-1.4 one")
+        f2.write_bytes(b"%PDF-1.4 two")
+        cache: dict = {}
+        scan_library(str(tmp_path), hash_cache=cache)
+        assert len(cache) == 2
+
+        f2.unlink()
+        scan_library(str(tmp_path), hash_cache=cache)
+        assert len(cache) == 1
+        assert all("a.pdf" in k for k in cache)
+
 
 # ---------------------------------------------------------------------------
 # Annotations
@@ -373,6 +428,119 @@ class TestSaveAnnotations:
         save_annotations(str(pdf), {}, {})
         # Save without etag — no conflict check
         save_annotations(str(pdf), {"0": []}, {})
+
+
+# ---------------------------------------------------------------------------
+# export_annotated_pdf — intrinsic /Rotate handling
+# ---------------------------------------------------------------------------
+
+
+class TestExportRotation:
+    """Annotations are stored in canonical (post-intrinsic-rotation) normalized
+    coords. The export must place them at the same canonical position regardless
+    of the page's intrinsic /Rotate value."""
+
+    @staticmethod
+    def _make_pdf(path: str, rotation: int) -> None:
+        import pymupdf as fitz
+
+        doc = fitz.open()
+        page = doc.new_page(width=400, height=600)
+        page.set_rotation(rotation)
+        doc.save(path)
+        doc.close()
+
+    @staticmethod
+    def _find_red(pix) -> tuple[int, int] | None:
+        samples = pix.samples
+        n = pix.n
+        for y in range(pix.height):
+            for x in range(pix.width):
+                i = (y * pix.width + x) * n
+                r, g, b = samples[i], samples[i + 1], samples[i + 2]
+                if r > 200 and g < 100 and b < 100:
+                    return (x, y)
+        return None
+
+    @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+    def test_ink_lands_at_canonical_position(self, tmp_path, rotation):
+        import pymupdf as fitz
+
+        pdf = tmp_path / "rotated.pdf"
+        self._make_pdf(str(pdf), rotation)
+
+        # Short red horizontal stroke at canonical (0.1, 0.1) — top-left area.
+        ink = {
+            "uuid": "ink-rot",
+            "type": "ink",
+            "color": "red",
+            "width": 8,
+            "points": [[0.10, 0.10], [0.12, 0.10], [0.14, 0.10]],
+        }
+        save_annotations(str(pdf), {"0": [ink]}, {})
+
+        out_pdf = tmp_path / "out.pdf"
+        out_pdf.write_bytes(export_annotated_pdf(str(pdf)))
+
+        with fitz.open(str(out_pdf)) as doc:
+            pix = doc[0].get_pixmap(dpi=72)
+
+        red = self._find_red(pix)
+        assert red is not None, f"No red pixel found for /Rotate {rotation}"
+        # Expected canonical position; allow 20px slop for stroke thickness.
+        ex_x, ex_y = 0.10 * pix.width, 0.10 * pix.height
+        assert abs(red[0] - ex_x) < 20, (
+            f"/Rotate {rotation}: x off — got {red[0]}, expected ~{ex_x:.0f}"
+        )
+        assert abs(red[1] - ex_y) < 20, (
+            f"/Rotate {rotation}: y off — got {red[1]}, expected ~{ex_y:.0f}"
+        )
+
+    @pytest.mark.parametrize("rotation", [0, 90, 180, 270])
+    def test_text_lands_at_canonical_position(self, tmp_path, rotation):
+        """Text annotation centered at canonical (0.5, 0.5) appears upright at
+        the canonical center after export, regardless of intrinsic rotation."""
+        import pymupdf as fitz
+
+        pdf = tmp_path / "rotated.pdf"
+        self._make_pdf(str(pdf), rotation)
+
+        text = {
+            "uuid": "txt-rot",
+            "type": "text",
+            "x": 0.5, "y": 0.5,
+            "text": "X",
+            "color": "black",
+            "size": 5,
+            "font": "sans-serif",
+        }
+        save_annotations(str(pdf), {"0": [text]}, {})
+
+        out_pdf = tmp_path / "out.pdf"
+        out_pdf.write_bytes(export_annotated_pdf(str(pdf)))
+
+        with fitz.open(str(out_pdf)) as doc:
+            pix = doc[0].get_pixmap(dpi=72)
+
+        # Find the dark glyph pixels and compute their centroid.
+        samples = pix.samples
+        n = pix.n
+        xs, ys = [], []
+        for y in range(pix.height):
+            for x in range(pix.width):
+                i = (y * pix.width + x) * n
+                if samples[i] < 80 and samples[i + 1] < 80 and samples[i + 2] < 80:
+                    xs.append(x)
+                    ys.append(y)
+        assert xs, f"No glyph pixels found for /Rotate {rotation}"
+        cx, cy = sum(xs) / len(xs), sum(ys) / len(ys)
+        ex_x, ex_y = 0.5 * pix.width, 0.5 * pix.height
+        assert abs(cx - ex_x) < 30, (
+            f"/Rotate {rotation}: text x off — got {cx:.0f}, expected ~{ex_x:.0f}"
+        )
+        assert abs(cy - ex_y) < 30, (
+            f"/Rotate {rotation}: text y off — got {cy:.0f}, expected ~{ex_y:.0f}"
+        )
 
 
 # ---------------------------------------------------------------------------

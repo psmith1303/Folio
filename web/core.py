@@ -56,13 +56,17 @@ def portable_path(path: str) -> str:
 _HASH_CHUNK = 4096
 
 
-def compute_content_hash(filepath: str) -> str:
+def compute_content_hash(filepath: str, size: int | None = None) -> str:
     """Compute a fast content hash from a file's first/last 4 KB and size.
+
+    If *size* is supplied, the redundant stat is skipped — pass it when you
+    already have a stat result for *filepath*.
 
     Returns a 12-char hex string, or "" if the file cannot be read.
     """
     try:
-        size = os.path.getsize(filepath)
+        if size is None:
+            size = os.path.getsize(filepath)
         h = hashlib.sha256()
         with open(filepath, "rb") as f:
             head = f.read(_HASH_CHUNK)
@@ -273,29 +277,100 @@ def rename_score_tags(score: Score, new_tags: set[str]) -> Score:
 # ---------------------------------------------------------------------------
 
 
-def scan_library(path: str) -> list[Score]:
+def scan_library(
+    path: str,
+    hash_cache: dict | None = None,
+) -> list[Score]:
     """Walk *path* and return a Score for every PDF found.
 
     Directories containing a ``.exclude`` file are skipped entirely.
+
+    If *hash_cache* is provided, it is treated as a persistent map of
+    ``{portable_path: {"size": int, "mtime": float, "hash": str}}``. Files
+    whose size and mtime match the cached entry reuse the cached hash
+    without re-reading the file. After scanning, *hash_cache* is mutated
+    in place to reflect the current library (stale entries pruned, new
+    entries added), so the caller can persist it.
     """
     path = normalize_path(path)
     if not os.path.isdir(path):
         raise FileNotFoundError(f"Directory not found: {path}")
 
     found: list[Score] = []
-    for root_dir, subdirs, files in os.walk(path):
+    new_cache: dict[str, dict] = {}
+
+    def visit(dir_path: str) -> None:
+        try:
+            with os.scandir(dir_path) as it:
+                entries = list(it)
+        except OSError:
+            return
+
         # Skip directories that contain a .exclude marker
-        if ".exclude" in files:
-            subdirs.clear()
-            continue
-        rel = os.path.normpath(os.path.relpath(root_dir, path))
+        for e in entries:
+            if e.name == ".exclude":
+                try:
+                    if e.is_file(follow_symlinks=False):
+                        return
+                except OSError:
+                    return
+
+        rel = os.path.normpath(os.path.relpath(dir_path, path))
         parts = rel.lower().replace("\\", "/").split("/")
         ftags = {p for p in parts if p and p != "."}
-        for f in files:
-            if f.lower().endswith(".pdf"):
-                score = Score(os.path.join(root_dir, f), f, ftags)
-                score.content_hash = compute_content_hash(score.filepath)
-                found.append(score)
+
+        subdirs: list[str] = []
+        for entry in entries:
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    subdirs.append(entry.path)
+                    continue
+            except OSError:
+                continue
+            if not entry.name.lower().endswith(".pdf"):
+                continue
+
+            score = Score(entry.path, entry.name, ftags)
+
+            try:
+                st = entry.stat()
+            except OSError:
+                st = None
+
+            pkey = portable_path(entry.path)
+            cached_hash = ""
+            if hash_cache is not None and st is not None:
+                prev = hash_cache.get(pkey)
+                if (prev
+                        and prev.get("size") == st.st_size
+                        and prev.get("mtime") == st.st_mtime
+                        and prev.get("hash")):
+                    cached_hash = prev["hash"]
+
+            if cached_hash:
+                score.content_hash = cached_hash
+            else:
+                size = st.st_size if st is not None else None
+                score.content_hash = compute_content_hash(entry.path, size=size)
+
+            if hash_cache is not None and st is not None and score.content_hash:
+                new_cache[pkey] = {
+                    "size": st.st_size,
+                    "mtime": st.st_mtime,
+                    "hash": score.content_hash,
+                }
+
+            found.append(score)
+
+        for sd in subdirs:
+            visit(sd)
+
+    visit(path)
+
+    if hash_cache is not None:
+        hash_cache.clear()
+        hash_cache.update(new_cache)
+
     return found
 
 
@@ -468,6 +543,13 @@ def export_annotated_pdf(pdf_path: str) -> bytes:
 
 
 def _export_ink(page, annot: dict, w: float, h: float) -> None:
+    """Draw an ink stroke onto *page*.
+
+    Annotation coords are normalized in the page's canonical (post-rotation)
+    space, but PyMuPDF's draw primitives consume mediabox (pre-rotation)
+    coords. Map each point through ``page.derotation_matrix`` so strokes land
+    correctly on PDFs whose intrinsic ``/Rotate`` is non-zero.
+    """
     import pymupdf as fitz
 
     pts = annot.get("points", [])
@@ -475,7 +557,8 @@ def _export_ink(page, annot: dict, w: float, h: float) -> None:
         return
     color = _CSS_TO_RGB.get(annot.get("color", "black"), (0, 0, 0))
     width = max(0.5, annot.get("width", 2) * 0.75)
-    points = [fitz.Point(p[0] * w, p[1] * h) for p in pts]
+    derot = page.derotation_matrix
+    points = [fitz.Point(p[0] * w, p[1] * h) * derot for p in pts]
     shape = page.new_shape()
     shape.draw_polyline(points)
     shape.finish(color=color, width=width, lineCap=1, lineJoin=1)
@@ -483,6 +566,13 @@ def _export_ink(page, annot: dict, w: float, h: float) -> None:
 
 
 def _export_text(page, annot: dict, w: float, h: float) -> None:
+    """Insert a text annotation onto *page*.
+
+    Centering is applied in canonical space, then the anchor is mapped to
+    mediabox coords via ``page.derotation_matrix``. ``rotate=page.rotation``
+    pre-rotates the glyphs so they read horizontally in the canonical view
+    on PDFs with intrinsic ``/Rotate`` non-zero.
+    """
     import pymupdf as fitz
 
     text = annot.get("text", "")
@@ -496,10 +586,12 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
         size = round(size * 6)
     fontname = "helv"
     text_w = fitz.get_text_length(text, fontname=fontname, fontsize=size)
+    anchor = fitz.Point(x - text_w / 2, y + size * 0.35) * page.derotation_matrix
     page.insert_text(
-        fitz.Point(x - text_w / 2, y + size * 0.35),
+        anchor,
         text,
         fontname=fontname,
         fontsize=size,
         color=color,
+        rotate=page.rotation % 360,
     )
