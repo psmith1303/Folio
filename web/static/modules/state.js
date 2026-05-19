@@ -25,6 +25,8 @@ const state = {
   rendering: false,
   pageLayouts: [],
   cachedPages: new Map(),
+  prerenderedPages: new Map(),
+  prefetchedSong: null,
   scrollToBottomAfterRender: false,
 
   // Annotations
@@ -77,6 +79,7 @@ export function resetViewerState() {
   state.pendingTextAnnot = null;
   state.draggingAnnot = null;
   state.cachedPages.clear();
+  state.prerenderedPages.clear();
 }
 
 // Reset annotation state when loading a new score (keeps viewer state)
@@ -86,5 +89,6 @@ export function resetAnnotationState() {
   state.annotationEtag = null;
   state.undoStacks = {};
   state.cachedPages.clear();
+  state.prerenderedPages.clear();
   state.userLockedMode = false;
 }

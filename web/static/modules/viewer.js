@@ -22,16 +22,20 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import { showView } from "./views.js";
-import { drawAnnotations, setTool, setNavCallbacks, setRenderPageFn } from "./annotations.js";
+import {
+  drawAnnotations, setTool, setNavCallbacks, setRenderPageFn,
+  setInvalidatePrerenderFn,
+} from "./annotations.js";
 import { addToRecent } from "./recent.js";
 import { CACHE_AVAILABLE, refreshCacheStatus } from "./cache.js";
 
 // Register callbacks so annotations module can trigger navigation
 setNavCallbacks(nextPage, prevPage);
 setRenderPageFn(renderPage);
+setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.5.8]";
+const VIEWER_TAG = "[viewer v2.8.0]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);
@@ -73,30 +77,19 @@ export function hideToast() {
 // auto-advance) instead of being bounced back to the library.
 // ---------------------------------------------------------------------------
 
-async function loadAndRenderPdf(filepath, { startPage = 1 } = {}) {
-  const s = getState();
-
-  // Fetch annotations first — failure falls back to empty defaults
-  let annotData = { pages: {}, rotations: {}, etag: null };
-  try {
-    annotData = await api(`/api/annotations?path=${encodeURIComponent(filepath)}`);
-  } catch {
-    // keep defaults
-  }
-
-  // Load PDF with one retry on transport failure.
-  //
-  // disableRange + disableStream: fetch the PDF as a single full GET. HTTPS
-  // proxies (Tailscale Serve, cloudflared, etc.) can truncate chunked-stream
-  // range responses mid-flight, which surfaces as "Bad end offset" errors
-  // from pdf.js. A single-shot GET paired with the service worker's cache
-  // avoids the proxy-streaming failure mode at the cost of a slower first
-  // open for large PDFs — which the SW cache then makes instant next time.
-  //
-  // Self-heal: before retrying, purge the PDF_CACHE entry for this path.
-  // A prior truncated write can poison the cache; dropping it forces the
-  // next attempt to go back to the network instead of replaying corruption.
-  let newDoc = null;
+// Single-shot GET with retry + cache self-heal. Returns the PdfDocumentProxy.
+//
+// disableRange + disableStream: fetch the PDF as a single full GET. HTTPS
+// proxies (Tailscale Serve, cloudflared, etc.) can truncate chunked-stream
+// range responses mid-flight, which surfaces as "Bad end offset" errors
+// from pdf.js. A single-shot GET paired with the service worker's cache
+// avoids the proxy-streaming failure mode at the cost of a slower first
+// open for large PDFs — which the SW cache then makes instant next time.
+//
+// Self-heal: before retrying, purge the PDF_CACHE entry for this path.
+// A prior truncated write can poison the cache; dropping it forces the
+// next attempt to go back to the network instead of replaying corruption.
+async function _fetchPdfDoc(filepath, { showRetryToast = true } = {}) {
   let lastErr = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -106,8 +99,7 @@ async function loadAndRenderPdf(filepath, { startPage = 1 } = {}) {
         disableRange: true,
         disableStream: true,
       });
-      newDoc = await loadingTask.promise;
-      break;
+      return await loadingTask.promise;
     } catch (err) {
       lastErr = err;
       console.warn(VIEWER_TAG, `PDF load attempt ${attempt + 1} failed:`, err);
@@ -121,14 +113,41 @@ async function loadAndRenderPdf(filepath, { startPage = 1 } = {}) {
         } catch (e) {
           console.warn(VIEWER_TAG, "cache purge failed:", e);
         }
-        showToast(`Load failed — retrying…`, { duration: 0 });
+        if (showRetryToast) showToast(`Load failed — retrying…`, { duration: 0 });
         await new Promise((r) => setTimeout(r, 800));
       }
     }
   }
-  if (!newDoc) throw lastErr;
+  throw lastErr;
+}
 
-  // Commit state only after successful load
+async function _fetchAnnotations(filepath) {
+  try {
+    return await api(`/api/annotations?path=${encodeURIComponent(filepath)}`);
+  } catch {
+    return { pages: {}, rotations: {}, etag: null };
+  }
+}
+
+async function loadAndRenderPdf(filepath, { startPage = 1, prefetched = null } = {}) {
+  const s = getState();
+
+  let annotData, newDoc;
+  if (prefetched && prefetched.path === filepath && prefetched.pdfDoc) {
+    dbg("loadAndRenderPdf: using prefetched bundle for", filepath);
+    annotData = prefetched.annotData || { pages: {}, rotations: {}, etag: null };
+    newDoc = prefetched.pdfDoc;
+  } else {
+    annotData = await _fetchAnnotations(filepath);
+    newDoc = await _fetchPdfDoc(filepath);
+  }
+
+  // Commit state only after successful load. Destroy the previous doc to
+  // release its worker resources — without this, prefetch + setlist
+  // playback can pile up live PDF instances.
+  if (s.pdfDoc && s.pdfDoc !== newDoc) {
+    try { s.pdfDoc.destroy(); } catch { /* ignore */ }
+  }
   resetAnnotationState();
   s.pdfDoc = newDoc;
   s.annotations = annotData.pages || {};
@@ -144,7 +163,7 @@ async function loadAndRenderPdf(filepath, { startPage = 1 } = {}) {
 
   hideToast();
   await autoSideBySide();
-  renderPage();
+  await renderPage();
   pdfContainer.focus();
 }
 
@@ -188,6 +207,7 @@ export async function openScore(score) {
 
 export function cleanupScore() {
   cleanupAllPages();
+  dropPrefetchedSong();
   resetViewerState();
   setTool("nav");
   canvas1.width = 0;  canvas1.height = 0;
@@ -208,6 +228,63 @@ export function closeScore() {
 }
 
 // ---------------------------------------------------------------------------
+// Setlist song prefetch
+//
+// While the user is reading the current song, fetch the next song's
+// annotations + parse its PDF in the background. On the song boundary
+// (last-page → next, or auto-advance), openSetlistSong consumes the
+// prefetched bundle and skips network + parse entirely.
+// ---------------------------------------------------------------------------
+
+async function dropPrefetchedSong() {
+  const s = getState();
+  if (!s.prefetchedSong) return;
+  const slot = s.prefetchedSong;
+  s.prefetchedSong = null;
+  if (slot.pdfDoc) {
+    try { slot.pdfDoc.destroy(); } catch { /* ignore */ }
+  }
+}
+
+async function prefetchNextSetlistSong() {
+  const s = getState();
+  if (!s.setlistPlayback) return;
+  const nextIdx = s.setlistPlayback.index + 1;
+  const song = s.setlistPlayback.songs[nextIdx];
+  if (!song) return;
+
+  // Already prefetched (or in flight) for this song — nothing to do.
+  if (s.prefetchedSong && s.prefetchedSong.path === song.path) return;
+
+  // Different song was queued (e.g. setlist index jumped) — discard it.
+  if (s.prefetchedSong) await dropPrefetchedSong();
+
+  const slot = { index: nextIdx, path: song.path, pdfDoc: null, annotData: null };
+  s.prefetchedSong = slot;
+  dbg("prefetchNextSetlistSong: starting prefetch for", song.path);
+
+  try {
+    const [annotData, pdfDoc] = await Promise.all([
+      _fetchAnnotations(song.path),
+      _fetchPdfDoc(song.path, { showRetryToast: false }),
+    ]);
+    // Slot may have been claimed (openSetlistSong) or replaced (drop +
+    // re-prefetch) while we were awaiting. If so, the doc isn't ours
+    // to keep — destroy it to free the worker.
+    if (s.prefetchedSong !== slot) {
+      try { pdfDoc.destroy(); } catch { /* ignore */ }
+      return;
+    }
+    slot.annotData = annotData;
+    slot.pdfDoc = pdfDoc;
+    dbg("prefetchNextSetlistSong: ready for", song.path);
+  } catch (err) {
+    dbg("prefetchNextSetlistSong: failed for", song.path, err);
+    if (s.prefetchedSong === slot) s.prefetchedSong = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Setlist song opening
 // ---------------------------------------------------------------------------
 
@@ -224,8 +301,22 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
   const prevTitle = titleDisplay.textContent;
   titleDisplay.textContent = `Loading ${song.composer} — ${song.title}…`;
 
+  // Claim the prefetched bundle if it matches this song. Claiming clears
+  // the state slot so the in-progress prefetch promise (if any) doesn't
+  // race with a fresh load, and so dropPrefetchedSong() won't destroy
+  // a doc we're about to mount.
+  let prefetched = null;
+  if (s.prefetchedSong && s.prefetchedSong.path === song.path && s.prefetchedSong.pdfDoc) {
+    prefetched = s.prefetchedSong;
+    s.prefetchedSong = null;
+    dbg("openSetlistSong: claimed prefetch for", song.path);
+  } else {
+    // Different song than the one we prefetched — drop it before loading.
+    await dropPrefetchedSong();
+  }
+
   try {
-    await loadAndRenderPdf(song.path, { startPage: targetPage });
+    await loadAndRenderPdf(song.path, { startPage: targetPage, prefetched });
     // Commit setlist position and title only after load succeeds
     s.setlistPlayback.index = index;
     s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
@@ -284,7 +375,6 @@ export async function renderPage() {
 
     drawAnnotations();
     cleanupOldPages();
-    prefetchNextPage();
 
     if (s.scrollToBottomAfterRender) {
       pdfContainer.scrollTop = pdfContainer.scrollHeight;
@@ -301,12 +391,24 @@ export async function renderPage() {
   } finally {
     s.rendering = false;
   }
+
+  // Fire-and-forget neighbor prerender + next-song prefetch. Both stay off
+  // the critical path of the visible render — they only matter for the
+  // *next* navigation, not the one we just completed.
+  prerenderNeighbors();
+  prefetchNextSetlistSong();
 }
 
-async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
+// Rasterizes a page to a detached canvas. Returns a cache entry suitable
+// for blitting. Held separately from cachedPages because the offscreen
+// canvas is the expensive part — getPage() is cheap compared to render().
+async function _rasterizePageImpl(pageNum) {
   const s = getState();
-  const page = await s.pdfDoc.getPage(pageNum);
-  s.cachedPages.set(pageNum, page);
+  let page = s.cachedPages.get(pageNum);
+  if (!page) {
+    page = await s.pdfDoc.getPage(pageNum);
+    s.cachedPages.set(pageNum, page);
+  }
   // PDF.js's getViewport({rotation}) OVERRIDES the page's intrinsic /Rotate
   // rather than adding to it. Combine them so PDFs that declare a non-zero
   // intrinsic rotation render in their canonical (Acrobat) orientation, with
@@ -314,30 +416,112 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
   const userRot = (s.rotations[String(pageNum - 1)] || 0) % 360;
   const totalRot = (((page.rotate || 0) + userRot) % 360 + 360) % 360;
 
-  const containerHeight = pdfContainer.clientHeight - 16;
-  const containerWidth = s.displayMode === "2up"
-    ? (pdfContainer.clientWidth - 20) / 2
-    : pdfContainer.clientWidth - 16;
+  const layoutCtx = _layoutContext();
+  const containerHeight = layoutCtx.containerH - 16;
+  const containerWidth = layoutCtx.displayMode === "2up"
+    ? (layoutCtx.containerW - 20) / 2
+    : layoutCtx.containerW - 16;
 
   const unscaledViewport = page.getViewport({ scale: 1, rotation: totalRot });
   const scaleW = containerWidth / unscaledViewport.width;
   const scaleH = containerHeight / unscaledViewport.height;
-  const scale = s.displayMode === "wide" ? scaleW : Math.min(scaleW, scaleH);
-
+  const scale = layoutCtx.displayMode === "wide" ? scaleW : Math.min(scaleW, scaleH);
   const viewport = page.getViewport({ scale, rotation: totalRot });
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = layoutCtx.dpr;
 
   const cssW = Math.floor(viewport.width);
   const cssH = Math.floor(viewport.height);
 
-  pdfCanvas.width = Math.floor(viewport.width * dpr);
-  pdfCanvas.height = Math.floor(viewport.height * dpr);
-  pdfCanvas.style.width = cssW + "px";
-  pdfCanvas.style.height = cssH + "px";
-
-  const ctx = pdfCanvas.getContext("2d");
+  const off = document.createElement("canvas");
+  off.width = Math.floor(viewport.width * dpr);
+  off.height = Math.floor(viewport.height * dpr);
+  const ctx = off.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   await page.render({ canvasContext: ctx, viewport }).promise;
+
+  return {
+    canvas: off,
+    cssW, cssH, dpr,
+    userRot,
+    displayMode: layoutCtx.displayMode,
+    containerW: layoutCtx.containerW,
+    containerH: layoutCtx.containerH,
+  };
+}
+
+const _rasterInFlight = new Map();
+
+// Cache-and-dedupe wrapper. Two concurrent callers asking for the same page
+// share the same in-flight rasterization promise instead of duplicating work.
+async function _getPrerenderEntry(pageNum) {
+  const s = getState();
+  const cached = s.prerenderedPages.get(pageNum);
+  if (cached && _prerenderValid(cached, pageNum)) return cached;
+  if (cached) s.prerenderedPages.delete(pageNum);
+
+  if (_rasterInFlight.has(pageNum)) {
+    return _rasterInFlight.get(pageNum);
+  }
+  const promise = _rasterizePageImpl(pageNum);
+  _rasterInFlight.set(pageNum, promise);
+  try {
+    const entry = await promise;
+    if (_prerenderValid(entry, pageNum)) {
+      s.prerenderedPages.set(pageNum, entry);
+    }
+    return entry;
+  } finally {
+    _rasterInFlight.delete(pageNum);
+  }
+}
+
+function _layoutContext() {
+  return {
+    displayMode: getState().displayMode,
+    containerW: pdfContainer.clientWidth,
+    containerH: pdfContainer.clientHeight,
+    dpr: window.devicePixelRatio || 1,
+  };
+}
+
+function _prerenderValid(entry, pageNum) {
+  if (!entry) return false;
+  const s = getState();
+  const ctx = _layoutContext();
+  const userRot = (s.rotations[String(pageNum - 1)] || 0) % 360;
+  return entry.displayMode === ctx.displayMode
+    && entry.containerW === ctx.containerW
+    && entry.containerH === ctx.containerH
+    && entry.dpr === ctx.dpr
+    && entry.userRot === userRot;
+}
+
+export function invalidatePrerenders() {
+  getState().prerenderedPages.clear();
+}
+
+export function invalidatePrerender(pageNum) {
+  getState().prerenderedPages.delete(pageNum);
+}
+
+async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
+  // Guard against blitting an entry whose layout no longer matches the
+  // viewer (in-flight raster started before a display-mode change or
+  // resize). If stale, drop it and rasterize fresh at the current layout.
+  let entry = await _getPrerenderEntry(pageNum);
+  if (!_prerenderValid(entry, pageNum)) {
+    getState().prerenderedPages.delete(pageNum);
+    entry = await _getPrerenderEntry(pageNum);
+  }
+  const { canvas: off, cssW, cssH, dpr } = entry;
+
+  pdfCanvas.width = off.width;
+  pdfCanvas.height = off.height;
+  pdfCanvas.style.width = cssW + "px";
+  pdfCanvas.style.height = cssH + "px";
+  const ctx = pdfCanvas.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(off, 0, 0);
 
   annotCanvas.width = Math.floor(cssW * dpr);
   annotCanvas.height = Math.floor(cssH * dpr);
@@ -347,23 +531,63 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
   return { cssW, cssH };
 }
 
+// Background prerender of the next view (and the previous view, since users
+// often page backwards by one). Pages are stored as detached canvases that
+// the next renderPage can blit instantly instead of re-rasterizing.
+async function prerenderNeighbors() {
+  const s = getState();
+  if (!s.pdfDoc) return;
+  const step = s.displayMode === "2up" ? 2 : 1;
+
+  const targets = [];
+  for (let i = 0; i < step; i++) {
+    const p = s.currentPage + step + i;
+    if (p <= s.totalPages) targets.push(p);
+  }
+  for (let i = 0; i < step; i++) {
+    const p = s.currentPage - step + i;
+    if (p >= 1) targets.push(p);
+  }
+
+  for (const pageNum of targets) {
+    // Bail if a visible render started — we don't want background work
+    // competing with the page the user is actively viewing.
+    if (s.rendering) return;
+    const existing = s.prerenderedPages.get(pageNum);
+    if (existing && _prerenderValid(existing, pageNum)) continue;
+    try {
+      await _getPrerenderEntry(pageNum);
+    } catch (err) {
+      dbg("prerender failed for page", pageNum, err);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Page cache management
 // ---------------------------------------------------------------------------
 
 function cleanupOldPages() {
   const s = getState();
+  const step = s.displayMode === "2up" ? 2 : 1;
   const hot = new Set();
   for (const layout of s.pageLayouts) {
     hot.add(layout.page);
-    hot.add(layout.page + 1);
-    if (layout.page > 1) hot.add(layout.page - 1);
+  }
+  // Also keep prerendered neighbors hot — these match the set prerenderNeighbors
+  // populates, so we don't churn pdf.js page objects between page turns.
+  for (let i = 1; i <= step; i++) {
+    hot.add(s.currentPage + step + i - 1);
+    hot.add(s.currentPage - step + i - 1);
   }
   for (const [num, page] of s.cachedPages) {
     if (!hot.has(num)) {
       page.cleanup();
       s.cachedPages.delete(num);
     }
+  }
+  for (const num of s.prerenderedPages.keys()) {
+    if (!hot.has(num)) s.prerenderedPages.delete(num);
   }
 }
 
@@ -373,19 +597,7 @@ function cleanupAllPages() {
     page.cleanup();
   }
   s.cachedPages.clear();
-}
-
-async function prefetchNextPage() {
-  const s = getState();
-  if (!s.pdfDoc) return;
-  const step = s.displayMode === "2up" ? 2 : 1;
-  const next = s.currentPage + step;
-  if (next <= s.totalPages && !s.cachedPages.has(next)) {
-    try {
-      const page = await s.pdfDoc.getPage(next);
-      s.cachedPages.set(next, page);
-    } catch { /* ignore prefetch failures */ }
-  }
+  s.prerenderedPages.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -444,6 +656,7 @@ export function prevPage() {
 async function autoSideBySide() {
   const s = getState();
   if (s.userLockedMode) return;
+  const before = s.displayMode;
 
   if (!s.pdfDoc || s.totalPages < 2 || s.currentPage >= s.totalPages) {
     s.displayMode = "fit";
@@ -463,6 +676,7 @@ async function autoSideBySide() {
 
     s.displayMode = dualScale >= fitScale ? "2up" : "fit";
   }
+  if (s.displayMode !== before) invalidatePrerenders();
   updateModeButtons();
 }
 
@@ -561,6 +775,7 @@ export function initViewerEvents() {
     const s = getState();
     s.displayMode = "fit";
     s.userLockedMode = true;
+    invalidatePrerenders();
     updateModeButtons();
     setTool("nav");
     renderPage();
@@ -570,6 +785,7 @@ export function initViewerEvents() {
     const s = getState();
     s.displayMode = "wide";
     s.userLockedMode = true;
+    invalidatePrerenders();
     updateModeButtons();
     setTool("nav");
     renderPage();
@@ -579,6 +795,7 @@ export function initViewerEvents() {
     const s = getState();
     s.displayMode = "2up";
     s.userLockedMode = true;
+    invalidatePrerenders();
     updateModeButtons();
     setTool("nav");
     renderPage();
@@ -602,6 +819,7 @@ export function initViewerEvents() {
     resizeTimer = setTimeout(async () => {
       const s = getState();
       if (s.pdfDoc) {
+        invalidatePrerenders();
         await checkAutoSideBySide();
         renderPage();
       }

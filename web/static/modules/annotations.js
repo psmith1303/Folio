@@ -176,6 +176,9 @@ function loadPencilOnlyPref() {
 let _renderPage = null;
 export function setRenderPageFn(fn) { _renderPage = fn; }
 
+let _invalidatePrerender = null;
+export function setInvalidatePrerenderFn(fn) { _invalidatePrerender = fn; }
+
 export function rotatePage(delta) {
   const s = getState();
   if (!s.pdfDoc) return;
@@ -184,6 +187,7 @@ export function rotatePage(delta) {
   const next = (current + delta + 360) % 360;
   s.rotations[pg] = next;
   saveAnnotations();
+  if (_invalidatePrerender) _invalidatePrerender(s.currentPage);
   if (_renderPage) _renderPage();
 }
 
