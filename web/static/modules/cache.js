@@ -5,7 +5,7 @@
 import { libraryBody } from "./dom.js";
 
 const PDF_CACHE = "folio-pdfs-v1";
-const MAX_AUTO_CACHED = 30;
+const MAX_AUTO_CACHED = 100;
 
 // Cache API and Service Workers require a secure context (HTTPS or localhost).
 export const CACHE_AVAILABLE = window.isSecureContext && "caches" in window;

@@ -101,17 +101,56 @@ setNewestCallbacks(openScore, cleanupScore);
 
 // Surface any unhandled async failure as a viewer toast — keeps the user in
 // the viewer instead of letting silent errors corrupt later interactions.
+//
+// "Script error." with no filename/lineno is WebKit's cross-origin mask
+// (workers, indirect handlers). It's pure noise to the user, so suppress
+// the toast in that case — still logs to console and, if enabled, the
+// server. Enable on iPad via DevTools-equivalent:
+//   localStorage.folioRemoteLog = "1"
+// then `tail` the Folio server stdout from a machine that has a console.
 import { showToast } from "./modules/viewer.js";
+
+let _lastRemoteLogTs = 0;
+function remoteLog(level, message, detail) {
+  if (typeof localStorage === "undefined") return;
+  if (localStorage.folioRemoteLog !== "1") return;
+  const now = Date.now();
+  if (now - _lastRemoteLogTs < 500) return;  // throttle bursts
+  _lastRemoteLogTs = now;
+  fetch("/api/clientlog", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      level,
+      message: String(message || ""),
+      detail: String(detail || ""),
+      url: location.href,
+      ua: navigator.userAgent,
+    }),
+  }).catch(() => { /* swallow — don't recurse on log failure */ });
+}
+
+function isBareScriptError(e) {
+  return e && e.message === "Script error." && !e.filename;
+}
+
 window.addEventListener("unhandledrejection", (e) => {
-  const msg = (e.reason && (e.reason.message || e.reason.toString())) || "unknown error";
-  console.error("Unhandled rejection:", e.reason);
+  const reason = e.reason;
+  const msg = (reason && (reason.message || reason.toString())) || "unknown error";
+  const stack = (reason && reason.stack) || "";
+  console.error("Unhandled rejection:", reason);
+  remoteLog("error", `unhandledrejection: ${msg}`, stack);
   if (getState().currentView === "viewer") showToast(`Background error: ${msg}`);
 });
+
 window.addEventListener("error", (e) => {
-  console.error("Window error:", e.error || e.message);
-  if (getState().currentView === "viewer") {
-    showToast(`Error: ${e.message || "unknown"}`);
-  }
+  const stack = (e.error && e.error.stack) || "";
+  const loc = e.filename ? `${e.filename}:${e.lineno}:${e.colno}` : "";
+  const detail = loc ? `${e.message} @ ${loc}` : e.message || "unknown";
+  console.error("Window error:", detail, e.error);
+  remoteLog("error", detail, stack);
+  if (isBareScriptError(e)) return;  // toast would be noise — no useful info
+  if (getState().currentView === "viewer") showToast(`Error: ${detail}`);
 });
 
 // Init all event listeners

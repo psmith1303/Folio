@@ -17,7 +17,7 @@ import {
 import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
-import { openSetlistSong } from "./viewer.js";
+import { openSetlistSong, openScore } from "./viewer.js";
 import { CACHE_AVAILABLE, cachePdf, getCacheStatus } from "./cache.js";
 
 // ---------------------------------------------------------------------------
@@ -151,13 +151,15 @@ function renderSetlistDetail() {
         </td>
       `;
     } else {
+      const startPage = item.start_page || 1;
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td>${esc(item.composer || "")}</td>
         <td>${esc(item.title || "")}</td>
-        <td><input type="number" class="page-input start-pg" min="1" value="${item.start_page || 1}"></td>
+        <td><input type="number" class="page-input start-pg" min="1" value="${startPage}"></td>
         <td><input type="number" class="page-input end-pg" min="0" value="${item.end_page || 0}"></td>
         <td class="song-actions">
+          <button class="small-btn open-btn" title="Open at page ${startPage}">&#9655;</button>
           <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
           <button class="small-btn down-btn" title="Move down" ${i === s.editingSetlistItems.length - 1 ? "disabled" : ""}>&#8595;</button>
           <button class="small-btn del-btn" title="Remove">&#10005;</button>
@@ -172,6 +174,16 @@ function renderSetlistDetail() {
         const val = parseInt(e.target.value, 10) || 0;
         item.end_page = val === 0 ? null : val;
         saveSetlistItems();
+      });
+      tr.querySelector(".open-btn").addEventListener("click", () => {
+        openScore(
+          {
+            filepath: item.path,
+            title: item.title || "",
+            composer: item.composer || "",
+          },
+          { startPage: item.start_page || 1 },
+        );
       });
     }
 

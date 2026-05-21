@@ -511,10 +511,12 @@ _CSS_TO_RGB: dict[str, tuple[float, float, float]] = {
     "magenta": (1, 0, 1),
 }
 
-_MUSICAL_SYMBOLS = {
+# Glyphs that render tiny in fall-back fonts and need ~6x scaling to be
+# readable as music notation. Dynamics ("p", "f", ...) are intentionally
+# excluded \u2014 they're plain letters that follow the size slider.
+_NOTE_GLYPHS = {
     "\U0001D15E", "\u2669", "\u2669.", "\u266A",
-    "pp", "p", "mp", "mf", "f", "ff",
-    "sfz", "cresc", "dim",
+    "\u266D", "\u266F", "\u266E",
 }
 
 
@@ -588,16 +590,23 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
     y = annot.get("y", 0) * h
     color = _CSS_TO_RGB.get(annot.get("color", "black"), (0, 0, 0))
     size = 12 + (annot.get("size", 2)) * 4
-    if text in _MUSICAL_SYMBOLS:
+    if text in _NOTE_GLYPHS:
         size = round(size * 6)
     fontname = "helv"
-    text_w = fitz.get_text_length(text, fontname=fontname, fontsize=size)
-    anchor = fitz.Point(x - text_w / 2, y + size * 0.35) * page.derotation_matrix
-    page.insert_text(
-        anchor,
-        text,
-        fontname=fontname,
-        fontsize=size,
-        color=color,
-        rotate=page.rotation % 360,
-    )
+    lines = text.split("\n")
+    line_h = size * 1.2
+    start_y = y - ((len(lines) - 1) * line_h) / 2
+    for i, line in enumerate(lines):
+        if not line:
+            continue
+        text_w = fitz.get_text_length(line, fontname=fontname, fontsize=size)
+        baseline_y = start_y + i * line_h + size * 0.35
+        anchor = fitz.Point(x - text_w / 2, baseline_y) * page.derotation_matrix
+        page.insert_text(
+            anchor,
+            line,
+            fontname=fontname,
+            fontsize=size,
+            color=color,
+            rotate=page.rotation % 360,
+        )

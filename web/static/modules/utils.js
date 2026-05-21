@@ -4,10 +4,14 @@
 
 export const UNDO_DEPTH = 20;
 
-export const MUSICAL_SYMBOLS = new Set([
+// Glyphs that render tiny in fall-back fonts and need ~6x scaling to be
+// readable as music notation. Dynamics ("p", "f", ...) are deliberately
+// NOT in this set \u2014 they're just letters that should follow the size
+// slider, otherwise typing "p" or "f" as plain text annotations comes
+// out enormous regardless of the size setting.
+export const NOTE_GLYPHS = new Set([
   "\u{1D15E}", "\u2669", "\u2669.", "\u266A",
-  "pp", "p", "mp", "mf", "f", "ff",
-  "sfz", "cresc", "dim",
+  "\u266D", "\u266F", "\u266E",
 ]);
 
 export function esc(s) {

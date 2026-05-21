@@ -35,7 +35,7 @@ setRenderPageFn(renderPage);
 setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.8.0]";
+const VIEWER_TAG = "[viewer v2.8.7]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);
@@ -175,9 +175,9 @@ async function loadAndRenderPdf(filepath, { startPage = 1, prefetched = null } =
 let _loadLibrary = null;
 export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
 
-export async function openScore(score) {
+export async function openScore(score, { startPage = 1 } = {}) {
   const s = getState();
-  dbg("openScore", score.filepath);
+  dbg("openScore", score.filepath, "startPage", startPage);
   s.currentScore = score;
   s.setlistPlayback = null;
   s.returnView = s.currentView;
@@ -188,7 +188,7 @@ export async function openScore(score) {
   showToast(`Loading "${score.title}"…`, { duration: 0 });
 
   try {
-    await loadAndRenderPdf(score.filepath);
+    await loadAndRenderPdf(score.filepath, { startPage });
     addToRecent(score);
   } catch (err) {
     console.warn(VIEWER_TAG, "openScore failed → bouncing to library:", err);

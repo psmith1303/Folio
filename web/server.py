@@ -367,7 +367,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.8.0",
+    title="Folio", version="2.8.7",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -607,6 +607,30 @@ def _is_allowed_root(path: str) -> bool:
         if resolved == root_resolved or resolved.startswith(root_resolved + os.sep):
             return True
     return False
+
+
+class ClientLogRequest(BaseModel):
+    level: str = "error"
+    message: str = ""
+    detail: str = ""
+    url: str = ""
+    ua: str = ""
+
+
+@app.post("/api/clientlog")
+def client_log(req: ClientLogRequest):
+    """Receive a client-side log line so iPad errors can be read from the
+    server's stdout — Safari Web Inspector requires a Mac, which the user
+    doesn't have. Opt-in: client only POSTs when localStorage.folioRemoteLog=1.
+    Payload fields are truncated to bound abuse."""
+    msg = (req.message or "")[:500]
+    detail = (req.detail or "")[:2000]
+    url = (req.url or "")[:500]
+    ua = (req.ua or "")[:200]
+    level = req.level if req.level in ("error", "warn", "info") else "error"
+    log_fn = {"error": log.error, "warn": log.warning, "info": log.info}[level]
+    log_fn("[client] %s | %s | url=%s | ua=%s", msg, detail, url, ua)
+    return {"ok": True}
 
 
 @app.get("/api/config")

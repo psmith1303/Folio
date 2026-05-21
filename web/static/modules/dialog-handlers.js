@@ -92,6 +92,14 @@ function initTextDialog() {
     textInput.focus();
   });
 
+  // Ctrl/Cmd+Enter submits the textarea (plain Enter inserts a newline)
+  textInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      textDialog.querySelector("#text-ok").click();
+    }
+  });
+
   // Symbol buttons insert into text input
   document.querySelectorAll(".sym-btn").forEach((btn) => {
     btn.addEventListener("click", () => {

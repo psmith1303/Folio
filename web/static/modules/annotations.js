@@ -10,7 +10,7 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import {
-  MUSICAL_SYMBOLS, UNDO_DEPTH, transformPt, inverseTransformPt, esc,
+  NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, esc,
 } from "./utils.js";
 
 // Callbacks registered by dialog-handlers to avoid circular deps
@@ -74,7 +74,7 @@ function drawInk(ctx, annot, w, h, rot) {
 function drawText(ctx, annot, w, h, rot) {
   const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
   let sz = 12 + (annot.size || 2) * 4;
-  if (MUSICAL_SYMBOLS.has(annot.text)) {
+  if (NOTE_GLYPHS.has(annot.text)) {
     sz = Math.round(sz * 6);
   }
   const font = annot.font || "sans-serif";
@@ -82,7 +82,12 @@ function drawText(ctx, annot, w, h, rot) {
   ctx.fillStyle = annot.color || "black";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(annot.text, cx, cy);
+  const lines = String(annot.text).split("\n");
+  const lineH = sz * 1.2;
+  const startY = cy - ((lines.length - 1) * lineH) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], cx, startY + i * lineH);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -274,8 +279,12 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
   }
   // Pencil-only mode: pen tool ignores anything that isn't an Apple Pencil
   // (pointerType !== "pen"). Other tools are unaffected so the user can still
-  // erase/text/navigate with finger or mouse.
+  // erase/text/navigate with finger or mouse. preventDefault is still called
+  // so a stray palm touch on iPad doesn't fall through to Safari's native
+  // selection / long-press callout (which manifests as "the whole page got
+  // selected" while drawing with the pencil).
   if (s.activeTool === "pen" && s.pencilOnly && e.pointerType !== "pen") {
+    e.preventDefault();
     return;
   }
 
@@ -398,9 +407,11 @@ function hitTest(annot, px, py, w, h, rot, halo) {
   } else if (annot.type === "text") {
     const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
     let sz = 12 + (annot.size || 2) * 4;
-    if (MUSICAL_SYMBOLS.has(annot.text)) sz = Math.round(sz * 6);
-    const textHalo = Math.max(halo, sz);
-    return Math.abs(cx - px) < textHalo && Math.abs(cy - py) < textHalo;
+    if (NOTE_GLYPHS.has(annot.text)) sz = Math.round(sz * 6);
+    const lines = String(annot.text).split("\n");
+    const halfW = Math.max(halo, sz);
+    const halfH = Math.max(halo, (lines.length * sz * 1.2) / 2);
+    return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
   }
   return false;
 }

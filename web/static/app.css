@@ -57,6 +57,9 @@ button {
   border-radius: 4px;
   padding: 4px 12px;
   font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 button:hover {
@@ -98,6 +101,9 @@ input:focus, select:focus {
   background: var(--toolbar-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .topbar-left, .topbar-right {
@@ -434,6 +440,9 @@ th.sortable:hover {
   background: var(--toolbar-bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 #page-display {
@@ -464,6 +473,9 @@ th.sortable:hover {
   padding: 8px;
   background: var(--bg);
   outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .page-wrap {
@@ -481,6 +493,9 @@ th.sortable:hover {
   top: 0;
   left: 0;
   cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .annot-layer.tool-pen { cursor: crosshair; }

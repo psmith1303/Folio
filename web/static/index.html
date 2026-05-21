@@ -248,7 +248,9 @@
     <form method="dialog">
       <h3 id="text-dialog-title">Add Text</h3>
       <div class="dialog-row">
-        <label>Text: <input type="text" id="text-input" style="width:100%"></label>
+        <label style="display:block">Text:
+          <textarea id="text-input" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:13px;"></textarea>
+        </label>
       </div>
       <div class="dialog-row">
         <label>Font:
@@ -265,6 +267,10 @@
         <button type="button" class="sym-btn" data-sym="&#9833;" title="Crotchet">&#9833;</button>
         <button type="button" class="sym-btn" data-sym="&#9833;." title="Dotted crotchet">&#9833;.</button>
         <button type="button" class="sym-btn" data-sym="&#9834;" title="Quaver">&#9834;</button>
+        <button type="button" class="sym-btn" data-sym="&#9837;" title="Flat">&#9837;</button>
+        <button type="button" class="sym-btn" data-sym="&#9839;" title="Sharp">&#9839;</button>
+        <button type="button" class="sym-btn" data-sym="&#9838;" title="Natural">&#9838;</button>
+        <button type="button" class="sym-btn" data-sym="&#x1D112;" title="Breath mark">&#x1D112;</button>
         <button type="button" class="sym-btn dyn" data-sym="pp">pp</button>
         <button type="button" class="sym-btn dyn" data-sym="p">p</button>
         <button type="button" class="sym-btn dyn" data-sym="mp">mp</button>
