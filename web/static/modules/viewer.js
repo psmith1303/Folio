@@ -35,7 +35,7 @@ setRenderPageFn(renderPage);
 setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.8.10]";
+const VIEWER_TAG = "[viewer v2.8.12]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);

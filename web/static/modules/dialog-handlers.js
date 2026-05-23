@@ -100,17 +100,6 @@ function initTextDialog() {
     }
   });
 
-  // Symbol buttons insert into text input
-  document.querySelectorAll(".sym-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const sym = btn.dataset.sym;
-      const pos = textInput.selectionStart;
-      textInput.value = textInput.value.slice(0, pos) + sym + textInput.value.slice(pos);
-      textInput.focus();
-      textInput.setSelectionRange(pos + sym.length, pos + sym.length);
-    });
-  });
-
   textCancel.addEventListener("click", () => {
     cancelTextAnnotation();
     textDialog.close();

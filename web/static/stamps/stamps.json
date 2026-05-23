@@ -1,0 +1,6 @@
+{
+  "stamps": [
+    { "id": "marcato", "label": "Marcato", "file": "marcato.svg" },
+    { "id": "fermata", "label": "Fermata", "file": "fermata.svg" }
+  ]
+}

@@ -4,14 +4,19 @@
 
 import { getState } from "./state.js";
 import {
-  annotCanvas1, annotCanvas2, sizeSlider,
-  btnNav, btnPen, btnText, btnEraser, btnMove, btnPencilOnly, btnUndo,
+  annotCanvas1, annotCanvas2, sizeSlider, pdfContainer,
+  btnNav, btnPen, btnText, btnEraser, btnMove, btnStamp, btnPencilOnly, btnUndo,
   btnRotCCW, btnRotCW,
 } from "./dom.js";
 import { api } from "./api.js";
 import {
   NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, esc,
 } from "./utils.js";
+import { getStampImage, stampCursorDataUrl } from "./stamps.js";
+
+// Pixel size of a placed stamp for a given size-slider value (1-10).
+// Kept in sync with the PDF export (_export_stamp in web/core.py).
+function stampPx(size) { return 16 + (size || 2) * 8; }
 
 // Callbacks registered by dialog-handlers to avoid circular deps
 let _conflictHandler = null;
@@ -49,8 +54,21 @@ function drawPageAnnotations(annotCanvas, layout) {
       drawInk(ctx, annot, layout.cssW, layout.cssH, rot);
     } else if (annot.type === "text") {
       drawText(ctx, annot, layout.cssW, layout.cssH, rot);
+    } else if (annot.type === "stamp") {
+      drawStamp(ctx, annot, layout.cssW, layout.cssH, rot);
     }
   }
+}
+
+function drawStamp(ctx, annot, w, h, rot) {
+  const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+  const px = stampPx(annot.size);
+  const color = annot.color || "black";
+  // getStampImage returns null until the SVG raster is ready; the onReady
+  // callback redraws once it loads (first paint of a freshly-loaded stamp).
+  const img = getStampImage(annot.id, color, () => drawAnnotations());
+  if (!img) return;
+  ctx.drawImage(img, cx - px / 2, cy - px / 2, px, px);
 }
 
 function drawInk(ctx, annot, w, h, rot) {
@@ -97,15 +115,36 @@ function drawText(ctx, annot, w, h, rot) {
 export function setTool(tool) {
   const s = getState();
   s.activeTool = tool;
+  if (tool !== "stamp") s.selectedStamp = null;
   document.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
-  const map = { nav: btnNav, pen: btnPen, text: btnText, eraser: btnEraser, move: btnMove };
+  const map = {
+    nav: btnNav, pen: btnPen, text: btnText, eraser: btnEraser,
+    move: btnMove, stamp: btnStamp,
+  };
   if (map[tool]) map[tool].classList.add("active");
 
+  // Desktop cursor for stamp mode: the stamp itself at the chosen size, with
+  // the hotspot centred. Touch devices have no cursor, so the tool is just
+  // "armed" and the next tap places it. Browsers cap cursor size (~128px).
+  let stampCursor = "";
+  if (tool === "stamp" && s.selectedStamp) {
+    const px = Math.min(stampPx(parseInt(sizeSlider.value, 10)), 128);
+    const url = stampCursorDataUrl(s.selectedStamp, s.penColor, px);
+    if (url) stampCursor = `url("${url}") ${Math.round(px / 2)} ${Math.round(px / 2)}, crosshair`;
+  }
+
   for (const ac of [annotCanvas1, annotCanvas2]) {
-    ac.classList.remove("tool-pen", "tool-text", "tool-eraser", "tool-move");
+    ac.classList.remove("tool-pen", "tool-text", "tool-eraser", "tool-move", "tool-stamp");
     if (tool !== "nav") ac.classList.add(`tool-${tool}`);
     ac.style.touchAction = tool === "nav" ? "auto" : "none";
+    ac.style.cursor = stampCursor;
   }
+}
+
+// Enter stamp-placement mode with the given stamp id (called from the palette).
+export function enterStampMode(stampId) {
+  getState().selectedStamp = stampId;
+  setTool("stamp");
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +345,8 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
     }
   } else if (s.activeTool === "text") {
     handleTextClick(e, annotCanvas, layoutIndex);
+  } else if (s.activeTool === "stamp") {
+    handleStampClick(e, annotCanvas, layoutIndex);
   }
 }
 
@@ -412,6 +453,10 @@ function hitTest(annot, px, py, w, h, rot, halo) {
     const halfW = Math.max(halo, sz);
     const halfH = Math.max(halo, (lines.length * sz * 1.2) / 2);
     return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
+  } else if (annot.type === "stamp") {
+    const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+    const half = Math.max(halo, stampPx(annot.size) / 2);
+    return Math.abs(cx - px) < half && Math.abs(cy - py) < half;
   }
   return false;
 }
@@ -490,7 +535,8 @@ function moveTo(e, annotCanvas) {
 
   if (annot.type === "ink") {
     annot.points = d.orig.map(([ox, oy]) => [ox + dx, oy + dy]);
-  } else if (annot.type === "text") {
+  } else {
+    // text and stamp are both anchored by a single (x, y) point
     annot.x = d.orig.x + dx;
     annot.y = d.orig.y + dy;
   }
@@ -582,6 +628,37 @@ export function cancelTextAnnotation() {
 }
 
 // ---------------------------------------------------------------------------
+// Stamp tool
+// ---------------------------------------------------------------------------
+
+function handleStampClick(e, annotCanvas, layoutIndex) {
+  const s = getState();
+  const layout = s.pageLayouts[layoutIndex];
+  if (!layout || !s.selectedStamp) return;
+
+  const { x, y } = canvasCoords(e, annotCanvas);
+  const pg = String(layout.page - 1);
+  const rot = (s.rotations[pg] || 0) % 360;
+  const [origX, origY] = inverseTransformPt(x / layout.cssW, y / layout.cssH, rot);
+
+  pushUndo(pg);
+  if (!s.annotations[pg]) s.annotations[pg] = [];
+  s.annotations[pg].push({
+    uuid: crypto.randomUUID(),
+    type: "stamp",
+    id: s.selectedStamp,
+    x: origX,
+    y: origY,
+    size: parseInt(sizeSlider.value, 10),
+    color: s.penColor,
+  });
+
+  saveAnnotations();
+  setTool("nav");  // one stamp per selection, then back to navigation
+  drawAnnotations();
+}
+
+// ---------------------------------------------------------------------------
 // Init event listeners
 // ---------------------------------------------------------------------------
 
@@ -594,6 +671,15 @@ function setupAnnotCanvas(annotCanvas, layoutIndex) {
 export function initAnnotationEvents() {
   setupAnnotCanvas(annotCanvas1, 0);
   setupAnnotCanvas(annotCanvas2, 1);
+
+  // Clicking off a page (the container padding, not a page canvas) cancels
+  // stamp mode. A click on a canvas places the stamp and switches back to nav
+  // first (it bubbles here afterwards), so this only fires for off-page clicks.
+  pdfContainer.addEventListener("pointerdown", (e) => {
+    if (getState().activeTool === "stamp" && !e.target.closest(".annot-layer")) {
+      setTool("nav");
+    }
+  });
 
   btnNav.addEventListener("click", () => setTool("nav"));
   btnPen.addEventListener("click", () => setTool("pen"));

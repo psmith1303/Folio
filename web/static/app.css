@@ -508,6 +508,45 @@ th.sortable:hover {
 .annot-layer.tool-text { cursor: text; }
 .annot-layer.tool-eraser { cursor: pointer; }
 .annot-layer.tool-move { cursor: move; }
+.annot-layer.tool-stamp { cursor: crosshair; }
+
+/* Stamp palette */
+#stamp-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin: 8px 0;
+  max-width: 360px;
+}
+
+.stamp-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  padding: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.stamp-tile:hover {
+  border-color: var(--accent);
+}
+
+.stamp-tile svg {
+  width: 100%;
+  height: 100%;
+}
+
+#stamp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 8px 0;
+}
 
 /* ================================================================== */
 /* Setlist views                                                      */
@@ -775,23 +814,6 @@ th.sortable:hover {
   flex: 1;
 }
 
-#symbol-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.sym-btn {
-  min-width: 36px;
-  font-size: 16px;
-  padding: 4px 6px;
-}
-
-.sym-btn.dyn {
-  font-style: italic;
-  font-weight: bold;
-  font-family: serif;
-}
 
 /* ================================================================== */
 /* Dialog                                                             */

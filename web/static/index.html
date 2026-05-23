@@ -185,6 +185,7 @@
       <button id="btn-text" class="tool-btn" title="Text (t)">Text</button>
       <button id="btn-eraser" class="tool-btn" title="Eraser (e)">Eraser</button>
       <button id="btn-move" class="tool-btn" title="Move annotation within page (m)">Move</button>
+      <button id="btn-stamp" class="tool-btn" title="Place a stamp">Stamp</button>
       <button id="btn-clear-page" title="Clear all annotations on this page">Clear Page</button>
       <button id="btn-pencil-only" title="Pen tool only accepts Apple Pencil (ignore finger/mouse)">Pencil</button>
       <span class="toolbar-sep"></span>
@@ -263,27 +264,27 @@
           </select>
         </label>
       </div>
-      <div class="dialog-row" id="symbol-bar">
-        <button type="button" class="sym-btn" data-sym="&#x1D15E;" title="Minim">&#x1D15E;</button>
-        <button type="button" class="sym-btn" data-sym="&#9833;" title="Crotchet">&#9833;</button>
-        <button type="button" class="sym-btn" data-sym="&#9833;." title="Dotted crotchet">&#9833;.</button>
-        <button type="button" class="sym-btn" data-sym="&#9834;" title="Quaver">&#9834;</button>
-        <button type="button" class="sym-btn" data-sym="&#9837;" title="Flat">&#9837;</button>
-        <button type="button" class="sym-btn" data-sym="&#9839;" title="Sharp">&#9839;</button>
-        <button type="button" class="sym-btn" data-sym="&#9838;" title="Natural">&#9838;</button>
-        <button type="button" class="sym-btn" data-sym="&#x1D112;" title="Breath mark">&#x1D112;</button>
-        <button type="button" class="sym-btn dyn" data-sym="pp">pp</button>
-        <button type="button" class="sym-btn dyn" data-sym="p">p</button>
-        <button type="button" class="sym-btn dyn" data-sym="mp">mp</button>
-        <button type="button" class="sym-btn dyn" data-sym="mf">mf</button>
-        <button type="button" class="sym-btn dyn" data-sym="f">f</button>
-        <button type="button" class="sym-btn dyn" data-sym="ff">ff</button>
-      </div>
       <div class="dialog-buttons">
         <button type="button" id="text-cancel">Cancel</button>
         <button type="submit" id="text-ok">OK</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Stamp palette dialog                                              -->
+  <!-- ================================================================== -->
+  <dialog id="stamp-dialog">
+    <h3>Stamps</h3>
+    <div id="stamp-grid"></div>
+    <div id="stamp-pager">
+      <button type="button" id="stamp-prev">&#8592; Prev</button>
+      <span id="stamp-page-info">1 / 1</span>
+      <button type="button" id="stamp-next">Next &#8594;</button>
+    </div>
+    <div class="dialog-buttons">
+      <button type="button" id="stamp-close">Cancel</button>
+    </div>
   </dialog>
 
   <!-- ================================================================== -->

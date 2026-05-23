@@ -16,6 +16,8 @@ import tempfile
 import uuid
 from dataclasses import dataclass, field
 
+log = logging.getLogger("folio")
+
 # ---------------------------------------------------------------------------
 # Path Utilities
 # ---------------------------------------------------------------------------
@@ -542,6 +544,8 @@ def export_annotated_pdf(pdf_path: str) -> bytes:
                     _export_ink(page, a, w, h)
                 elif a.get("type") == "text":
                     _export_text(page, a, w, h)
+                elif a.get("type") == "stamp":
+                    _export_stamp(page, a, w, h)
 
             rot = rots.get(pg_str, 0) % 360
             if rot:
@@ -610,3 +614,68 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
             color=color,
             rotate=page.rotation % 360,
         )
+
+
+_STAMPS_DIR = os.path.join(os.path.dirname(__file__), "static", "stamps")
+_stamp_files: dict[str, str] | None = None
+
+
+def _stamp_file_map() -> dict[str, str]:
+    """Lazy-load the stamp manifest, mapping stamp id -> svg filename."""
+    global _stamp_files
+    if _stamp_files is None:
+        _stamp_files = {}
+        try:
+            manifest = SafeJSON.load(
+                os.path.join(_STAMPS_DIR, "stamps.json"), default={}
+            )
+            for st in manifest.get("stamps", []):
+                if st.get("id") and st.get("file"):
+                    _stamp_files[st["id"]] = st["file"]
+        except SafeJSONError:
+            pass
+    return _stamp_files
+
+
+def _stamp_px(size) -> float:
+    """Placed-stamp size in points. Matches stampPx() in annotations.js."""
+    return 16 + (size or 2) * 8
+
+
+def _export_stamp(page, annot: dict, w: float, h: float) -> None:
+    """Stamp a preset SVG mark onto *page* as embedded vector content.
+
+    The SVG's ``currentColor`` is replaced with the annotation colour, then the
+    SVG is converted to a one-page PDF and shown at the target rect. Centering
+    and rotation mirror ``_export_text`` so stamps land correctly on PDFs with
+    a non-zero intrinsic ``/Rotate``.
+    """
+    import pymupdf as fitz
+
+    stamp_id = annot.get("id")
+    if not stamp_id:
+        return
+    fname = _stamp_file_map().get(stamp_id, f"{stamp_id}.svg")
+    svg_path = os.path.join(_STAMPS_DIR, fname)
+    if not os.path.isfile(svg_path):
+        return
+    try:
+        with open(svg_path, "r", encoding="utf-8") as f:
+            svg = f.read()
+    except OSError:
+        log.warning("Could not read stamp %s", svg_path)
+        return
+
+    svg = svg.replace("currentColor", annot.get("color", "black"))
+    x = annot.get("x", 0) * w
+    y = annot.get("y", 0) * h
+    half = _stamp_px(annot.get("size", 2)) / 2
+    rect = fitz.Rect(x - half, y - half, x + half, y + half) * page.derotation_matrix
+
+    try:
+        with fitz.open(stream=svg.encode("utf-8"), filetype="svg") as svgdoc:
+            pdfbytes = svgdoc.convert_to_pdf()
+        with fitz.open("pdf", pdfbytes) as src:
+            page.show_pdf_page(rect, src, 0, rotate=page.rotation % 360)
+    except Exception:
+        log.exception("Stamp export failed for %s", stamp_id)

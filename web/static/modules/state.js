@@ -33,6 +33,7 @@ const state = {
   activeTool: "nav",
   penColor: "black",
   pencilOnly: false,
+  selectedStamp: null,
   annotations: {},
   rotations: {},
   currentStroke: [],

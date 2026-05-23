@@ -60,6 +60,7 @@ export const btnPen = $("#btn-pen");
 export const btnText = $("#btn-text");
 export const btnEraser = $("#btn-eraser");
 export const btnMove = $("#btn-move");
+export const btnStamp = $("#btn-stamp");
 export const btnClearPage = $("#btn-clear-page");
 export const btnPencilOnly = $("#btn-pencil-only");
 export const btnUndo = $("#btn-undo");
@@ -96,6 +97,9 @@ export const textDialogTitle = $("#text-dialog-title");
 export const textInput = $("#text-input");
 export const textFont = $("#text-font");
 export const textCancel = $("#text-cancel");
+
+// Dialogs — stamp palette
+export const stampDialog = $("#stamp-dialog");
 
 // Dialogs — setlist name
 export const setlistNameDialog = $("#setlist-name-dialog");

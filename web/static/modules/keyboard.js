@@ -6,7 +6,7 @@ import { getState } from "./state.js";
 import {
   textDialog, dirDialog, setlistNameDialog, songPickerDialog,
   setlistPickerDialog, setlistRefPickerDialog, loginDialog,
-  conflictDialog, offlineDialog,
+  conflictDialog, offlineDialog, stampDialog,
   btnLibrary, btnSetlists, btnRecent, btnNewest, btnReset, searchInput,
 } from "./dom.js";
 import { setTool, doUndo } from "./annotations.js";
@@ -74,7 +74,7 @@ function isDialogOpen() {
     textDialog.open || dirDialog.open || setlistNameDialog.open ||
     songPickerDialog.open || setlistPickerDialog.open ||
     setlistRefPickerDialog.open || loginDialog.open || conflictDialog.open ||
-    offlineDialog.open
+    offlineDialog.open || stampDialog.open
   );
 }
 
@@ -151,6 +151,8 @@ function handleViewerShortcuts(e) {
   if (matches(e, "last_page")) { e.preventDefault(); goToPage(s.totalPages); return true; }
 
   if (matches(e, "close_score")) {
+    // Escape first cancels stamp-placement mode, before closing the score.
+    if (s.activeTool === "stamp") { setTool("nav"); return true; }
     if (s.pseudoFullscreen) applyFullscreen(false);
     else closeScore();
     return true;

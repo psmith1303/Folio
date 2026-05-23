@@ -80,7 +80,10 @@ import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary, setLoadSetlistsFn } from "./modules/library.js";
 import { initViewerEvents, setLoadLibraryFn, openScore, cleanupScore } from "./modules/viewer.js";
-import { initAnnotationEvents } from "./modules/annotations.js";
+import { initAnnotationEvents, enterStampMode, drawAnnotations } from "./modules/annotations.js";
+import {
+  initStampPalette, loadStampAssets, setStampSelectHandler, setStampsReadyHandler,
+} from "./modules/stamps.js";
 import { initSetlistEvents, loadSetlists } from "./modules/setlists.js";
 import {
   initDialogHandlers, showLoginDialog, showDirDialog,
@@ -165,6 +168,13 @@ initTouchHandlers();
 initCacheUI();
 initRecentEvents();
 initNewestEvents();
+
+// Stamps: palette UI + asset load. Selecting a stamp enters placement mode;
+// once assets finish loading, redraw so any already-rendered stamps appear.
+initStampPalette();
+setStampSelectHandler(enterStampMode);
+setStampsReadyHandler(() => { if (getState().pdfDoc) drawAnnotations(); });
+loadStampAssets();
 
 // Service worker
 if ("serviceWorker" in navigator) {
