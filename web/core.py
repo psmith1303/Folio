@@ -577,6 +577,21 @@ def _export_ink(page, annot: dict, w: float, h: float) -> None:
     shape.commit()
 
 
+# Size slider (1-8) -> PDF point sizes, shared by text and stamps. Matches
+# POINT_SIZES in web/static/modules/annotations.js.
+_POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22]
+
+
+def _size_to_pt(size) -> float:
+    i = max(1, min(len(_POINT_SIZES), int(size or 1))) - 1
+    return _POINT_SIZES[i]
+
+
+def _text_pt(size) -> float:
+    """Text annotation size in PDF points. Matches textPt() in annotations.js."""
+    return _size_to_pt(size)
+
+
 def _export_text(page, annot: dict, w: float, h: float) -> None:
     """Insert a text annotation onto *page*.
 
@@ -593,7 +608,7 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
     x = annot.get("x", 0) * w
     y = annot.get("y", 0) * h
     color = _CSS_TO_RGB.get(annot.get("color", "black"), (0, 0, 0))
-    size = 12 + (annot.get("size", 2)) * 4
+    size = _text_pt(annot.get("size", 2))
     if text in _NOTE_GLYPHS:
         size = round(size * 6)
     fontname = "helv"
@@ -617,46 +632,47 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
 
 
 _STAMPS_DIR = os.path.join(os.path.dirname(__file__), "static", "stamps")
-_stamp_files: dict[str, str] | None = None
+_stamp_manifest: dict[str, dict] | None = None
 
 
-def _stamp_file_map() -> dict[str, str]:
-    """Lazy-load the stamp manifest, mapping stamp id -> svg filename."""
-    global _stamp_files
-    if _stamp_files is None:
-        _stamp_files = {}
+def _stamp_map() -> dict[str, dict]:
+    """Lazy-load the stamp manifest, mapping stamp id -> {file, w, h}."""
+    global _stamp_manifest
+    if _stamp_manifest is None:
+        _stamp_manifest = {}
         try:
             manifest = SafeJSON.load(
                 os.path.join(_STAMPS_DIR, "stamps.json"), default={}
             )
             for st in manifest.get("stamps", []):
                 if st.get("id") and st.get("file"):
-                    _stamp_files[st["id"]] = st["file"]
+                    _stamp_manifest[st["id"]] = {
+                        "file": st["file"],
+                        "w": st.get("w", 1),
+                        "h": st.get("h", 1),
+                    }
         except SafeJSONError:
             pass
-    return _stamp_files
-
-
-def _stamp_px(size) -> float:
-    """Placed-stamp size in points. Matches stampPx() in annotations.js."""
-    return 16 + (size or 2) * 8
+    return _stamp_manifest
 
 
 def _export_stamp(page, annot: dict, w: float, h: float) -> None:
     """Stamp a preset SVG mark onto *page* as embedded vector content.
 
     The SVG's ``currentColor`` is replaced with the annotation colour, then the
-    SVG is converted to a one-page PDF and shown at the target rect. Centering
-    and rotation mirror ``_export_text`` so stamps land correctly on PDFs with
-    a non-zero intrinsic ``/Rotate``.
+    SVG is converted to a one-page PDF and shown at a rect sized from the
+    stamp's SMuFL width/height (staff spaces) times the slider's points-per-
+    staff-space, so it matches the on-screen size and keeps true proportions.
+    Centering and rotation mirror ``_export_text`` for PDFs with non-zero
+    intrinsic ``/Rotate``.
     """
     import pymupdf as fitz
 
     stamp_id = annot.get("id")
-    if not stamp_id:
+    meta = _stamp_map().get(stamp_id) if stamp_id else None
+    if not meta:
         return
-    fname = _stamp_file_map().get(stamp_id, f"{stamp_id}.svg")
-    svg_path = os.path.join(_STAMPS_DIR, fname)
+    svg_path = os.path.join(_STAMPS_DIR, meta["file"])
     if not os.path.isfile(svg_path):
         return
     try:
@@ -669,8 +685,11 @@ def _export_stamp(page, annot: dict, w: float, h: float) -> None:
     svg = svg.replace("currentColor", annot.get("color", "black"))
     x = annot.get("x", 0) * w
     y = annot.get("y", 0) * h
-    half = _stamp_px(annot.get("size", 2)) / 2
-    rect = fitz.Rect(x - half, y - half, x + half, y + half) * page.derotation_matrix
+    pt = _size_to_pt(annot.get("size", 2))
+    half_w = pt * meta["w"] / 2
+    half_h = pt * meta["h"] / 2
+    rect = fitz.Rect(x - half_w, y - half_h, x + half_w, y + half_h) \
+        * page.derotation_matrix
 
     try:
         with fitz.open(stream=svg.encode("utf-8"), filetype="svg") as svgdoc:

@@ -1,6 +1,620 @@
 {
   "stamps": [
-    { "id": "marcato", "label": "Marcato", "file": "marcato.svg" },
-    { "id": "fermata", "label": "Fermata", "file": "fermata.svg" }
+    {
+      "id": "dyn-ppp",
+      "label": "ppp",
+      "file": "dyn-ppp.svg",
+      "w": 2.37,
+      "h": 0.832
+    },
+    {
+      "id": "dyn-pp",
+      "label": "pp",
+      "file": "dyn-pp.svg",
+      "w": 1.64,
+      "h": 0.832
+    },
+    {
+      "id": "dyn-p",
+      "label": "p",
+      "file": "dyn-p.svg",
+      "w": 0.91,
+      "h": 0.832
+    },
+    {
+      "id": "dyn-mp",
+      "label": "mp",
+      "file": "dyn-mp.svg",
+      "w": 1.646,
+      "h": 0.832
+    },
+    {
+      "id": "dyn-mf",
+      "label": "mf",
+      "file": "dyn-mf.svg",
+      "w": 1.642,
+      "h": 1.192
+    },
+    {
+      "id": "dyn-f",
+      "label": "f",
+      "file": "dyn-f.svg",
+      "w": 1.01,
+      "h": 1.192
+    },
+    {
+      "id": "dyn-ff",
+      "label": "ff",
+      "file": "dyn-ff.svg",
+      "w": 1.738,
+      "h": 1.192
+    },
+    {
+      "id": "dyn-fff",
+      "label": "fff",
+      "file": "dyn-fff.svg",
+      "w": 2.466,
+      "h": 1.192
+    },
+    {
+      "id": "dyn-sf",
+      "label": "sf",
+      "file": "dyn-sf.svg",
+      "w": 1.186,
+      "h": 1.192
+    },
+    {
+      "id": "dyn-sfz",
+      "label": "sfz",
+      "file": "dyn-sfz.svg",
+      "w": 1.674,
+      "h": 1.192
+    },
+    {
+      "id": "cresc",
+      "label": "Crescendo",
+      "file": "cresc.svg",
+      "w": 2.928,
+      "h": 1.052
+    },
+    {
+      "id": "dim",
+      "label": "Diminuendo",
+      "file": "dim.svg",
+      "w": 2.928,
+      "h": 1.052
+    },
+    {
+      "id": "cresc-wide",
+      "label": "Crescendo (wide)",
+      "file": "cresc-wide.svg",
+      "w": 5.856,
+      "h": 1.052
+    },
+    {
+      "id": "dim-wide",
+      "label": "Diminuendo (wide)",
+      "file": "dim-wide.svg",
+      "w": 5.856,
+      "h": 1.052
+    },
+    {
+      "id": "messa",
+      "label": "Messa di voce",
+      "file": "messa.svg",
+      "w": 6.204,
+      "h": 1.052
+    },
+    {
+      "id": "hairpin-bracket-left",
+      "label": "Hairpin bracket left",
+      "file": "hairpin-bracket-left.svg",
+      "w": 0.154,
+      "h": 1.0
+    },
+    {
+      "id": "hairpin-bracket-right",
+      "label": "Hairpin bracket right",
+      "file": "hairpin-bracket-right.svg",
+      "w": 0.154,
+      "h": 1.0
+    },
+    {
+      "id": "accent",
+      "label": "Accent",
+      "file": "accent.svg",
+      "w": 0.678,
+      "h": 0.488
+    },
+    {
+      "id": "staccato",
+      "label": "Staccato",
+      "file": "staccato.svg",
+      "w": 0.168,
+      "h": 0.168
+    },
+    {
+      "id": "tenuto",
+      "label": "Tenuto",
+      "file": "tenuto.svg",
+      "w": 0.678,
+      "h": 0.096
+    },
+    {
+      "id": "marcato",
+      "label": "Marcato",
+      "file": "marcato.svg",
+      "w": 0.472,
+      "h": 0.508
+    },
+    {
+      "id": "marcato-staccato",
+      "label": "Marcato-staccato",
+      "file": "marcato-staccato.svg",
+      "w": 0.472,
+      "h": 0.886
+    },
+    {
+      "id": "staccatissimo",
+      "label": "Staccatissimo",
+      "file": "staccatissimo.svg",
+      "w": 0.198,
+      "h": 0.59
+    },
+    {
+      "id": "loure",
+      "label": "Lour\u00e9",
+      "file": "loure.svg",
+      "w": 0.678,
+      "h": 0.48
+    },
+    {
+      "id": "soft-accent",
+      "label": "Soft accent",
+      "file": "soft-accent.svg",
+      "w": 1.416,
+      "h": 0.488
+    },
+    {
+      "id": "breath",
+      "label": "Breath mark",
+      "file": "breath.svg",
+      "w": 0.302,
+      "h": 0.498
+    },
+    {
+      "id": "breath-salzedo",
+      "label": "Breath (Salzedo)",
+      "file": "breath-salzedo.svg",
+      "w": 1.056,
+      "h": 0.862
+    },
+    {
+      "id": "caesura",
+      "label": "Caesura",
+      "file": "caesura.svg",
+      "w": 0.768,
+      "h": 1.066
+    },
+    {
+      "id": "vibrato",
+      "label": "Vibrato (V)",
+      "file": "vibrato.svg",
+      "w": 0.616,
+      "h": 0.56
+    },
+    {
+      "id": "fermata",
+      "label": "Fermata",
+      "file": "fermata.svg",
+      "w": 1.204,
+      "h": 0.664
+    },
+    {
+      "id": "doit-short",
+      "label": "Doit short",
+      "file": "doit-short.svg",
+      "w": 0.638,
+      "h": 0.772
+    },
+    {
+      "id": "doit-medium",
+      "label": "Doit medium",
+      "file": "doit-medium.svg",
+      "w": 0.978,
+      "h": 0.772
+    },
+    {
+      "id": "doit-long",
+      "label": "Doit long",
+      "file": "doit-long.svg",
+      "w": 2.298,
+      "h": 0.776
+    },
+    {
+      "id": "lift-short",
+      "label": "Smooth lift short",
+      "file": "lift-short.svg",
+      "w": 0.812,
+      "h": 0.812
+    },
+    {
+      "id": "lift-medium",
+      "label": "Smooth lift medium",
+      "file": "lift-medium.svg",
+      "w": 1.794,
+      "h": 1.794
+    },
+    {
+      "id": "lift-long",
+      "label": "Smooth lift long",
+      "file": "lift-long.svg",
+      "w": 2.726,
+      "h": 2.724
+    },
+    {
+      "id": "mute-closed",
+      "label": "Brass mute closed",
+      "file": "mute-closed.svg",
+      "w": 0.544,
+      "h": 0.544
+    },
+    {
+      "id": "mute-open",
+      "label": "Brass mute open",
+      "file": "mute-open.svg",
+      "w": 0.608,
+      "h": 0.608
+    },
+    {
+      "id": "sharp",
+      "label": "Sharp",
+      "file": "sharp.svg",
+      "w": 0.498,
+      "h": 1.396
+    },
+    {
+      "id": "flat",
+      "label": "Flat",
+      "file": "flat.svg",
+      "w": 0.452,
+      "h": 1.228
+    },
+    {
+      "id": "natural",
+      "label": "Natural",
+      "file": "natural.svg",
+      "w": 0.336,
+      "h": 1.352
+    },
+    {
+      "id": "double-sharp",
+      "label": "Double sharp",
+      "file": "double-sharp.svg",
+      "w": 0.494,
+      "h": 0.504
+    },
+    {
+      "id": "double-flat",
+      "label": "Double flat",
+      "file": "double-flat.svg",
+      "w": 0.822,
+      "h": 1.224
+    },
+    {
+      "id": "trill",
+      "label": "Trill",
+      "file": "trill.svg",
+      "w": 0.695,
+      "h": 0.533
+    },
+    {
+      "id": "turn",
+      "label": "Turn",
+      "file": "turn.svg",
+      "w": 1.227,
+      "h": 0.581
+    },
+    {
+      "id": "turn-inverted",
+      "label": "Inverted turn",
+      "file": "turn-inverted.svg",
+      "w": 1.227,
+      "h": 0.581
+    },
+    {
+      "id": "short-trill",
+      "label": "Short trill",
+      "file": "short-trill.svg",
+      "w": 1.624,
+      "h": 0.549
+    },
+    {
+      "id": "mordent",
+      "label": "Mordent",
+      "file": "mordent.svg",
+      "w": 1.019,
+      "h": 0.549
+    },
+    {
+      "id": "tremblement",
+      "label": "Tremblement",
+      "file": "tremblement.svg",
+      "w": 2.204,
+      "h": 0.547
+    },
+    {
+      "id": "note-whole",
+      "label": "Semibreve",
+      "file": "note-whole.svg",
+      "w": 0.826,
+      "h": 0.491
+    },
+    {
+      "id": "note-half-up",
+      "label": "Minim (up)",
+      "file": "note-half-up.svg",
+      "w": 0.614,
+      "h": 1.492
+    },
+    {
+      "id": "note-half-down",
+      "label": "Minim (down)",
+      "file": "note-half-down.svg",
+      "w": 0.614,
+      "h": 1.492
+    },
+    {
+      "id": "note-quarter-up",
+      "label": "Crotchet (up)",
+      "file": "note-quarter-up.svg",
+      "w": 0.598,
+      "h": 1.492
+    },
+    {
+      "id": "note-quarter-down",
+      "label": "Crotchet (down)",
+      "file": "note-quarter-down.svg",
+      "w": 0.598,
+      "h": 1.492
+    },
+    {
+      "id": "note-8th-up",
+      "label": "Quaver (up)",
+      "file": "note-8th-up.svg",
+      "w": 0.959,
+      "h": 1.507
+    },
+    {
+      "id": "note-8th-down",
+      "label": "Quaver (down)",
+      "file": "note-8th-down.svg",
+      "w": 0.598,
+      "h": 1.525
+    },
+    {
+      "id": "note-16th-up",
+      "label": "Semiquaver (up)",
+      "file": "note-16th-up.svg",
+      "w": 0.938,
+      "h": 1.514
+    },
+    {
+      "id": "note-16th-down",
+      "label": "Semiquaver (down)",
+      "file": "note-16th-down.svg",
+      "w": 0.598,
+      "h": 1.525
+    },
+    {
+      "id": "clef-g",
+      "label": "G clef",
+      "file": "clef-g.svg",
+      "w": 1.074,
+      "h": 2.81
+    },
+    {
+      "id": "clef-c",
+      "label": "C clef",
+      "file": "clef-c.svg",
+      "w": 1.118,
+      "h": 1.619
+    },
+    {
+      "id": "clef-f",
+      "label": "F clef",
+      "file": "clef-f.svg",
+      "w": 1.102,
+      "h": 1.435
+    },
+    {
+      "id": "gliss-up",
+      "label": "Glissando up",
+      "file": "gliss-up.svg",
+      "w": 2.124,
+      "h": 2.208
+    },
+    {
+      "id": "gliss-down",
+      "label": "Glissando down",
+      "file": "gliss-down.svg",
+      "w": 2.124,
+      "h": 2.208
+    },
+    {
+      "id": "arrow-up",
+      "label": "Arrow up",
+      "file": "arrow-up.svg",
+      "w": 0.418,
+      "h": 1.056
+    },
+    {
+      "id": "arrow-up-right",
+      "label": "Arrow up-right",
+      "file": "arrow-up-right.svg",
+      "w": 0.772,
+      "h": 0.77
+    },
+    {
+      "id": "arrow-right",
+      "label": "Arrow right",
+      "file": "arrow-right.svg",
+      "w": 1.056,
+      "h": 0.418
+    },
+    {
+      "id": "arrow-down-right",
+      "label": "Arrow down-right",
+      "file": "arrow-down-right.svg",
+      "w": 0.772,
+      "h": 0.77
+    },
+    {
+      "id": "arrow-down",
+      "label": "Arrow down",
+      "file": "arrow-down.svg",
+      "w": 0.418,
+      "h": 1.056
+    },
+    {
+      "id": "arrow-down-left",
+      "label": "Arrow down-left",
+      "file": "arrow-down-left.svg",
+      "w": 0.772,
+      "h": 0.77
+    },
+    {
+      "id": "arrow-left",
+      "label": "Arrow left",
+      "file": "arrow-left.svg",
+      "w": 1.056,
+      "h": 0.418
+    },
+    {
+      "id": "arrow-up-left",
+      "label": "Arrow up-left",
+      "file": "arrow-up-left.svg",
+      "w": 0.772,
+      "h": 0.77
+    },
+    {
+      "id": "scale-1",
+      "label": "Scale degree 1",
+      "file": "scale-1.svg",
+      "w": 0.551,
+      "h": 1.339
+    },
+    {
+      "id": "scale-2",
+      "label": "Scale degree 2",
+      "file": "scale-2.svg",
+      "w": 0.636,
+      "h": 1.339
+    },
+    {
+      "id": "scale-3",
+      "label": "Scale degree 3",
+      "file": "scale-3.svg",
+      "w": 0.632,
+      "h": 1.359
+    },
+    {
+      "id": "scale-4",
+      "label": "Scale degree 4",
+      "file": "scale-4.svg",
+      "w": 0.656,
+      "h": 1.339
+    },
+    {
+      "id": "scale-5",
+      "label": "Scale degree 5",
+      "file": "scale-5.svg",
+      "w": 0.637,
+      "h": 1.359
+    },
+    {
+      "id": "scale-6",
+      "label": "Scale degree 6",
+      "file": "scale-6.svg",
+      "w": 0.627,
+      "h": 1.359
+    },
+    {
+      "id": "scale-7",
+      "label": "Scale degree 7",
+      "file": "scale-7.svg",
+      "w": 0.632,
+      "h": 1.339
+    },
+    {
+      "id": "scale-8",
+      "label": "Scale degree 8",
+      "file": "scale-8.svg",
+      "w": 0.635,
+      "h": 1.359
+    },
+    {
+      "id": "scale-9",
+      "label": "Scale degree 9",
+      "file": "scale-9.svg",
+      "w": 0.628,
+      "h": 1.359
+    },
+    {
+      "id": "timesig-bracket-left",
+      "label": "Time sig bracket left",
+      "file": "timesig-bracket-left.svg",
+      "w": 0.236,
+      "h": 2.472
+    },
+    {
+      "id": "timesig-bracket-right",
+      "label": "Time sig bracket right",
+      "file": "timesig-bracket-right.svg",
+      "w": 0.236,
+      "h": 2.472
+    },
+    {
+      "id": "repeat-left",
+      "label": "Left repeat",
+      "file": "repeat-left.svg",
+      "w": 0.976,
+      "h": 2.667
+    },
+    {
+      "id": "repeat-right",
+      "label": "Right repeat",
+      "file": "repeat-right.svg",
+      "w": 0.976,
+      "h": 2.667
+    },
+    {
+      "id": "repeat-both",
+      "label": "Left & right repeat",
+      "file": "repeat-both.svg",
+      "w": 1.619,
+      "h": 2.667
+    },
+    {
+      "id": "da-capo",
+      "label": "Da capo",
+      "file": "da-capo.svg",
+      "w": 2.856,
+      "h": 1.203
+    },
+    {
+      "id": "segno",
+      "label": "Segno",
+      "file": "segno.svg",
+      "w": 1.092,
+      "h": 1.572
+    },
+    {
+      "id": "coda",
+      "label": "Coda",
+      "file": "coda.svg",
+      "w": 1.918,
+      "h": 2.112
+    }
   ]
 }

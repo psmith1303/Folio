@@ -10,13 +10,14 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import {
-  NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, esc,
+  NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, esc, sizeToPt,
 } from "./utils.js";
-import { getStampImage, stampCursorDataUrl } from "./stamps.js";
+import { getStampImage, stampCursorPng, getStampMeta } from "./stamps.js";
 
-// Pixel size of a placed stamp for a given size-slider value (1-10).
-// Kept in sync with the PDF export (_export_stamp in web/core.py).
-function stampPx(size) { return 16 + (size || 2) * 8; }
+// Text annotation size (PDF points) for a slider value; sizeToPt lives in
+// utils.js (shared with the stamp palette). Scaled to CSS px on screen by the
+// page render scale so the viewer matches the export.
+function textPt(size) { return sizeToPt(size); }
 
 // Callbacks registered by dialog-handlers to avoid circular deps
 let _conflictHandler = null;
@@ -53,22 +54,37 @@ function drawPageAnnotations(annotCanvas, layout) {
     if (annot.type === "ink") {
       drawInk(ctx, annot, layout.cssW, layout.cssH, rot);
     } else if (annot.type === "text") {
-      drawText(ctx, annot, layout.cssW, layout.cssH, rot);
+      drawText(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
     } else if (annot.type === "stamp") {
-      drawStamp(ctx, annot, layout.cssW, layout.cssH, rot);
+      drawStamp(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
     }
   }
 }
 
-function drawStamp(ctx, annot, w, h, rot) {
+// On-screen stamp width/height in CSS px. The stamp's SMuFL width/height (in
+// staff spaces, from the manifest) times the slider's points-per-staff-space,
+// scaled to CSS px by the page render scale (cssW / pdfW). This preserves true
+// SMuFL proportions (a repeat barline is tall, a crescendo short and wide) and
+// matches the PDF export.
+function stampCssSize(stampId, sizeVal, cssW, pdfW) {
+  const meta = getStampMeta(stampId);
+  const cssScale = pdfW ? cssW / pdfW : 1;
+  const pt = sizeToPt(sizeVal);
+  return {
+    wCss: pt * (meta ? meta.w : 1) * cssScale,
+    hCss: pt * (meta ? meta.h : 1) * cssScale,
+  };
+}
+
+function drawStamp(ctx, annot, w, h, rot, pdfW) {
   const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-  const px = stampPx(annot.size);
+  const { wCss, hCss } = stampCssSize(annot.id, annot.size, w, pdfW);
   const color = annot.color || "black";
   // getStampImage returns null until the SVG raster is ready; the onReady
   // callback redraws once it loads (first paint of a freshly-loaded stamp).
   const img = getStampImage(annot.id, color, () => drawAnnotations());
   if (!img) return;
-  ctx.drawImage(img, cx - px / 2, cy - px / 2, px, px);
+  ctx.drawImage(img, cx - wCss / 2, cy - hCss / 2, wCss, hCss);
 }
 
 function drawInk(ctx, annot, w, h, rot) {
@@ -89,9 +105,10 @@ function drawInk(ctx, annot, w, h, rot) {
   ctx.stroke();
 }
 
-function drawText(ctx, annot, w, h, rot) {
+function drawText(ctx, annot, w, h, rot, pdfW) {
   const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-  let sz = 12 + (annot.size || 2) * 4;
+  const scale = pdfW ? w / pdfW : 1;
+  let sz = textPt(annot.size) * scale;
   if (NOTE_GLYPHS.has(annot.text)) {
     sz = Math.round(sz * 6);
   }
@@ -123,14 +140,26 @@ export function setTool(tool) {
   };
   if (map[tool]) map[tool].classList.add("active");
 
-  // Desktop cursor for stamp mode: the stamp itself at the chosen size, with
-  // the hotspot centred. Touch devices have no cursor, so the tool is just
-  // "armed" and the next tap places it. Browsers cap cursor size (~128px).
+  // Desktop cursor for stamp mode: the stamp itself at its on-screen size,
+  // hotspot centred. A PNG (canvas-rendered) cursor is used because SVG-data-URI
+  // cursors render unreliably in some browsers (Firefox). Touch devices have no
+  // cursor, so the tool is just "armed" and the next tap places it. Browsers
+  // cap cursor size (~128px).
   let stampCursor = "";
   if (tool === "stamp" && s.selectedStamp) {
-    const px = Math.min(stampPx(parseInt(sizeSlider.value, 10)), 128);
-    const url = stampCursorDataUrl(s.selectedStamp, s.penColor, px);
-    if (url) stampCursor = `url("${url}") ${Math.round(px / 2)} ${Math.round(px / 2)}, crosshair`;
+    const layout = s.pageLayouts[0];
+    let { wCss, hCss } = stampCssSize(s.selectedStamp, parseInt(sizeSlider.value, 10),
+      layout ? layout.cssW : 0, layout ? layout.pdfW : 0);
+    if (!(wCss > 0) || !(hCss > 0)) { wCss = hCss = 24; }  // no page rendered yet
+    const m = Math.max(wCss, hCss);
+    if (m > 128) { const k = 128 / m; wCss *= k; hCss *= k; }  // browser cursor cap
+    // Re-apply the cursor once the stamp image finishes loading.
+    const url = stampCursorPng(s.selectedStamp, s.penColor, wCss, hCss, () => {
+      if (getState().activeTool === "stamp") setTool("stamp");
+    });
+    stampCursor = url
+      ? `url("${url}") ${Math.round(wCss / 2)} ${Math.round(hCss / 2)}, crosshair`
+      : "crosshair";
   }
 
   for (const ac of [annotCanvas1, annotCanvas2]) {
@@ -428,7 +457,7 @@ function eraseAt(e, annotCanvas, layoutIndex) {
   const halo = 20;
 
   for (let i = pageAnnots.length - 1; i >= 0; i--) {
-    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo)) {
+    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo, layout.pdfW)) {
       pushUndo(pg);
       pageAnnots.splice(i, 1);
       saveAnnotations();
@@ -438,7 +467,7 @@ function eraseAt(e, annotCanvas, layoutIndex) {
   }
 }
 
-function hitTest(annot, px, py, w, h, rot, halo) {
+function hitTest(annot, px, py, w, h, rot, halo, pdfW) {
   if (annot.type === "ink") {
     for (const pt of annot.points) {
       const [cx, cy] = transformPt(pt[0], pt[1], w, h, rot);
@@ -447,7 +476,8 @@ function hitTest(annot, px, py, w, h, rot, halo) {
     return false;
   } else if (annot.type === "text") {
     const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    let sz = 12 + (annot.size || 2) * 4;
+    const scale = pdfW ? w / pdfW : 1;
+    let sz = textPt(annot.size) * scale;
     if (NOTE_GLYPHS.has(annot.text)) sz = Math.round(sz * 6);
     const lines = String(annot.text).split("\n");
     const halfW = Math.max(halo, sz);
@@ -455,8 +485,10 @@ function hitTest(annot, px, py, w, h, rot, halo) {
     return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
   } else if (annot.type === "stamp") {
     const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    const half = Math.max(halo, stampPx(annot.size) / 2);
-    return Math.abs(cx - px) < half && Math.abs(cy - py) < half;
+    const { wCss, hCss } = stampCssSize(annot.id, annot.size, w, pdfW);
+    const halfW = Math.max(halo, wCss / 2);
+    const halfH = Math.max(halo, hCss / 2);
+    return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
   }
   return false;
 }
@@ -482,7 +514,7 @@ function startMove(e, annotCanvas, layoutIndex) {
 
   let target = null;
   for (let i = pageAnnots.length - 1; i >= 0; i--) {
-    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo)) {
+    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo, layout.pdfW)) {
       target = pageAnnots[i];
       break;
     }
@@ -568,7 +600,7 @@ function handleTextClick(e, annotCanvas, layoutIndex) {
   let editAnnot = null;
   for (let i = pageAnnots.length - 1; i >= 0; i--) {
     const a = pageAnnots[i];
-    if (a.type === "text" && hitTest(a, x, y, layout.cssW, layout.cssH, rot, 10)) {
+    if (a.type === "text" && hitTest(a, x, y, layout.cssW, layout.cssH, rot, 10, layout.pdfW)) {
       editAnnot = a;
       break;
     }
@@ -701,6 +733,11 @@ export function initAnnotationEvents() {
       getState().penColor = sw.dataset.color;
     });
   });
+
+  // The selected swatch is the source of truth for the default pen colour, so
+  // it can't drift from the markup. Sync state from it on init.
+  const selectedSwatch = document.querySelector(".swatch.selected");
+  if (selectedSwatch) getState().penColor = selectedSwatch.dataset.color;
 
   btnUndo.addEventListener("click", () => doUndo());
   btnRotCW.addEventListener("click", () => rotatePage(90));

@@ -9,12 +9,15 @@
 // ---------------------------------------------------------------------------
 
 import { getState } from "./state.js";
+import { sizeToPt } from "./utils.js";
 
 const STAMPS_BASE = "/stamps";
 const PER_PAGE = 36;
+const PALETTE_MAX_PX = 72;   // cap a preview dimension so huge stamps don't blow up the dialog
 
-let _manifest = [];               // [{ id, label, file }]
+let _manifest = [];               // [{ id, label, file, w, h }]
 const _svgText = new Map();       // id -> raw SVG template (uses currentColor)
+const _meta = new Map();          // id -> { w, h } in staff spaces
 const _imgCache = new Map();      // "id|color" -> HTMLImageElement
 let _page = 0;
 
@@ -25,6 +28,9 @@ let _readyHandler = null;
 export function setStampsReadyHandler(fn) { _readyHandler = fn; }
 
 export function getStamps() { return _manifest; }
+
+// Per-stamp width/height in staff spaces (drives true SMuFL proportions).
+export function getStampMeta(id) { return _meta.get(id) || null; }
 
 // ---------------------------------------------------------------------------
 // Asset loading
@@ -37,6 +43,7 @@ export async function loadStampAssets() {
     const data = await resp.json();
     _manifest = Array.isArray(data.stamps) ? data.stamps : [];
     await Promise.all(_manifest.map(async (st) => {
+      _meta.set(st.id, { w: st.w || 1, h: st.h || 1 });
       try {
         const r = await fetch(`${STAMPS_BASE}/${st.file}`);
         if (r.ok) _svgText.set(st.id, await r.text());
@@ -48,22 +55,25 @@ export async function loadStampAssets() {
   }
 }
 
-// Build a data URL for a stamp at a given colour and pixel size. currentColor
-// is replaced with the actual colour, and explicit width/height + xmlns are
-// injected so the SVG renders correctly inside an <img>/cursor.
-function stampDataUrl(id, color, px) {
+// Build a data URL for a stamp at a given colour, rasterised at hPx tall with
+// width set to preserve the glyph's aspect ratio. currentColor is replaced
+// with the actual colour; explicit width/height are injected so the SVG
+// renders at a known size inside an <img>.
+function stampDataUrl(id, color, hPx) {
   let svg = _svgText.get(id);
   if (!svg) return null;
+  const meta = _meta.get(id);
+  const aspect = meta && meta.h ? meta.w / meta.h : 1;
+  const wPx = Math.max(1, Math.round(hPx * aspect));
   svg = svg.replaceAll("currentColor", color);
-  if (!/\bwidth=/.test(svg)) {
-    svg = svg.replace("<svg ", `<svg width="${px}" height="${px}" `);
-  }
+  svg = svg.replace("<svg ", `<svg width="${wPx}" height="${Math.round(hPx)}" `);
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
 // Returns a cached HTMLImageElement for (id, color), rasterised at a fixed
-// large size so the canvas can downscale crisply. Returns null if not ready;
-// onReady fires once the image finishes loading so the caller can redraw.
+// reference height (aspect-correct width) so the canvas can scale it crisply.
+// Returns null if not ready; onReady fires once the image loads so the caller
+// can redraw.
 export function getStampImage(id, color, onReady) {
   const key = `${id}|${color}`;
   let img = _imgCache.get(key);
@@ -72,7 +82,7 @@ export function getStampImage(id, color, onReady) {
     if (onReady) img.addEventListener("load", onReady, { once: true });
     return null;
   }
-  const url = stampDataUrl(id, color, 200);
+  const url = stampDataUrl(id, color, 256);
   if (!url) return null;
   img = new Image();
   if (onReady) img.addEventListener("load", onReady, { once: true });
@@ -81,20 +91,46 @@ export function getStampImage(id, color, onReady) {
   return (img.complete && img.naturalWidth > 0) ? img : null;
 }
 
-export function stampCursorDataUrl(id, color, px) {
-  return stampDataUrl(id, color, px);
+// PNG data URL for the desktop cursor, rendered via canvas. PNG cursors are
+// reliable across browsers; SVG-data-URI cursors are not (Firefox often
+// ignores them and falls back to the keyword cursor). Returns null until the
+// stamp image has loaded; onReady fires on load so the caller can re-apply.
+export function stampCursorPng(id, color, wPx, hPx, onReady) {
+  const img = getStampImage(id, color, onReady);
+  if (!img) return null;
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(wPx));
+  c.height = Math.max(1, Math.round(hPx));
+  try {
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return c.toDataURL("image/png");
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Palette
 // ---------------------------------------------------------------------------
 
+// CSS px per staff space at the current slider value and page render scale —
+// the same conversion the canvas uses, so palette previews match the page.
+function palettePxPerStaffSpace() {
+  const slider = parseInt(
+    (document.getElementById("size-slider") || {}).value, 10,
+  ) || 1;
+  const pt = sizeToPt(slider);
+  const layout = getState().pageLayouts[0];
+  const cssPerPt = layout && layout.pdfW ? layout.cssW / layout.pdfW : 1;
+  return pt * cssPerPt;
+}
+
 function renderPalette(grid, pageInfo, prevBtn, nextBtn) {
   const total = _manifest.length;
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   if (_page >= pages) _page = pages - 1;
 
-  grid.style.color = getState().penColor || "black";
+  const pxPerSS = palettePxPerStaffSpace();
   grid.innerHTML = "";
   const start = _page * PER_PAGE;
   for (const st of _manifest.slice(start, start + PER_PAGE)) {
@@ -102,7 +138,20 @@ function renderPalette(grid, pageInfo, prevBtn, nextBtn) {
     tile.type = "button";
     tile.className = "stamp-tile";
     tile.title = st.label;
+    // Previews use the default foreground colour (currentColor) for contrast
+    // against the dialog, regardless of the selected pen colour.
     tile.innerHTML = _svgText.get(st.id) || "";
+    // Size the preview to the stamp's true on-page size (capped so a huge
+    // stamp at a large slider value can't blow up the dialog).
+    const svg = tile.querySelector("svg");
+    if (svg) {
+      let wPx = (st.w || 1) * pxPerSS;
+      let hPx = (st.h || 1) * pxPerSS;
+      const m = Math.max(wPx, hPx);
+      if (m > PALETTE_MAX_PX) { const k = PALETTE_MAX_PX / m; wPx *= k; hPx *= k; }
+      svg.setAttribute("width", Math.max(1, Math.round(wPx)));
+      svg.setAttribute("height", Math.max(1, Math.round(hPx)));
+    }
     tile.addEventListener("click", () => {
       const dialog = document.getElementById("stamp-dialog");
       if (dialog) dialog.close();

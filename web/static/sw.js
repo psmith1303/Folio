@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.8.12";
+const APP_VERSION = "2.8.22";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 100;
@@ -28,8 +28,6 @@ const SHELL_URLS = [
   "/modules/newest.js",
   "/modules/stamps.js",
   "/stamps/stamps.json",
-  "/stamps/marcato.svg",
-  "/stamps/fermata.svg",
   "/lib/pdfjs/build/pdf.min.mjs",
   "/lib/pdfjs/build/pdf.worker.min.mjs",
   "/manifest.json",

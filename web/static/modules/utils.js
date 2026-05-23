@@ -4,6 +4,15 @@
 
 export const UNDO_DEPTH = 20;
 
+// The size slider (1-8) maps to these PDF point sizes, shared by text and
+// stamps. Kept in sync with _POINT_SIZES in web/core.py.
+export const POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22];
+
+export function sizeToPt(size) {
+  const i = Math.max(1, Math.min(POINT_SIZES.length, size || 1)) - 1;
+  return POINT_SIZES[i];
+}
+
 // Glyphs that render tiny in fall-back fonts and need ~6x scaling to be
 // readable as music notation. Dynamics ("p", "f", ...) are deliberately
 // NOT in this set \u2014 they're just letters that should follow the size

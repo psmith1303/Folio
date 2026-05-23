@@ -31,7 +31,7 @@ const state = {
 
   // Annotations
   activeTool: "nav",
-  penColor: "black",
+  penColor: "purple",
   pencilOnly: false,
   selectedStamp: null,
   annotations: {},

@@ -35,7 +35,7 @@ setRenderPageFn(renderPage);
 setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.8.12]";
+const VIEWER_TAG = "[viewer v2.8.22]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);
@@ -442,6 +442,10 @@ async function _rasterizePageImpl(pageNum) {
   return {
     canvas: off,
     cssW, cssH, dpr,
+    // Page size in PDF points (canonical orientation). Lets annotations that
+    // need a physical size (stamps) convert points -> on-screen CSS px.
+    pdfW: unscaledViewport.width,
+    pdfH: unscaledViewport.height,
     userRot,
     displayMode: layoutCtx.displayMode,
     containerW: layoutCtx.containerW,
@@ -528,7 +532,7 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
   annotCanvas.style.width = cssW + "px";
   annotCanvas.style.height = cssH + "px";
 
-  return { cssW, cssH };
+  return { cssW, cssH, pdfW: entry.pdfW, pdfH: entry.pdfH };
 }
 
 // Background prerender of the next view (and the previous view, since users
