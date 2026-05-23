@@ -7,7 +7,10 @@ import { newestBody, newestStatus, btnNewest } from "./dom.js";
 import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
-import { CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus } from "./cache.js";
+import {
+  CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
+  ICON_PINNED, ICON_NOT_CACHED,
+} from "./cache.js";
 
 // Callbacks set by app.js to avoid circular deps (viewer <-> newest)
 let _openScore = null;
@@ -66,7 +69,7 @@ export async function renderNewest() {
       <td title="${esc(sc.title)}">${esc(sc.title)}</td>
       <td title="${esc(sc.tags.join(", "))}">${esc(sc.tags.join(", "))}</td>
       <td>${formatAdded(sc.mtime)}</td>
-      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? "✓" : "⬇"}</button></td>` : ""}
+      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button></td>` : ""}
     `;
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".cache-btn")) return;
@@ -76,7 +79,7 @@ export async function renderNewest() {
     if (cacheBtn) {
       cacheBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        toggleCache(sc.filepath, e.target);
+        toggleCache(sc.filepath, cacheBtn);
       });
     }
     newestBody.appendChild(tr);

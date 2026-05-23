@@ -243,6 +243,12 @@ th.sortable:hover {
   min-width: 28px;
 }
 
+.cache-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
 .cache-btn.cached {
   color: var(--accent);
   border-color: var(--accent);

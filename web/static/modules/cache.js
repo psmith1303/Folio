@@ -11,6 +11,28 @@ const MAX_AUTO_CACHED = 100;
 export const CACHE_AVAILABLE = window.isSecureContext && "caches" in window;
 
 // ---------------------------------------------------------------------------
+// Cache-state icons (inline SVG)
+//
+// Inline SVG renders identically on every platform. The previous Unicode
+// glyphs (download arrow, check, circle) were drawn as colour emoji on iOS
+// but monochrome text on desktop, so the cache-state icons looked different
+// on iPad vs PC. SVG uses currentColor, so the existing .cached /
+// .auto-cached colour rules still apply.
+// ---------------------------------------------------------------------------
+
+const _icon = (inner) =>
+  '<svg class="cache-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor"' +
+  ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  inner + "</svg>";
+
+// Not cached — download (down arrow over a tray line).
+export const ICON_NOT_CACHED = _icon('<path d="M8 2.5v7"/><path d="M5 7l3 3 3-3"/><path d="M3.5 13h9"/>');
+// Auto-cached (present but not pinned) — hollow circle.
+export const ICON_AUTO_CACHED = _icon('<circle cx="8" cy="8" r="5"/>');
+// Pinned for offline — check mark.
+export const ICON_PINNED = _icon('<path d="M3.5 8.5l3.5 3.5 5.5-7"/>');
+
+// ---------------------------------------------------------------------------
 // IndexedDB helpers (same schema as sw.js, shared database)
 // ---------------------------------------------------------------------------
 
@@ -124,12 +146,38 @@ export async function cachePdf(path) {
   await cache.put(cacheKey, verified);
   await touchLruEntry(path, buf.byteLength, true);
   await evictIfNeeded();
+
+  // Keep the in-memory status sets in sync so any view rendered afterwards
+  // (e.g. switching to Newest after a "Cache setlist") reflects the new state
+  // without waiting on a refresh. Callers that batch-cache (setlist download)
+  // bypass toggleCache, which is the only other place these sets are updated.
+  _cachedPaths.add(path);
+  _pinnedPaths.add(path);
 }
 
 export async function evictPdf(path) {
   const cache = await caches.open(PDF_CACHE);
   await cache.delete("/api/pdf?path=" + encodeURIComponent(path));
   await removeLruEntry(path);
+  _cachedPaths.delete(path);
+  _pinnedPaths.delete(path);
+}
+
+// Pin a PDF for offline use. If it's already in the cache (e.g. auto-cached
+// after viewing — pinned:false), just flip the pinned flag instead of
+// re-downloading. This is what "Cache setlist" and the per-row toggle use so
+// that already-cached-but-unpinned PDFs actually get pinned.
+export async function pinPdf(path) {
+  const cacheKey = "/api/pdf?path=" + encodeURIComponent(path);
+  const cache = await caches.open(PDF_CACHE);
+  const existing = await cache.match(cacheKey);
+  if (existing) {
+    await touchLruEntry(path, 0, true);  // size 0 → touchLruEntry keeps existing
+    _cachedPaths.add(path);
+    _pinnedPaths.add(path);
+    return;
+  }
+  await cachePdf(path);  // not cached yet → download and pin
 }
 
 export async function getCacheStatus() {
@@ -184,13 +232,13 @@ function applyCacheButtonState(btn, filepath) {
   const cached = _cachedPaths.has(filepath);
   const pinned = _pinnedPaths.has(filepath);
   if (pinned) {
-    btn.textContent = "\u2713";
+    btn.innerHTML = ICON_PINNED;
     btn.title = "Pinned for offline use (click to remove)";
   } else if (cached) {
-    btn.textContent = "\u25CB";
+    btn.innerHTML = ICON_AUTO_CACHED;
     btn.title = "Auto-cached (click to pin)";
   } else {
-    btn.textContent = "\u2B07";
+    btn.innerHTML = ICON_NOT_CACHED;
     btn.title = "Download for offline use";
   }
   btn.classList.toggle("cached", pinned);
@@ -209,12 +257,8 @@ export async function toggleCache(filepath, btn) {
   try {
     if (pinned) {
       await evictPdf(filepath);
-      _cachedPaths.delete(filepath);
-      _pinnedPaths.delete(filepath);
     } else {
-      await cachePdf(filepath);
-      _cachedPaths.add(filepath);
-      _pinnedPaths.add(filepath);
+      await pinPdf(filepath);
     }
   } catch (err) {
     console.error("Cache toggle failed:", err);

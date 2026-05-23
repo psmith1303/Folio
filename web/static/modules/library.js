@@ -11,7 +11,10 @@ import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
 import { openScore, cleanupScore } from "./viewer.js";
-import { CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus } from "./cache.js";
+import {
+  CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
+  ICON_PINNED, ICON_NOT_CACHED,
+} from "./cache.js";
 
 // ---------------------------------------------------------------------------
 // Load and render
@@ -61,7 +64,7 @@ function renderLibrary() {
       <td title="${esc(sc.composer)}">${esc(sc.composer)}</td>
       <td title="${esc(sc.title)}">${esc(sc.title)}</td>
       <td title="${esc(sc.tags.join(", "))}">${esc(sc.tags.join(", "))}</td>
-      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? "\u2713" : "\u2B07"}</button></td>` : ""}
+      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button></td>` : ""}
     `;
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".cache-btn")) return;
@@ -71,7 +74,7 @@ function renderLibrary() {
     if (cacheBtn) {
       cacheBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        toggleCache(sc.filepath, e.target);
+        toggleCache(sc.filepath, cacheBtn);
       });
     }
     libraryBody.appendChild(tr);

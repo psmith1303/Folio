@@ -18,7 +18,10 @@ import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { showView } from "./views.js";
 import { openSetlistSong, openScore } from "./viewer.js";
-import { CACHE_AVAILABLE, cachePdf, getCacheStatus } from "./cache.js";
+import {
+  CACHE_AVAILABLE, pinPdf, getCacheStatus, isCached, toggleCache,
+  refreshCacheStatus, ICON_NOT_CACHED, ICON_PINNED,
+} from "./cache.js";
 
 // ---------------------------------------------------------------------------
 // Setlist list
@@ -143,7 +146,7 @@ function renderSetlistDetail() {
       tr.classList.add("setlist-ref-row");
       tr.innerHTML = `
         <td>${i + 1}</td>
-        <td colspan="4" class="setlist-ref-label">&#9654; Setlist: ${label}</td>
+        <td colspan="5" class="setlist-ref-label">&#9654; Setlist: ${label}</td>
         <td class="song-actions">
           <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
           <button class="small-btn down-btn" title="Move down" ${i === s.editingSetlistItems.length - 1 ? "disabled" : ""}>&#8595;</button>
@@ -152,12 +155,15 @@ function renderSetlistDetail() {
       `;
     } else {
       const startPage = item.start_page || 1;
+      const cached = isCached(item.path);
+      tr.dataset.filepath = item.path;
       tr.innerHTML = `
         <td>${i + 1}</td>
         <td>${esc(item.composer || "")}</td>
         <td>${esc(item.title || "")}</td>
         <td><input type="number" class="page-input start-pg" min="1" value="${startPage}"></td>
         <td><input type="number" class="page-input end-pg" min="0" value="${item.end_page || 0}"></td>
+        <td class="cache-col">${CACHE_AVAILABLE ? `<button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button>` : ""}</td>
         <td class="song-actions">
           <button class="small-btn open-btn" title="Open at page ${startPage}">&#9655;</button>
           <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
@@ -165,6 +171,14 @@ function renderSetlistDetail() {
           <button class="small-btn del-btn" title="Remove">&#10005;</button>
         </td>
       `;
+
+      const cacheBtn = tr.querySelector(".cache-btn");
+      if (cacheBtn) {
+        cacheBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          toggleCache(item.path, cacheBtn);
+        });
+      }
 
       tr.querySelector(".start-pg").addEventListener("change", (e) => {
         item.start_page = parseInt(e.target.value, 10) || 1;
@@ -224,6 +238,8 @@ function renderSetlistDetail() {
 
     setlistSongsBody.appendChild(tr);
   });
+
+  if (CACHE_AVAILABLE) refreshCacheStatus(setlistSongsBody);
 }
 
 function moveSong(index, direction) {
@@ -349,7 +365,11 @@ async function renderSongPicker(query) {
 export function initSetlistEvents() {
   const s = getState();
 
-  if (!CACHE_AVAILABLE) btnCacheSetlist.classList.add("hidden");
+  if (!CACHE_AVAILABLE) {
+    btnCacheSetlist.classList.add("hidden");
+  } else {
+    btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
+  }
 
   // New setlist
   btnNewSetlist.addEventListener("click", () => {
@@ -486,24 +506,28 @@ export function initSetlistEvents() {
       const data = await api(`/api/setlists/${encodeURIComponent(s.editingSetlistName)}/flat`);
       const paths = [...new Set(data.songs.map((song) => song.path))];
       const status = await getCacheStatus();
-      const needed = paths.filter((p) => !status.cached.has(p));
+      // Pin every member PDF that isn't pinned yet. Filtering by pinned (not
+      // cached) means PDFs that were merely auto-cached from viewing also get
+      // pinned; pinPdf skips re-downloading ones already in the cache.
+      const needed = paths.filter((p) => !status.pinned.has(p));
       let done = 0;
       for (const path of needed) {
         btnCacheSetlist.textContent = `${++done}/${needed.length}\u2026`;
-        await cachePdf(path);
+        await pinPdf(path);
       }
-      btnCacheSetlist.textContent = needed.length > 0
-        ? `\u2713 ${paths.length} cached`
-        : "\u2713 All cached";
+      if (CACHE_AVAILABLE) refreshCacheStatus(setlistSongsBody);
+      btnCacheSetlist.innerHTML = ICON_PINNED + (needed.length > 0
+        ? ` ${paths.length} cached`
+        : " All cached");
       setTimeout(() => {
-        btnCacheSetlist.textContent = "\u2B07 Cache";
+        btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
         btnCacheSetlist.disabled = false;
       }, 2000);
     } catch (err) {
       console.error("Setlist cache failed:", err);
       btnCacheSetlist.textContent = "Failed";
       setTimeout(() => {
-        btnCacheSetlist.textContent = "\u2B07 Cache";
+        btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
         btnCacheSetlist.disabled = false;
       }, 2000);
     }
