@@ -115,13 +115,12 @@ function drawText(ctx, annot, w, h, rot, pdfW) {
   const font = annot.font || "sans-serif";
   ctx.font = `${sz}px ${font}`;
   ctx.fillStyle = annot.color || "black";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "bottom";
   const lines = String(annot.text).split("\n");
   const lineH = sz * 1.2;
-  const startY = cy - ((lines.length - 1) * lineH) / 2;
   for (let i = 0; i < lines.length; i++) {
-    ctx.fillText(lines[i], cx, startY + i * lineH);
+    ctx.fillText(lines[i], cx, cy + i * lineH);
   }
 }
 
@@ -480,9 +479,12 @@ function hitTest(annot, px, py, w, h, rot, halo, pdfW) {
     let sz = textPt(annot.size) * scale;
     if (NOTE_GLYPHS.has(annot.text)) sz = Math.round(sz * 6);
     const lines = String(annot.text).split("\n");
-    const halfW = Math.max(halo, sz);
-    const halfH = Math.max(halo, (lines.length * sz * 1.2) / 2);
-    return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
+    const lineH = sz * 1.2;
+    const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
+    const textW = Math.max(sz, longest * sz * 0.6);
+    const totalH = lines.length * lineH;
+    return px >= cx - halo && px <= cx + textW + halo &&
+           py >= cy - totalH - halo && py <= cy + halo;
   } else if (annot.type === "stamp") {
     const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
     const { wCss, hCss } = stampCssSize(annot.id, annot.size, w, pdfW);

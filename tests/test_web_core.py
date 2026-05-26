@@ -8,11 +8,13 @@ import pytest
 from web.core import (
     ANNOTATION_VERSION,
     AnnotationConflictError,
+    BAKED_TAG,
     SafeJSON,
     SafeJSONError,
     Score,
     annotation_sidecar_path,
     annotations_etag,
+    bake_score,
     build_tagged_filename,
     compute_content_hash,
     export_annotated_pdf,
@@ -636,3 +638,123 @@ class TestRenameScoreTags:
         score.content_hash = compute_content_hash(str(pdf))
         new_score = rename_score_tags(score, {"jazz"})
         assert new_score.content_hash == score.content_hash
+
+
+# ---------------------------------------------------------------------------
+# bake_score
+# ---------------------------------------------------------------------------
+
+
+def _make_real_pdf(path: str) -> None:
+    import pymupdf as fitz
+    doc = fitz.open()
+    doc.new_page(width=400, height=600)
+    doc.save(path)
+    doc.close()
+
+
+class TestBakeScore:
+    def test_baked_tag_inserted_alphabetically(self, tmp_path):
+        pdf = tmp_path / "Sachs - 14 Duets -- trumpet.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+
+        new_score = bake_score(score)
+
+        assert new_score.filename == "Sachs - 14 Duets -- baked trumpet.pdf"
+        assert os.path.exists(new_score.filepath)
+
+    def test_baked_tag_added_to_untagged_score(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+
+        new_score = bake_score(score)
+
+        assert new_score.filename == "Bach - Suite -- baked.pdf"
+        assert os.path.exists(new_score.filepath)
+
+    def test_original_file_untouched(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        original_bytes = pdf.read_bytes()
+        score = Score(str(pdf), pdf.name)
+
+        bake_score(score)
+
+        assert pdf.read_bytes() == original_bytes
+
+    def test_original_sidecar_untouched(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+
+        pages = {"0": [{"uuid": "ink-1", "type": "ink",
+                        "points": [[0.1, 0.1], [0.2, 0.2]],
+                        "color": "red", "width": 2}]}
+        save_annotations(str(pdf), pages, {})
+        sidecar = annotation_sidecar_path(str(pdf))
+        sidecar_bytes = open(sidecar, "rb").read()
+
+        bake_score(score)
+
+        assert os.path.exists(sidecar)
+        assert open(sidecar, "rb").read() == sidecar_bytes
+
+    def test_no_sidecar_created_for_baked_file(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+
+        pages = {"0": [{"uuid": "ink-1", "type": "ink",
+                        "points": [[0.1, 0.1], [0.2, 0.2]],
+                        "color": "red", "width": 2}]}
+        save_annotations(str(pdf), pages, {})
+
+        new_score = bake_score(score)
+
+        assert not os.path.exists(annotation_sidecar_path(new_score.filepath))
+
+    def test_already_baked_raises(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite -- baked.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+        assert BAKED_TAG in score.filename_tags
+
+        with pytest.raises(ValueError):
+            bake_score(score)
+
+    def test_target_exists_raises(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        target = tmp_path / "Bach - Suite -- baked.pdf"
+        target.write_bytes(b"%PDF-1.4 squatter")
+        score = Score(str(pdf), pdf.name)
+
+        with pytest.raises(FileExistsError):
+            bake_score(score)
+        # Squatter not overwritten
+        assert target.read_bytes() == b"%PDF-1.4 squatter"
+
+    def test_content_hash_set_on_new_score(self, tmp_path):
+        pdf = tmp_path / "Bach - Suite.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name)
+
+        new_score = bake_score(score)
+
+        assert new_score.content_hash
+        assert new_score.content_hash == compute_content_hash(new_score.filepath)
+
+    def test_baked_in_same_directory(self, tmp_path):
+        subdir = tmp_path / "jazz"
+        subdir.mkdir()
+        pdf = subdir / "Davis - Blue -- swing.pdf"
+        _make_real_pdf(str(pdf))
+        score = Score(str(pdf), pdf.name, folder_tags={"jazz"})
+
+        new_score = bake_score(score)
+
+        assert os.path.dirname(new_score.filepath) == str(subdir)
+        assert new_score.filename == "Davis - Blue -- baked swing.pdf"
+        assert "jazz" in new_score.folder_tags

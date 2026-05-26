@@ -437,6 +437,15 @@ th.sortable:hover {
   text-align: center;
 }
 
+#viewer-toast.error {
+  background: rgba(140, 30, 30, 0.95);
+  border-color: #e55;
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 16px;
+  font-size: 14px;
+}
+
 #viewer-toolbar {
   display: flex;
   flex-wrap: wrap;

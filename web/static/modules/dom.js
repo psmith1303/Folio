@@ -52,6 +52,7 @@ export const pageWrap1 = $("#page-wrap-1");
 export const pageWrap2 = $("#page-wrap-2");
 export const viewerToast = $("#viewer-toast");
 export const btnExport = $("#btn-export");
+export const btnBake = $("#btn-bake");
 export const btnFullscreen = $("#btn-fullscreen");
 
 // Annotation tools

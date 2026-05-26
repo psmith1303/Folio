@@ -27,10 +27,12 @@ from pydantic import BaseModel
 
 from .core import (
     AnnotationConflictError,
+    BAKED_TAG,
     SafeJSON,
     SafeJSONError,
     Score,
     annotation_sidecar_path,
+    bake_score,
     export_annotated_pdf,
     load_annotations,
     normalize_path,
@@ -367,7 +369,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.8.22",
+    title="Folio", version="2.8.25",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -836,6 +838,60 @@ def export_pdf(path: str = Query(..., description="Score filepath")):
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+class BakeRequest(BaseModel):
+    path: str
+
+
+@app.post("/api/pdf/bake")
+def bake_pdf(req: BakeRequest):
+    """Write a sibling PDF with annotations flattened in.
+
+    The baked file gets the ``baked`` filename tag. Original PDF and
+    its sidecar are untouched; no sidecar is created for the baked file.
+    Already-baked scores are rejected.
+    """
+    if not state.library_dir:
+        raise HTTPException(status_code=400, detail="No library directory set")
+    resolved = _validate_library_path(req.path)
+
+    score = None
+    for s in state.scores:
+        if os.path.normpath(s.filepath) == os.path.normpath(resolved):
+            score = s
+            break
+    if score is None:
+        raise HTTPException(status_code=404, detail="Score not found in library")
+
+    if BAKED_TAG in score.filename_tags:
+        raise HTTPException(status_code=409, detail="Score is already baked")
+
+    try:
+        new_score = bake_score(score)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except FileExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception:
+        log.exception("Bake failed for %s", resolved)
+        raise HTTPException(status_code=500, detail="Bake failed")
+
+    state.scores.append(new_score)
+
+    if new_score.content_hash:
+        try:
+            idx = SafeJSON.load(state.hash_index_path(), default={})
+            if isinstance(idx, dict):
+                idx[new_score.content_hash] = portable_path(new_score.filepath)
+                SafeJSON.save(state.hash_index_path(), idx)
+        except SafeJSONError:
+            log.warning("Could not update hash index after bake")
+
+    return {
+        "path": portable_path(new_score.filepath),
+        "filename": new_score.filename,
+    }
 
 
 # ---------------------------------------------------------------------------

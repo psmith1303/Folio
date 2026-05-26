@@ -853,6 +853,89 @@ class TestExportPDF:
 
 
 # ---------------------------------------------------------------------------
+# PDF bake
+# ---------------------------------------------------------------------------
+
+
+class TestBakePDF:
+    def _real_library(self, tmp_path):
+        import pymupdf as fitz
+        doc = fitz.open()
+        doc.new_page(width=400, height=600)
+        path = tmp_path / "Sachs - 14 Duets -- trumpet.pdf"
+        doc.save(str(path))
+        doc.close()
+        return str(tmp_path)
+
+    def test_bake_creates_sibling_file(self, client, tmp_path):
+        lib = self._real_library(tmp_path)
+        state.set_library(lib)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        resp = client.post("/api/pdf/bake", json={"path": path})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["filename"] == "Sachs - 14 Duets -- baked trumpet.pdf"
+        assert os.path.exists(os.path.join(lib, data["filename"]))
+
+    def test_bake_adds_score_to_library(self, client, tmp_path):
+        lib = self._real_library(tmp_path)
+        state.set_library(lib)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        client.post("/api/pdf/bake", json={"path": path})
+
+        after = client.get("/api/library").json()["scores"]
+        names = {s["filename"] for s in after}
+        assert "Sachs - 14 Duets -- baked trumpet.pdf" in names
+        assert "Sachs - 14 Duets -- trumpet.pdf" in names
+
+    def test_bake_already_baked_returns_409(self, client, tmp_path):
+        lib = self._real_library(tmp_path)
+        state.set_library(lib)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        first = client.post("/api/pdf/bake", json={"path": path})
+        assert first.status_code == 200
+        baked_path = first.json()["path"]
+
+        # Re-bake the baked file
+        resp = client.post("/api/pdf/bake", json={"path": baked_path})
+        assert resp.status_code == 409
+
+    def test_bake_collision_returns_409(self, client, tmp_path):
+        lib = self._real_library(tmp_path)
+        # Squatter at the target filename
+        (tmp_path / "Sachs - 14 Duets -- baked trumpet.pdf").write_bytes(b"%PDF-1.4 fake")
+        state.set_library(lib)
+        path = None
+        for s in client.get("/api/library").json()["scores"]:
+            if s["filename"] == "Sachs - 14 Duets -- trumpet.pdf":
+                path = s["filepath"]
+                break
+        assert path is not None
+
+        resp = client.post("/api/pdf/bake", json={"path": path})
+        assert resp.status_code == 409
+
+    def test_bake_no_library_returns_400(self, client):
+        resp = client.post("/api/pdf/bake", json={"path": "/some/file.pdf"})
+        assert resp.status_code == 400
+
+    def test_bake_missing_file_returns_404(self, client, tmp_path):
+        lib = self._real_library(tmp_path)
+        state.set_library(lib)
+        resp = client.post(
+            "/api/pdf/bake",
+            json={"path": str(tmp_path / "nope.pdf")},
+        )
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # PUT /api/scores/tags
 # ---------------------------------------------------------------------------
 

@@ -595,10 +595,12 @@ def _text_pt(size) -> float:
 def _export_text(page, annot: dict, w: float, h: float) -> None:
     """Insert a text annotation onto *page*.
 
-    Centering is applied in canonical space, then the anchor is mapped to
-    mediabox coords via ``page.derotation_matrix``. ``rotate=page.rotation``
-    pre-rotates the glyphs so they read horizontally in the canonical view
-    on PDFs with intrinsic ``/Rotate`` non-zero.
+    Anchor is bottom-left in canonical space: the first line's descender
+    bottom sits at (x, y), the left edge at x, and subsequent lines flow
+    downward. The anchor is mapped to mediabox coords via
+    ``page.derotation_matrix``; ``rotate=page.rotation`` pre-rotates the
+    glyphs so they read horizontally on PDFs with intrinsic ``/Rotate``
+    non-zero.
     """
     import pymupdf as fitz
 
@@ -614,13 +616,15 @@ def _export_text(page, annot: dict, w: float, h: float) -> None:
     fontname = "helv"
     lines = text.split("\n")
     line_h = size * 1.2
-    start_y = y - ((len(lines) - 1) * line_h) / 2
+    # Canvas textBaseline="bottom" puts the descender bottom at the anchor y.
+    # PyMuPDF insert_text places the baseline at the y coord, so lift the
+    # baseline by the descender amount (~0.2em for Helvetica).
+    descender = size * 0.2
     for i, line in enumerate(lines):
         if not line:
             continue
-        text_w = fitz.get_text_length(line, fontname=fontname, fontsize=size)
-        baseline_y = start_y + i * line_h + size * 0.35
-        anchor = fitz.Point(x - text_w / 2, baseline_y) * page.derotation_matrix
+        baseline_y = y + i * line_h - descender
+        anchor = fitz.Point(x, baseline_y) * page.derotation_matrix
         page.insert_text(
             anchor,
             line,
@@ -654,6 +658,59 @@ def _stamp_map() -> dict[str, dict]:
         except SafeJSONError:
             pass
     return _stamp_manifest
+
+
+BAKED_TAG = "baked"
+
+
+def bake_score(score: Score) -> Score:
+    """Write a new PDF next to *score* with its annotations flattened in.
+
+    The new file gets the ``baked`` filename tag added (alphabetically
+    inserted by ``build_tagged_filename``). The original PDF and its
+    sidecar JSON are not touched. No sidecar is created for the baked
+    file — it is a flattened, non-editable copy.
+
+    Raises ``ValueError`` if *score* already carries the ``baked`` tag,
+    and ``FileExistsError`` if the target filename already exists on disk.
+    """
+    if BAKED_TAG in score.filename_tags:
+        raise ValueError("Score is already baked")
+
+    new_tags = set(score.filename_tags) | {BAKED_TAG}
+    ext = os.path.splitext(score.filename)[1]
+    new_filename = build_tagged_filename(
+        score.composer, score.title, new_tags, ext
+    )
+    new_filepath = os.path.join(os.path.dirname(score.filepath), new_filename)
+
+    if os.path.exists(new_filepath):
+        raise FileExistsError(f"Target file already exists: {new_filename}")
+
+    pdf_bytes = export_annotated_pdf(score.filepath)
+
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        prefix=".bake-", suffix=ext,
+        dir=os.path.dirname(new_filepath) or None,
+    )
+    try:
+        with os.fdopen(tmp_fd, "wb") as f:
+            f.write(pdf_bytes)
+        os.rename(tmp_path, new_filepath)
+    except OSError:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+    new_score = Score(new_filepath, new_filename, score.folder_tags)
+    new_score.content_hash = compute_content_hash(new_filepath)
+    try:
+        new_score.mtime = os.path.getmtime(new_filepath)
+    except OSError:
+        new_score.mtime = 0.0
+    return new_score
 
 
 def _export_stamp(page, annot: dict, w: float, h: float) -> None:

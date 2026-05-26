@@ -17,7 +17,7 @@ import {
   pdfContainer, canvas1, canvas2, annotCanvas1, annotCanvas2,
   pageWrap2, pageInput, pageTotal, titleDisplay,
   btnClose, btnZoomFit, btnZoomWide, btnSideBySide,
-  btnPrev, btnNext, btnExport, btnFullscreen,
+  btnPrev, btnNext, btnExport, btnBake, btnFullscreen,
   libraryStatus, viewerToast,
 } from "./dom.js";
 import { api } from "./api.js";
@@ -35,7 +35,7 @@ setRenderPageFn(renderPage);
 setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.8.22]";
+const VIEWER_TAG = "[viewer v2.8.25]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);
@@ -49,9 +49,10 @@ console.log(VIEWER_TAG, "module loaded — set localStorage.folioDebug='1' for v
 
 let _toastTimer = null;
 
-export function showToast(msg, { duration = 4000 } = {}) {
+export function showToast(msg, { duration = 4000, error = false } = {}) {
   if (!viewerToast) return;
   viewerToast.textContent = msg;
+  viewerToast.classList.toggle("error", !!error);
   viewerToast.classList.remove("hidden");
   if (_toastTimer) clearTimeout(_toastTimer);
   if (duration > 0) {
@@ -62,6 +63,7 @@ export function showToast(msg, { duration = 4000 } = {}) {
 export function hideToast() {
   if (!viewerToast) return;
   viewerToast.classList.add("hidden");
+  viewerToast.classList.remove("error");
   if (_toastTimer) {
     clearTimeout(_toastTimer);
     _toastTimer = null;
@@ -182,6 +184,7 @@ export async function openScore(score, { startPage = 1 } = {}) {
   s.setlistPlayback = null;
   s.returnView = s.currentView;
   titleDisplay.textContent = `${score.composer} — ${score.title}`;
+  updateBakeButton();
   showView("viewer");
   // Indefinite toast — cleared by loadAndRenderPdf's hideToast() on success,
   // or overwritten by the catch branch on failure.
@@ -321,6 +324,7 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
     s.setlistPlayback.index = index;
     s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
     titleDisplay.textContent = `${song.composer} — ${song.title} (${index + 1}/${total})`;
+    updateBakeButton();
     addToRecent({ filepath: song.path, composer: song.composer, title: song.title });
   } catch (err) {
     // Auto-advance at a song boundary: keep the user on the current song
@@ -760,6 +764,68 @@ async function handleExport() {
 }
 
 // ---------------------------------------------------------------------------
+// Bake — save a flattened copy alongside the original
+// ---------------------------------------------------------------------------
+
+function isBakedFilepath(filepath) {
+  if (!filepath) return false;
+  const base = filepath.split("/").pop().replace(/\.pdf$/i, "");
+  const sep = base.indexOf(" -- ");
+  if (sep < 0) return false;
+  const tags = base.slice(sep + 4).toLowerCase().split(/\s+/);
+  return tags.includes("baked");
+}
+
+export function updateBakeButton() {
+  const s = getState();
+  const baked = isBakedFilepath(s.currentScore && s.currentScore.filepath);
+  btnBake.disabled = baked;
+  btnBake.title = baked
+    ? "This score is already baked"
+    : "Save a flattened copy alongside the original";
+}
+
+async function handleBake() {
+  const s = getState();
+  if (!s.currentScore) return;
+  if (isBakedFilepath(s.currentScore.filepath)) {
+    showToast("This score is already baked.", { duration: 4000, error: true });
+    return;
+  }
+  try {
+    btnBake.disabled = true;
+    btnBake.textContent = "Baking…";
+    const resp = await fetch("/api/pdf/bake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: s.currentScore.filepath }),
+    });
+    if (!resp.ok) {
+      let detail = `Bake failed (${resp.status})`;
+      try {
+        const j = await resp.json();
+        if (j && j.detail) detail = `Bake failed: ${j.detail}`;
+      } catch { /* ignore */ }
+      console.error(detail);
+      showToast(detail, { duration: 8000, error: true });
+      return;
+    }
+    const data = await resp.json();
+    showToast(`Baked: ${data.filename}`, { duration: 3000 });
+    if (_loadLibrary) {
+      try { await _loadLibrary(); } catch { /* ignore */ }
+    }
+  } catch (err) {
+    console.error("Bake failed:", err);
+    showToast(`Bake failed: ${err && err.message ? err.message : "network error"}`,
+              { duration: 8000, error: true });
+  } finally {
+    btnBake.textContent = "Bake";
+    updateBakeButton();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Init event listeners
 // ---------------------------------------------------------------------------
 
@@ -806,6 +872,7 @@ export function initViewerEvents() {
   });
 
   btnExport.addEventListener("click", handleExport);
+  btnBake.addEventListener("click", handleBake);
   btnFullscreen.addEventListener("click", toggleFullscreen);
 
   document.addEventListener("fullscreenchange", () => {
