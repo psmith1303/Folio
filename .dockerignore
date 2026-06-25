@@ -1,0 +1,23 @@
+# Keep the build context small and reproducible.
+.git
+.gitignore
+.ruff_cache
+__pycache__/
+*.py[cod]
+*.log
+
+# Dev-only / not needed in the image
+tests/
+scripts/
+docs/
+*.el
+*.md
+*.pdf
+icon.png
+requirements-dev.txt
+pytest.ini
+folio.sh
+
+# Runtime config/data (never bake into the image)
+config.json
+.folio/

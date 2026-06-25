@@ -46,6 +46,29 @@ Open `http://<your-machine>:8989` in a browser or on your iPad.
 On first launch, a dialog prompts for your music library path.
 The setting is remembered across restarts.
 
+### Docker
+
+A `Dockerfile` is included; run it like any other container, with two volumes:
+
+- **Music library** — bind-mount it at the **same path inside the container as
+  on the host** (e.g. `/mnt/z/PARA/Resources/Music:/mnt/z/PARA/Resources/Music`,
+  read-write). Folio stores absolute library paths and writes annotation
+  sidecars next to each PDF, so an identical path makes them resolve the same in
+  and out of the container.
+- **Config** — the app keeps its settings in `~/.folio/web_config.json`. The
+  image sets `HOME=/config`, so persist `/config` (e.g. `./folio-config:/config`)
+  to keep your library selection and session across container recreations.
+
+Set the auth salt with `-e FOLIO_AUTH_SALT=...` (see [Authentication](#authentication)).
+
+> **Gotcha — no scores listed?** A fresh `web_config.json` has no library
+> selected, so the library is empty until you pick the folder once (via the
+> first-launch dialog, or `POST /api/library {"path": "..."}`). The bind mount
+> being present is not enough — Folio only scans the folder you point it at.
+> Once set, `last_directory` is saved to the persisted config and auto-loaded on
+> every restart. Note env-var changes (e.g. the salt) only take effect when the
+> container is **recreated** (`docker compose up -d`), not on a plain restart.
+
 ## Authentication
 
 When exposed to the internet, enable authentication by setting an auth salt.
