@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.8.25";
+const APP_VERSION = "2.8.26";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 const PDF_CACHE = "folio-pdfs-v1";
 const MAX_AUTO_CACHED = 100;
@@ -145,8 +145,13 @@ function getPathFromPdfUrl(url) {
 // ---------------------------------------------------------------------------
 
 self.addEventListener("install", (e) => {
+  // Bypass the browser's HTTP cache (not just Cache Storage) — otherwise a
+  // heuristically-fresh disk-cached file can slip a stale module into an
+  // otherwise-new shell, producing a version mismatch that breaks imports.
   e.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_URLS))
+    caches.open(SHELL_CACHE).then((cache) =>
+      cache.addAll(SHELL_URLS.map((url) => new Request(url, { cache: "reload" })))
+    )
   );
   self.skipWaiting();
 });
@@ -216,9 +221,11 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // App shell: network-first with cache fallback
+  // App shell: network-first with cache fallback. Force past the browser's
+  // HTTP cache — "network-first" is meaningless if a heuristically-fresh
+  // disk-cached response can still satisfy it without hitting the network.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "reload" })
       .then((resp) => {
         if (resp.ok) {
           const clone = resp.clone();
