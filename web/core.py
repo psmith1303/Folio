@@ -577,9 +577,9 @@ def _export_ink(page, annot: dict, w: float, h: float) -> None:
     shape.commit()
 
 
-# Size slider (1-8) -> PDF point sizes, shared by text and stamps. Matches
-# POINT_SIZES in web/static/modules/annotations.js.
-_POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22]
+# Size slider -> PDF point sizes, shared by text and stamps. Matches
+# POINT_SIZES in web/static/modules/utils.js.
+_POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22, 26, 30, 34, 38, 44]
 
 
 def _size_to_pt(size) -> float:

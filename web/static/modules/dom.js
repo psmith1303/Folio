@@ -97,6 +97,8 @@ export const textDialog = $("#text-dialog");
 export const textDialogTitle = $("#text-dialog-title");
 export const textInput = $("#text-input");
 export const textFont = $("#text-font");
+export const textSizeSlider = $("#text-size-slider");
+export const textSizePt = $("#text-size-pt");
 export const textCancel = $("#text-cancel");
 
 // Dialogs — stamp palette

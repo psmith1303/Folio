@@ -831,6 +831,17 @@ th.sortable:hover {
   flex: 1;
 }
 
+#text-size-slider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+#text-size-pt {
+  font-size: 12px;
+  color: var(--fg-dim);
+  min-width: 2.5em;
+}
+
 
 /* ================================================================== */
 /* Dialog                                                             */

@@ -620,8 +620,10 @@ function handleTextClick(e, annotCanvas, layoutIndex) {
   if (_textDialogHandler) _textDialogHandler(editAnnot);
 }
 
-// Called by dialog-handlers when the text dialog closes with a result
-export function commitTextAnnotation(text, font) {
+// Called by dialog-handlers when the text dialog closes with a result.
+// `size` is a slider index from the text dialog's own size control, which
+// has a wider range than the shared pen/stamp toolbar slider.
+export function commitTextAnnotation(text, font, size) {
   const s = getState();
   if (!s.pendingTextAnnot) return;
 
@@ -636,8 +638,7 @@ export function commitTextAnnotation(text, font) {
     if (existing) {
       existing.text = text;
       existing.font = font;
-      existing.color = s.penColor;
-      existing.size = parseInt(sizeSlider.value, 10);
+      existing.size = size;
     }
   } else {
     if (!s.annotations[pg]) s.annotations[pg] = [];
@@ -649,7 +650,7 @@ export function commitTextAnnotation(text, font) {
       text,
       font,
       color: s.penColor,
-      size: parseInt(sizeSlider.value, 10),
+      size,
     });
   }
 

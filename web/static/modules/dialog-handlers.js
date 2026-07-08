@@ -7,6 +7,7 @@ import { getState } from "./state.js";
 import {
   dirDialog, dirInput, dirCancel,
   textDialog, textDialogTitle, textInput, textFont, textCancel,
+  textSizeSlider, textSizePt,
   clearPageDialog, clearPageCancel, btnClearPage,
   conflictDialog, conflictReload, conflictForce,
   loginDialog, loginInput, loginError,
@@ -18,7 +19,7 @@ import {
   libraryStatus,
 } from "./dom.js";
 import { api, login, setLoginHandler } from "./api.js";
-import { esc } from "./utils.js";
+import { esc, sizeToPt } from "./utils.js";
 import {
   saveAnnotations, drawAnnotations,
   setConflictHandler, setTextDialogHandler,
@@ -75,22 +76,32 @@ function initDirDialog() {
 // Text annotation dialog
 // ---------------------------------------------------------------------------
 
+function updateTextSizePt() {
+  textSizePt.textContent = `${sizeToPt(parseInt(textSizeSlider.value, 10))}pt`;
+}
+
 function initTextDialog() {
-  // Register callback so annotations module can open this dialog
+  // Register callback so annotations module can open this dialog. The
+  // dialog's own size slider is independent of the shared pen/stamp
+  // toolbar slider (it has a wider range) and, for new annotations,
+  // remembers the last size used across dialog opens.
   setTextDialogHandler((editAnnot) => {
-    const s = getState();
     if (editAnnot) {
       textDialogTitle.textContent = "Edit Text";
       textInput.value = editAnnot.text;
       textFont.value = editAnnot.font || "sans-serif";
+      textSizeSlider.value = editAnnot.size || textSizeSlider.value;
     } else {
       textDialogTitle.textContent = "Add Text";
       textInput.value = "";
       textFont.value = "sans-serif";
     }
+    updateTextSizePt();
     textDialog.showModal();
     textInput.focus();
   });
+
+  textSizeSlider.addEventListener("input", updateTextSizePt);
 
   // Ctrl/Cmd+Enter submits the textarea (plain Enter inserts a newline)
   textInput.addEventListener("keydown", (e) => {
@@ -113,7 +124,7 @@ function initTextDialog() {
       cancelTextAnnotation();
       return;
     }
-    commitTextAnnotation(text, textFont.value);
+    commitTextAnnotation(text, textFont.value, parseInt(textSizeSlider.value, 10));
   });
 }
 
