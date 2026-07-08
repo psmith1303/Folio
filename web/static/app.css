@@ -467,7 +467,10 @@ th.sortable:hover {
 }
 
 #page-input {
-  width: 50px;
+  width: 76px;
+  /* Reserve room for the native spinner on the right so centered text
+     can't creep under it at 3+ digits, regardless of exact box width. */
+  padding-right: 20px;
   text-align: center;
 }
 
@@ -707,7 +710,10 @@ th.sortable:hover {
 }
 
 .page-input {
-  width: 50px;
+  width: 76px;
+  /* Reserve room for the native spinner on the right so centered text
+     can't creep under it at 3+ digits, regardless of exact box width. */
+  padding-right: 20px;
   text-align: center;
 }
 
