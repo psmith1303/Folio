@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import web.server as srv
+from web.core import SafeJSON
 from web.server import app, state
 
 
@@ -20,9 +21,6 @@ def reset_state(tmp_path, monkeypatch):
     state.scores = []
     state.config = {"last_directory": "", "allowed_roots": []}
     srv._rate_buckets.clear()
-    srv._login_buckets.clear()
-    srv._login_failures.clear()
-    srv._lockouts.clear()
     yield
     state.library_dir = ""
     state.scores = []
@@ -87,6 +85,67 @@ class TestGetConfig:
         assert kb["go_library"] == "Alt+1"
         # Other defaults still present
         assert kb["go_setlists"] == "Alt+s"
+
+
+# ---------------------------------------------------------------------------
+# Obsolete config keys (left behind by the removed auth mechanism)
+# ---------------------------------------------------------------------------
+
+
+class TestObsoleteConfigKeys:
+    @pytest.mark.parametrize("stale", [
+        {"auth_salt": "xyzzy"},
+        {"session_secret": "deadbeef"},
+        {"auth_salt": "xyzzy", "session_secret": "deadbeef"},
+    ])
+    def test_stale_keys_dropped_from_result_and_disk(self, stale):
+        srv._save_config({"last_directory": "/music", **stale})
+        cfg = srv._load_config()
+        on_disk = SafeJSON.load(srv.WEB_CONFIG_PATH)
+        for key in stale:
+            assert key not in cfg
+            assert key not in on_disk
+
+    def test_surviving_keys_preserved(self):
+        srv._save_config({
+            "last_directory": "/music",
+            "allowed_roots": ["/music"],
+            "keybindings": {"undo": "Ctrl+z"},
+            "auth_salt": "xyzzy",
+            "session_secret": "deadbeef",
+        })
+        cfg = srv._load_config()
+        assert cfg["last_directory"] == "/music"
+        assert cfg["allowed_roots"] == ["/music"]
+        assert cfg["keybindings"] == {"undo": "Ctrl+z"}
+
+    def test_clean_config_is_not_rewritten(self, monkeypatch):
+        """A config with no stale keys must not be saved on every load."""
+        srv._save_config({"last_directory": "/music"})
+        saves: list[dict] = []
+        monkeypatch.setattr(srv, "_save_config", saves.append)
+        srv._load_config()
+        assert saves == []
+
+    def test_strip_is_idempotent(self, monkeypatch):
+        """Second load finds nothing stale and does not rewrite the file."""
+        srv._save_config({"last_directory": "/music", "auth_salt": "xyzzy"})
+        srv._load_config()
+        saves: list[dict] = []
+        monkeypatch.setattr(srv, "_save_config", saves.append)
+        cfg = srv._load_config()
+        assert saves == []
+        assert "auth_salt" not in cfg
+
+    def test_corrupt_config_is_not_rewritten(self, monkeypatch):
+        """A corrupt file falls back to defaults without clobbering itself."""
+        with open(srv.WEB_CONFIG_PATH, "w", encoding="utf-8") as f:
+            f.write("{ not json")
+        saves: list[dict] = []
+        monkeypatch.setattr(srv, "_save_config", saves.append)
+        cfg = srv._load_config()
+        assert saves == []
+        assert cfg == srv.DEFAULT_WEB_CONFIG
 
 
 # ---------------------------------------------------------------------------
@@ -743,53 +802,6 @@ class TestSecurity:
         assert resp.headers["x-content-type-options"] == "nosniff"
         assert resp.headers["x-frame-options"] == "DENY"
 
-    def test_auth_blocks_without_cookie(self, client, tmp_path):
-        """When auth_salt is set, API calls without a session cookie get 401."""
-        srv._save_config({"auth_salt": "testuser"})
-        resp = client.get("/api/config")
-        assert resp.status_code == 401
-
-    def test_auth_login_sets_cookie(self, client, tmp_path):
-        """Correct passphrase sets a session cookie that authenticates."""
-        import datetime
-        srv._save_config({"auth_salt": "testuser"})
-        today = datetime.date.today().isoformat()
-        resp = client.post("/api/login",
-                           json={"passphrase": f"{today}-testuser"})
-        assert resp.status_code == 200
-        # The cookie should now work
-        resp = client.get("/api/config")
-        assert resp.status_code == 200
-
-    def test_auth_bad_passphrase(self, client, tmp_path):
-        srv._save_config({"auth_salt": "testuser"})
-        resp = client.post("/api/login",
-                           json={"passphrase": "wrong"})
-        assert resp.status_code == 403
-
-    def test_auth_status_when_disabled(self, client):
-        resp = client.get("/api/auth-status")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["auth_required"] is False
-        assert data["authenticated"] is True
-
-    def test_changing_salt_invalidates_session(self, client, tmp_path):
-        """Changing auth_salt should invalidate existing session cookies."""
-        import datetime
-        srv._save_config({"auth_salt": "original"})
-        today = datetime.date.today().isoformat()
-        resp = client.post("/api/login",
-                           json={"passphrase": f"{today}-original"})
-        assert resp.status_code == 200
-        # Session works with original salt
-        resp = client.get("/api/config")
-        assert resp.status_code == 200
-        # Change the salt — old cookie should be invalid
-        srv._save_config({"auth_salt": "changed"})
-        resp = client.get("/api/config")
-        assert resp.status_code == 401
-
     def test_exception_details_not_leaked(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
         # Use a path inside the library that doesn't exist
@@ -798,6 +810,33 @@ class TestSecurity:
         assert resp.status_code == 404
         detail = resp.json().get("detail", "")
         assert library_with_pdfs not in detail
+
+    def test_config_auth_salt_does_not_gate_the_api(self, client):
+        """A leftover auth_salt in the config must not revive the 401 gate."""
+        srv._save_config({"auth_salt": "testuser"})
+        resp = client.get("/api/config")
+        assert resp.status_code == 200
+
+    def test_env_auth_salt_does_not_gate_the_api(self, client, monkeypatch):
+        """A stale FOLIO_AUTH_SALT (e.g. left in compose) is inert."""
+        monkeypatch.setenv("FOLIO_AUTH_SALT", "leftover-from-compose")
+        resp = client.get("/api/config")
+        assert resp.status_code == 200
+
+    def test_auth_status_endpoint_removed(self, client):
+        """Unrouted GETs fall through to the static mount, which 404s."""
+        assert client.get("/api/auth-status").status_code == 404
+
+    @pytest.mark.parametrize("path", ["/api/login", "/api/never-existed"])
+    def test_login_endpoint_removed(self, client, path):
+        """/api/login is indistinguishable from a path that never existed.
+
+        Unrouted POSTs reach the static mount, which serves GET/HEAD only,
+        so the honest response is 405 rather than 404.
+        """
+        resp = client.post(path, json={"passphrase": "anything"})
+        assert resp.status_code == 405
+        assert "folio_session" not in resp.cookies
 
 
 # ---------------------------------------------------------------------------

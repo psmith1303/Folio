@@ -75,7 +75,7 @@ if (typeof crypto !== "undefined" && !crypto.randomUUID) {
 // ---------------------------------------------------------------------------
 
 import { getState } from "./modules/state.js";
-import { api, getAuthStatus } from "./modules/api.js";
+import { api } from "./modules/api.js";
 import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary, setLoadSetlistsFn } from "./modules/library.js";
@@ -86,8 +86,8 @@ import {
 } from "./modules/stamps.js";
 import { initSetlistEvents, loadSetlists } from "./modules/setlists.js";
 import {
-  initDialogHandlers, showLoginDialog, showDirDialog,
-  setLoadLibraryFn as setDialogLoadLibraryFn, setInitAppFn,
+  initDialogHandlers, showDirDialog,
+  setLoadLibraryFn as setDialogLoadLibraryFn,
 } from "./modules/dialog-handlers.js";
 import { initKeyboardShortcuts, setKeybindings } from "./modules/keyboard.js";
 import { initTouchHandlers } from "./modules/touch.js";
@@ -279,22 +279,8 @@ async function initApp() {
       showDirDialog(cfg.library_dir || "");
     }
   } catch (err) {
-    if (err.message === "Authentication required") return;
     libraryStatus.textContent = `Error: ${err.message}`;
   }
 }
 
-setInitAppFn(initApp);
-
-(async function () {
-  try {
-    const status = await getAuthStatus();
-    if (status.auth_required && !status.authenticated) {
-      showLoginDialog();
-    } else {
-      initApp();
-    }
-  } catch (err) {
-    initApp();
-  }
-})();
+initApp();

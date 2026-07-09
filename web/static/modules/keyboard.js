@@ -5,7 +5,7 @@
 import { getState } from "./state.js";
 import {
   textDialog, dirDialog, setlistNameDialog, songPickerDialog,
-  setlistPickerDialog, setlistRefPickerDialog, loginDialog,
+  setlistPickerDialog, setlistRefPickerDialog,
   conflictDialog, offlineDialog, stampDialog,
   btnLibrary, btnSetlists, btnRecent, btnNewest, btnReset, searchInput,
 } from "./dom.js";
@@ -73,7 +73,7 @@ function isDialogOpen() {
   return (
     textDialog.open || dirDialog.open || setlistNameDialog.open ||
     songPickerDialog.open || setlistPickerDialog.open ||
-    setlistRefPickerDialog.open || loginDialog.open || conflictDialog.open ||
+    setlistRefPickerDialog.open || conflictDialog.open ||
     offlineDialog.open || stampDialog.open
   );
 }

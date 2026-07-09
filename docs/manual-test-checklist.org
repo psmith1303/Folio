@@ -53,13 +53,6 @@
 - [ ] Rename / Delete — rename a referenced setlist; verify parent's reference updates
 - [ ] Back navigation — from setlist detail back to list, from viewer back to setlist detail
 
-* Auth
-- [ ] Without =auth_salt= — app loads without login prompt
-- [ ] Set =FOLIO_AUTH_SALT=test= env var, restart — login dialog appears
-- [ ] Enter wrong passphrase — error shown
-- [ ] Enter =YYYY-MM-DD-test= (today's date) — login succeeds, cookie set
-- [ ] Refresh — stays logged in (30-day cookie)
-
 * Theme & PWA
 - [ ] Theme toggle — click Light/Dark button, verify it persists on reload
 - [ ] PWA — on iPad, Add to Home Screen, verify standalone mode

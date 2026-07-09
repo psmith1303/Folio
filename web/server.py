@@ -7,21 +7,17 @@ or:
     python -m web.server
 """
 
-import datetime
-import hashlib
-import hmac
 import logging
 import os
 import random
 import re
-import secrets
 import shutil
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -105,92 +101,27 @@ _MAX_SETLIST_NAME = 200
 _SETLIST_NAME_RE = re.compile(r'^[^/\\<>:"|?*\x00-\x1f]+$')
 
 
+# Keys written by the removed authentication mechanism; dropped on load.
+_OBSOLETE_CONFIG_KEYS = ("auth_salt", "session_secret")
+
+
 def _load_config() -> dict:
     try:
         data = SafeJSON.load(WEB_CONFIG_PATH, default={})
     except SafeJSONError:
         data = {}
+    stale = [k for k in _OBSOLETE_CONFIG_KEYS if k in data]
+    if stale:
+        for key in stale:
+            del data[key]
+        log.info("Removed obsolete config keys: %s", ", ".join(stale))
+        _save_config(data)
     merged = {**DEFAULT_WEB_CONFIG, **data}
     return merged
 
 
 def _save_config(cfg: dict) -> None:
     SafeJSON.save(WEB_CONFIG_PATH, cfg)
-
-
-# ---------------------------------------------------------------------------
-# Authentication
-# ---------------------------------------------------------------------------
-
-_SESSION_COOKIE = "folio_session"
-_SESSION_MAX_AGE = 30 * 24 * 3600  # 30 days
-
-
-def _get_auth_salt() -> str:
-    """Return the auth salt.  Env var takes precedence, then config file.
-
-    Reads the config file directly (not the in-memory cache) so that
-    changes to auth_salt take effect without restarting the server.
-    """
-    env_salt = os.environ.get("FOLIO_AUTH_SALT", "").strip()
-    if env_salt:
-        return env_salt
-    try:
-        cfg = SafeJSON.load(WEB_CONFIG_PATH, default={})
-        return cfg.get("auth_salt", "").strip()
-    except SafeJSONError:
-        return ""
-
-
-def _get_session_secret() -> str:
-    """Return (and auto-generate on first use) a persistent signing key."""
-    secret = state.config.get("session_secret", "")
-    if not secret:
-        secret = secrets.token_hex(32)
-        state.config["session_secret"] = secret
-        _save_config(state.config)
-    return secret
-
-
-def _expected_passphrase(salt: str) -> str:
-    today = datetime.date.today().isoformat()  # YYYY-MM-DD
-    return f"{today}-{salt}"
-
-
-def _make_session_token() -> str:
-    """Create an HMAC-signed session token embedding a timestamp.
-
-    The current auth salt is mixed into the HMAC so that changing the
-    salt automatically invalidates all existing sessions.
-    """
-    salt = _get_auth_salt()
-    ts = str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))
-    msg = f"{ts}.{salt}".encode()
-    sig = hmac.new(
-        _get_session_secret().encode(), msg, hashlib.sha256
-    ).hexdigest()
-    return f"{ts}.{sig}"
-
-
-def _verify_session_token(token: str) -> bool:
-    """Verify the token signature and check it's not expired."""
-    parts = token.split(".", 1)
-    if len(parts) != 2:
-        return False
-    ts_str, sig = parts
-    salt = _get_auth_salt()
-    msg = f"{ts_str}.{salt}".encode()
-    expected = hmac.new(
-        _get_session_secret().encode(), msg, hashlib.sha256
-    ).hexdigest()
-    if not hmac.compare_digest(sig, expected):
-        return False
-    try:
-        ts = int(ts_str)
-    except ValueError:
-        return False
-    age = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) - ts
-    return 0 <= age <= _SESSION_MAX_AGE
 
 
 class AppState:
@@ -369,7 +300,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.8.29",
+    title="Folio", version="2.9.0",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -382,18 +313,6 @@ _rate_buckets: dict[str, list[float]] = defaultdict(list)
 _RATE_WINDOW = 5.0  # seconds
 _RATE_LIMIT = 30  # max requests per window per key
 
-# Stricter limits for login: 5 attempts per 60 seconds per IP
-_LOGIN_WINDOW = 60.0
-_LOGIN_LIMIT = 5
-_login_buckets: dict[str, list[float]] = defaultdict(list)
-
-# Lockout after repeated failures: 15 failures in 5 min → 15 min lockout
-_LOCKOUT_THRESHOLD = 15
-_LOCKOUT_WINDOW = 300.0  # 5 minutes
-_LOCKOUT_DURATION = 900.0  # 15 minutes
-_login_failures: dict[str, list[float]] = defaultdict(list)
-_lockouts: dict[str, float] = {}
-
 
 def _check_rate_limit(key: str) -> None:
     now = time.monotonic()
@@ -404,69 +323,14 @@ def _check_rate_limit(key: str) -> None:
     bucket.append(now)
 
 
-def _check_login_rate(client_ip: str) -> None:
-    """Rate-limit and lockout check for login attempts."""
-    now = time.monotonic()
-
-    # Check lockout first
-    lockout_until = _lockouts.get(client_ip, 0)
-    if now < lockout_until:
-        remaining = int(lockout_until - now)
-        raise HTTPException(
-            status_code=429,
-            detail=f"Too many failed attempts. Try again in {remaining}s",
-        )
-
-    # Sliding window rate limit
-    bucket = _login_buckets[client_ip]
-    _login_buckets[client_ip] = bucket = [
-        t for t in bucket if now - t < _LOGIN_WINDOW
-    ]
-    if len(bucket) >= _LOGIN_LIMIT:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many login attempts. Wait 60 seconds",
-        )
-    bucket.append(now)
-
-
-def _record_login_failure(client_ip: str) -> None:
-    """Track failed login and trigger lockout if threshold exceeded."""
-    now = time.monotonic()
-    failures = _login_failures[client_ip]
-    _login_failures[client_ip] = failures = [
-        t for t in failures if now - t < _LOCKOUT_WINDOW
-    ]
-    failures.append(now)
-    if len(failures) >= _LOCKOUT_THRESHOLD:
-        _lockouts[client_ip] = now + _LOCKOUT_DURATION
-        log.warning("Login lockout triggered for %s", client_ip)
-
-
 @app.middleware("http")
 async def security_middleware(request: Request, call_next):
     path = request.url.path
     client = request.client.host if request.client else "unknown"
 
-    # Login gets its own stricter rate limit + lockout
-    if path == "/api/login" and request.method == "POST":
-        _check_login_rate(client)
-
-    # Rate-limit write endpoints (login already checked above, but general
-    # limit still applies to prevent abuse of other write endpoints)
+    # Rate-limit write endpoints to prevent abuse
     if request.method in ("POST", "PUT", "DELETE"):
         _check_rate_limit(f"{client}:{path}")
-
-    # Auth check: protect /api/* except /api/login and /api/auth-status
-    salt = _get_auth_salt()
-    if salt and path.startswith("/api/") \
-            and path not in ("/api/login", "/api/auth-status"):
-        token = request.cookies.get(_SESSION_COOKIE, "")
-        if not _verify_session_token(token):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authentication required"},
-            )
 
     response = await call_next(request)
 
@@ -488,56 +352,6 @@ async def security_middleware(request: Request, call_next):
         "frame-ancestors 'none'; "
         "base-uri 'self'; "
         "form-action 'self'"
-    )
-    return response
-
-
-# ---------------------------------------------------------------------------
-# Auth endpoints
-# ---------------------------------------------------------------------------
-
-
-class LoginRequest(BaseModel):
-    passphrase: str
-
-
-@app.get("/api/auth-status")
-def auth_status(request: Request):
-    """Check whether auth is enabled and whether the current session is valid."""
-    salt = _get_auth_salt()
-    if not salt:
-        return {"auth_required": False, "authenticated": True}
-    token = request.cookies.get(_SESSION_COOKIE, "")
-    return {
-        "auth_required": True,
-        "authenticated": _verify_session_token(token),
-    }
-
-
-@app.post("/api/login")
-def login(req: LoginRequest, request: Request):
-    salt = _get_auth_salt()
-    if not salt:
-        return {"ok": True}
-
-    client_ip = request.client.host if request.client else "unknown"
-
-    if req.passphrase.strip() != _expected_passphrase(salt):
-        _record_login_failure(client_ip)
-        raise HTTPException(status_code=403, detail="Invalid passphrase")
-
-    # Successful login — clear failure tracking for this IP
-    _login_failures.pop(client_ip, None)
-    _lockouts.pop(client_ip, None)
-
-    token = _make_session_token()
-    response = JSONResponse(content={"ok": True})
-    response.set_cookie(
-        key=_SESSION_COOKIE,
-        value=token,
-        max_age=_SESSION_MAX_AGE,
-        httponly=True,
-        samesite="strict",
     )
     return response
 

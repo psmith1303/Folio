@@ -141,11 +141,6 @@ export const conflictDialog = $("#conflict-dialog");
 export const conflictReload = $("#conflict-reload");
 export const conflictForce = $("#conflict-force");
 
-// Dialogs — login
-export const loginDialog = $("#login-dialog");
-export const loginInput = $("#login-input");
-export const loginError = $("#login-error");
-
 // Dialogs — offline cache
 export const offlineDialog = $("#offline-dialog");
 

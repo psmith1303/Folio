@@ -10,7 +10,6 @@ import {
   textSizeSlider, textSizePt,
   clearPageDialog, clearPageCancel, btnClearPage,
   conflictDialog, conflictReload, conflictForce,
-  loginDialog, loginInput, loginError,
   btnSetDir, btnAddToSetlist, btnEditTags,
   setlistPickerDialog, setlistPickerList, setlistPickerCancel,
   setlistPickerStart, setlistPickerEnd, setlistPickerAdd,
@@ -18,7 +17,7 @@ import {
   tagEditorCancel, titleDisplay,
   libraryStatus,
 } from "./dom.js";
-import { api, login, setLoginHandler } from "./api.js";
+import { api } from "./api.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
   saveAnnotations, drawAnnotations,
@@ -30,10 +29,8 @@ import { renderPage } from "./viewer.js";
 
 // These are set lazily to avoid circular imports at module evaluation time
 let _loadLibrary = null;
-let _initApp = null;
 
 export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
-export function setInitAppFn(fn) { _initApp = fn; }
 
 // ---------------------------------------------------------------------------
 // Set-folder dialog
@@ -176,38 +173,6 @@ function initConflictDialog() {
   conflictForce.addEventListener("click", () => {
     conflictDialog.close();
     saveAnnotations(true);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Login dialog
-// ---------------------------------------------------------------------------
-
-export function showLoginDialog() {
-  loginInput.value = "";
-  loginError.textContent = "";
-  loginDialog.showModal();
-  loginInput.focus();
-}
-
-function initLoginDialog() {
-  setLoginHandler(showLoginDialog);
-
-  loginDialog.addEventListener("close", async () => {
-    if (loginDialog.returnValue !== "login") return;
-    const passphrase = loginInput.value.trim();
-    if (!passphrase) {
-      showLoginDialog();
-      return;
-    }
-    try {
-      await login(passphrase);
-      if (_initApp) _initApp();
-    } catch (err) {
-      loginError.textContent = err.message || "Login failed";
-      loginDialog.showModal();
-      loginInput.focus();
-    }
   });
 }
 
@@ -360,7 +325,6 @@ export function initDialogHandlers() {
   initTextDialog();
   initClearPageDialog();
   initConflictDialog();
-  initLoginDialog();
   initSetlistPickerDialog();
   initTagEditorDialog();
 }

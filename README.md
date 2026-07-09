@@ -57,34 +57,20 @@ A `Dockerfile` is included; run it like any other container, with two volumes:
   and out of the container.
 - **Config** — the app keeps its settings in `~/.folio/web_config.json`. The
   image sets `HOME=/config`, so persist `/config` (e.g. `./folio-config:/config`)
-  to keep your library selection and session across container recreations.
-
-Set the auth salt with `-e FOLIO_AUTH_SALT=...` (see [Authentication](#authentication)).
+  to keep your library selection across container recreations.
 
 > **Gotcha — no scores listed?** A fresh `web_config.json` has no library
 > selected, so the library is empty until you pick the folder once (via the
 > first-launch dialog, or `POST /api/library {"path": "..."}`). The bind mount
 > being present is not enough — Folio only scans the folder you point it at.
 > Once set, `last_directory` is saved to the persisted config and auto-loaded on
-> every restart. Note env-var changes (e.g. the salt) only take effect when the
-> container is **recreated** (`docker compose up -d`), not on a plain restart.
+> every restart.
 
-## Authentication
+## Security
 
-When exposed to the internet, enable authentication by setting an auth salt.
-The passphrase is `YYYY-MM-DD-<salt>` (today's date + your salt), so it changes
-daily and requires no memorisation.
-
-### Option 1: environment variable
-```
-FOLIO_AUTH_SALT=xyzzy python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
-```
-
-### Option 2: config file
-Add `"auth_salt": "xyzzy"` to `~/.folio/web_config.json`.
-
-Once authenticated, a 30-day session cookie is set — no need to re-enter
-the passphrase on every visit.  With no salt configured, auth is disabled.
+Folio has **no authentication**. Anyone who can reach the port can read and
+modify your library. Run it only on a network you trust, and do not expose it
+to the internet.
 
 ## Keyboard Shortcuts
 
@@ -152,7 +138,7 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 67 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming, PDF export with intrinsic-rotation handling |
-| `tests/test_web_api.py` | 106 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security, auth |
+| `tests/test_web_api.py` | 114 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
 
@@ -195,7 +181,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | Module | Description |
 |---|---|
 | `state.js` | Centralized application state |
-| `api.js` | Fetch wrapper with retry, auth redirect, cache-busting |
+| `api.js` | Fetch wrapper with retry, cache-busting |
 | `dom.js` | DOM element references |
 | `views.js` | View switching (library, setlists, recent, viewer) |
 | `library.js` | Library loading, rendering, sorting, filtering |
