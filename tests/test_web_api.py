@@ -1274,6 +1274,104 @@ class TestHealReferences:
         assert not (copies / "Bach - Suite.json").exists()
 
 
+class TestHealReferencesRobustness:
+    """The index must survive scans that carry no trustworthy information."""
+
+    def test_empty_scan_keeps_existing_hash_index(self, tmp_path):
+        """A library that scans to zero scores must not wipe the index."""
+        from web.core import portable_path
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 present")
+        state.set_library(str(tmp_path))
+        before = SafeJSON.load(state.hash_index_path(), default={})
+        assert before, "precondition: first scan records a hash"
+
+        # The library disappears -- e.g. a volume that has not mounted yet.
+        os.remove(str(pdf))
+        state.set_library(str(tmp_path))
+
+        after = SafeJSON.load(state.hash_index_path(), default={})
+        assert after == before
+        assert portable_path(str(pdf)) in after.values()
+
+    def test_scan_without_usable_hashes_keeps_index(self, tmp_path, monkeypatch):
+        """Scores present but all unhashable must not wipe the index either."""
+        import web.core as core
+
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 unreadable later")
+        state.set_library(str(tmp_path))
+        before = SafeJSON.load(state.hash_index_path(), default={})
+        assert before
+
+        # Every read fails.  Bump mtime so the scan cache cannot supply the
+        # previously computed hash.
+        os.utime(str(pdf), (0, 0))
+        monkeypatch.setattr(core, "compute_content_hash",
+                            lambda filepath, size=None: "")
+        state.set_library(str(tmp_path))
+
+        assert SafeJSON.load(state.hash_index_path(), default={}) == before
+
+    def test_empty_scan_keeps_scan_cache(self, tmp_path):
+        """An empty scan must not clobber the scan cache either."""
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 cached")
+        state.set_library(str(tmp_path))
+        before = SafeJSON.load(state.scan_cache_path(), default={})
+        assert before, "precondition: first scan records a cache entry"
+
+        os.remove(str(pdf))
+        state.set_library(str(tmp_path))
+
+        assert SafeJSON.load(state.scan_cache_path(), default={}) == before
+
+    def test_failed_heal_keeps_old_index_and_retries(self, tmp_path, monkeypatch):
+        """A heal that cannot write must leave the index alone so it retries."""
+        from web.core import SafeJSONError, portable_path
+
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 heal retry")
+        state.set_library(str(tmp_path))
+
+        old_portable = portable_path(str(pdf))
+        SafeJSON.save(state.setlist_path(), {"My Set": [
+            {"type": "song", "path": old_portable,
+             "title": "Suite", "composer": "Bach"},
+        ]})
+
+        new_pdf = tmp_path / "Bach - Cello Suite.pdf"
+        os.rename(str(pdf), str(new_pdf))
+
+        # The setlist file cannot be written during this scan.  Restore by
+        # re-patching, never monkeypatch.undo() -- reset_state shares this
+        # monkeypatch instance, and undoing it would let _save_config write to
+        # the real ~/.folio/web_config.json.
+        real_save_setlists = srv._save_setlists
+
+        def boom(data):
+            raise SafeJSONError("read-only mount")
+
+        monkeypatch.setattr(srv, "_save_setlists", boom)
+        state.set_library(str(tmp_path))
+
+        # set_library survived and still recorded the directory ...
+        assert state.config["last_directory"] == portable_path(str(tmp_path))
+        # ... and the index still points at the OLD path, so the remap recurs.
+        idx = SafeJSON.load(state.hash_index_path(), default={})
+        assert old_portable in idx.values()
+        assert portable_path(str(new_pdf)) not in idx.values()
+
+        # With writes working again, the next scan completes the heal.
+        monkeypatch.setattr(srv, "_save_setlists", real_save_setlists)
+        state.set_library(str(tmp_path))
+
+        data = SafeJSON.load(state.setlist_path(), default={})
+        entry = data["My Set"]
+        items = entry["items"] if isinstance(entry, dict) else entry
+        assert items[0]["path"] == portable_path(str(new_pdf))
+
+
 # ---------------------------------------------------------------------------
 # Recent endpoints
 # ---------------------------------------------------------------------------

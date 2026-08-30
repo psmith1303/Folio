@@ -144,10 +144,11 @@ class AppState:
             log.warning("Could not load scan cache: %s", e)
             hash_cache = {}
         self.scores = scan_library(path, hash_cache=hash_cache)
-        try:
-            SafeJSON.save(cache_path, hash_cache)
-        except SafeJSONError as e:
-            log.warning("Could not save scan cache: %s", e)
+        if self.scores:
+            try:
+                SafeJSON.save(cache_path, hash_cache)
+            except SafeJSONError as e:
+                log.warning("Could not save scan cache: %s", e)
         _heal_references(self)
         self.config["last_directory"] = portable_path(path)
         _save_config(self.config)
@@ -179,6 +180,10 @@ def _heal_references(st: "AppState") -> None:
 
     Hashes shared by more than one live file are omitted from the index:
     duplicate content cannot distinguish a rename from a copy.
+
+    The existing index is left untouched, rather than rebuilt, when the scan
+    produced no usable hashes or when a heal write failed -- in the latter
+    case so the next scan re-derives the same remap and retries.
     """
     index_path = st.hash_index_path()
 
@@ -196,6 +201,15 @@ def _heal_references(st: "AppState") -> None:
                         "detection: %s", len(paths), ", ".join(sorted(paths)))
             continue
         new_index[h] = paths[0]
+
+    # A scan that yielded no usable hashes carries no rename information, and
+    # rebuilding from it would wipe every known hash -- an unmounted library
+    # volume, or a share where every read failed.  Leave the index as it is.
+    if not new_index:
+        if os.path.exists(index_path):
+            log.warning("Scan produced no content hashes, "
+                        "keeping existing hash index")
+        return
 
     # Every path in the library, ambiguous hashes included: distinguishes
     # "renamed away" from "still on disk".
@@ -215,11 +229,26 @@ def _heal_references(st: "AppState") -> None:
             if old_path not in live_paths:
                 remap[old_path] = new_index[h]
 
+    healed_ok = True
     if remap:
         log.info("Detected %d renamed score(s), healing references", len(remap))
         _heal_annotation_sidecars(remap)
-        _heal_setlist_paths(st, remap)
-        _heal_recent_paths(st, remap)
+        try:
+            _heal_setlist_paths(st, remap)
+        except SafeJSONError as e:
+            healed_ok = False
+            log.warning("Could not heal setlist paths: %s", e)
+        try:
+            _heal_recent_paths(st, remap)
+        except SafeJSONError as e:
+            healed_ok = False
+            log.warning("Could not heal recent paths: %s", e)
+
+    if not healed_ok:
+        # Keep the old index so the next scan re-derives this remap and tries
+        # again; the heal helpers are idempotent.
+        log.warning("Heal incomplete, keeping previous hash index to retry")
+        return
 
     # Save new index
     try:
@@ -315,7 +344,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.9.1",
+    title="Folio", version="2.9.2",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
