@@ -19,3 +19,6 @@ dist/
 .DS_Store
 *~
 \#*\#
+
+# Local manual-test samples
+text_size_sample.pdf
