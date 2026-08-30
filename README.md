@@ -138,7 +138,7 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 76 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming, PDF export with intrinsic-rotation handling |
-| `tests/test_web_api.py` | 134 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security |
+| `tests/test_web_api.py` | 139 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
 

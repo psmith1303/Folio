@@ -979,6 +979,59 @@ class TestBakePDF:
 # ---------------------------------------------------------------------------
 
 
+class TestGetScore:
+    """GET /api/scores — authoritative per-score record for the tag editor."""
+
+    def test_returns_folder_and_filename_tags_split(self, client, library_with_pdfs):
+        """The split is the whole point: /api/recent only exposes combined tags."""
+        state.set_library(library_with_pdfs)
+        path = os.path.join(library_with_pdfs, "jazz", "Davis - Blue -- swing.pdf")
+        resp = client.get(f"/api/scores?path={path}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["folder_tags"] == ["jazz"]
+        assert data["filename_tags"] == ["swing"]
+        assert "swing" in data["tags"] and "jazz" in data["tags"]
+
+    def test_tags_returned_regardless_of_library_filter(self, client,
+                                                        library_with_pdfs):
+        """A filtered library view must not affect what this endpoint returns.
+
+        The client-side score list is filtered by the user's current search,
+        which is why the tag editor cannot use it as a source.
+        """
+        state.set_library(library_with_pdfs)
+        path = os.path.join(library_with_pdfs, "jazz", "Davis - Blue -- swing.pdf")
+
+        # A filter that excludes the score entirely.
+        filtered = client.get("/api/library?q=mozart")
+        assert filtered.status_code == 200
+        paths = [s["filepath"] for s in filtered.json()["scores"]]
+        assert not any(p.endswith("Davis - Blue -- swing.pdf") for p in paths)
+
+        resp = client.get(f"/api/scores?path={path}")
+        assert resp.status_code == 200
+        assert resp.json()["filename_tags"] == ["swing"]
+
+    def test_unknown_path_in_library_returns_404(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        missing = os.path.join(library_with_pdfs, "Nobody - Nothing.pdf")
+        resp = client.get(f"/api/scores?path={missing}")
+        assert resp.status_code == 404
+
+    def test_no_library_set_returns_400(self, client, tmp_path):
+        state.library_dir = ""
+        state.scores = []
+        resp = client.get(f"/api/scores?path={tmp_path / 'x.pdf'}")
+        assert resp.status_code == 400
+
+    def test_path_traversal_blocked(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        resp = client.get(
+            f"/api/scores?path={library_with_pdfs}/../../../etc/passwd")
+        assert resp.status_code in (403, 404)
+
+
 class TestUpdateTags:
     def test_add_tag(self, client, library_with_pdfs):
         client.post("/api/library", json={"path": library_with_pdfs})

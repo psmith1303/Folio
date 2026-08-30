@@ -258,13 +258,46 @@ function renderTagEditorChips() {
   }
 }
 
-export function showTagEditor() {
+let _tagEditorLoading = false;
+
+export async function showTagEditor() {
   const s = getState();
   if (!s.currentScore) return;
-  s._editingFolderTags = s.currentScore.folder_tags || [];
-  s._editingFilenameTags = [...(s.currentScore.filename_tags || [])];
+  // A second open while the first fetch is in flight would throw from
+  // showModal() and clobber chips the user already added.
+  if (tagEditorDialog.open || _tagEditorLoading) return;
+
+  // currentScore may be a partial record -- scores opened from Recent or a
+  // setlist carry only filepath/composer/title -- so fetch the authoritative
+  // tags rather than seeding an empty list and saving that back.
+  let score;
+  const requestedPath = s.currentScore.filepath;
+  _tagEditorLoading = true;
+  try {
+    score = await api(
+      `/api/scores?path=${encodeURIComponent(requestedPath)}`);
+  } catch (err) {
+    console.error("Failed to load tags:", err);
+    alert("Could not load this score's tags. Check the connection to Folio "
+          + "and try again.");
+    return;
+  } finally {
+    _tagEditorLoading = false;
+  }
+
+  // The viewer can move on while the fetch is in flight, so bail rather than
+  // opening the editor seeded with the previous song's tags.
+  if (!s.currentScore || s.currentScore.filepath !== requestedPath) return;
+
+  s._editingFolderTags = score.folder_tags || [];
+  s._editingFilenameTags = [...(score.filename_tags || [])];
+  s._tagEditorPath = requestedPath;
+  s._tagEditorLoaded = true;
   tagEditorInput.value = "";
   renderTagEditorChips();
+  // Not every browser clears returnValue on open, so a previous "save" can
+  // otherwise make the next Cancel behave like a save.
+  tagEditorDialog.returnValue = "";
   tagEditorDialog.showModal();
 }
 
@@ -290,17 +323,46 @@ function initTagEditorDialog() {
   });
 
   tagEditorDialog.addEventListener("close", async () => {
-    if (tagEditorDialog.returnValue !== "save") return;
     const s = getState();
+    const loaded = s._tagEditorLoaded;
+    const editedPath = s._tagEditorPath;
+    s._tagEditorLoaded = false;
+    s._tagEditorPath = "";
+    if (tagEditorDialog.returnValue !== "save") return;
+    // Never write back tags the editor did not successfully load: an empty
+    // list must mean the user removed every chip.
+    if (!loaded) return;
+    // The viewer can move to a different score while the editor is open --
+    // a page turn at a setlist boundary reassigns currentScore -- so never
+    // rename whatever happens to be on screen now with the loaded tags.
+    if (!s.currentScore || s.currentScore.filepath !== editedPath) {
+      alert("The open score changed while the tag editor was open, so the "
+            + "tags were not saved.");
+      return;
+    }
+    _tagEditorLoading = true;
     try {
       const data = await api("/api/scores/tags", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          path: s.currentScore.filepath,
+          path: editedPath,
           filename_tags: s._editingFilenameTags,
         }),
       });
+      // The file has been renamed on disk, so the one-shot setlist playback
+      // snapshot is now stale regardless of what the viewer shows -- leaving
+      // it makes the song unloadable when the user comes back to it.
+      const pb = s.setlistPlayback;
+      if (pb) {
+        for (const song of pb.songs) {
+          if (song.path === editedPath) song.path = data.score.filepath;
+        }
+      }
+      // The viewer may have moved to another score while the PUT was in
+      // flight; stamping this record onto that one would misdirect annotation
+      // saves, export and bake.
+      if (!s.currentScore || s.currentScore.filepath !== editedPath) return;
       s.currentScore.filepath = data.score.filepath;
       s.currentScore.filename = data.score.filename;
       s.currentScore.tags = data.score.tags;
@@ -310,6 +372,8 @@ function initTagEditorDialog() {
     } catch (err) {
       console.error("Failed to update tags:", err);
       alert("Failed to update tags: " + err.message);
+    } finally {
+      _tagEditorLoading = false;
     }
   });
 

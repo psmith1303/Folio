@@ -52,6 +52,8 @@ const state = {
   _pickerSelectedSetlist: null,
   _editingFilenameTags: [],
   _editingFolderTags: [],
+  _tagEditorLoaded: false,
+  _tagEditorPath: "",
 
   // Fullscreen
   pseudoFullscreen: false,

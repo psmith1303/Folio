@@ -32,6 +32,18 @@
 - [ ] Add to setlist — press =s= while viewing a score, pick a setlist
 - [ ] Back — Escape or Back button returns to library
 
+* Tag editing (regression: tags were silently destroyed, v2.9.3)
+- [ ] From the library — open a tagged score, press the edit-tags key, confirm existing chips show; add one, Save; filename keeps the old tags plus the new one
+- [ ] From Recent — open the SAME score via the Recent list, edit tags; existing chips must still show (they used to come up empty)
+- [ ] From a setlist — open the score via a setlist, edit tags; existing chips must still show
+- [ ] Save from Recent or setlist — add a tag and Save; every previously existing tag must survive in the filename
+- [ ] Folder tags stay locked — chips from the containing folder show greyed and cannot be removed
+- [ ] Unresolvable score — with the server stopped mid-session, press edit-tags; a message appears and the dialog does NOT open empty
+- [ ] Cancel after a save — save tags once, reopen the editor, remove a chip, press Cancel; the filename must be unchanged (Cancel must never behave like Save)
+- [ ] Shortcuts blocked — with the tag editor open, press arrow/space keys; the PDF behind must NOT turn pages
+- [ ] Tag edit during setlist playback — play a setlist, edit tags on a middle song and Save, advance a song then come back; the renamed song must still load
+- [ ] Score changed mid-edit — open the editor from a setlist, and if the score behind it changes, Save reports that nothing was saved rather than renaming the wrong file
+
 * Multi-user conflict
 - [ ] Open the same score in two browser tabs
 - [ ] Draw an annotation in tab A, wait for it to save

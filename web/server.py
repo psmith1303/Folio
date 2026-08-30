@@ -344,7 +344,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.9.2",
+    title="Folio", version="2.9.3",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -534,6 +534,22 @@ def rescan_library():
 class UpdateTagsRequest(BaseModel):
     path: str
     filename_tags: list[str]
+
+
+@app.get("/api/scores")
+def get_score(path: str = Query(..., description="Score filepath")):
+    """Return one score, including its folder/filename tag split.
+
+    The library list is filtered by the client's current search, so a caller
+    holding only a filepath cannot rely on it to recover a score's tags.
+    """
+    if not state.library_dir:
+        raise HTTPException(status_code=400, detail="No library directory set")
+    resolved = _validate_library_path(path)
+    for sc in state.scores:
+        if os.path.normpath(sc.filepath) == os.path.normpath(resolved):
+            return sc.to_dict()
+    raise HTTPException(status_code=404, detail="Score not found in library")
 
 
 @app.put("/api/scores/tags")
