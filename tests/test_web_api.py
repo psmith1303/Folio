@@ -1170,6 +1170,109 @@ class TestHealReferences:
         state.set_library(str(tmp_path))
         assert os.path.exists(state.hash_index_path())
 
+    def test_duplicate_content_does_not_move_sidecar(self, tmp_path):
+        """An identical copy must not pull another file's sidecar onto itself."""
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 duplicated content")
+        sidecar = tmp_path / "Bach - Suite.json"
+        sidecar.write_text('{"version":2,"pages":{},"rotations":{}}')
+        state.set_library(str(tmp_path))
+
+        # Subdirectories are always walked after top-level files, so the copy
+        # is the one that would win a hash collision.
+        copies = tmp_path / "copies"
+        copies.mkdir()
+        (copies / "Bach - Suite.pdf").write_bytes(b"%PDF-1.4 duplicated content")
+
+        state.set_library(str(tmp_path))
+
+        # The original is still on disk, so its sidecar must stay put.
+        assert sidecar.exists()
+        assert not (copies / "Bach - Suite.json").exists()
+
+    def test_duplicate_content_does_not_rewrite_setlist(self, tmp_path):
+        """An identical copy must not redirect setlist entries."""
+        from web.core import SafeJSON, portable_path
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 duplicated setlist content")
+        state.set_library(str(tmp_path))
+
+        setlist_data = {"My Set": [
+            {"type": "song", "path": portable_path(str(pdf)),
+             "title": "Suite", "composer": "Bach"},
+        ]}
+        SafeJSON.save(state.setlist_path(), setlist_data)
+
+        copies = tmp_path / "copies"
+        copies.mkdir()
+        (copies / "Bach - Suite.pdf").write_bytes(
+            b"%PDF-1.4 duplicated setlist content")
+
+        state.set_library(str(tmp_path))
+
+        # Nothing was healed, so the file keeps its original un-migrated shape.
+        data = SafeJSON.load(state.setlist_path(), default={})
+        entry = data["My Set"]
+        items = entry["items"] if isinstance(entry, dict) else entry
+        assert items[0]["path"] == portable_path(str(pdf))
+
+    def test_rename_still_heals_alongside_duplicates(self, tmp_path):
+        """Skipping ambiguous hashes must not block genuine rename healing."""
+        dup = tmp_path / "Bach - Suite.pdf"
+        dup.write_bytes(b"%PDF-1.4 duplicated")
+        dup_sidecar = tmp_path / "Bach - Suite.json"
+        dup_sidecar.write_text('{"version":2,"pages":{},"rotations":{}}')
+
+        moved = tmp_path / "Mozart - Sonata.pdf"
+        moved.write_bytes(b"%PDF-1.4 unique mozart")
+        moved_sidecar = tmp_path / "Mozart - Sonata.json"
+        moved_sidecar.write_text('{"version":2,"pages":{},"rotations":{}}')
+        state.set_library(str(tmp_path))
+
+        copies = tmp_path / "copies"
+        copies.mkdir()
+        (copies / "Bach - Suite.pdf").write_bytes(b"%PDF-1.4 duplicated")
+        os.rename(str(moved), str(tmp_path / "Mozart - Sonata No 2.pdf"))
+
+        state.set_library(str(tmp_path))
+
+        # The genuine rename still heals ...
+        assert not moved_sidecar.exists()
+        assert (tmp_path / "Mozart - Sonata No 2.json").exists()
+        # ... while the duplicated pair is left alone.
+        assert dup_sidecar.exists()
+
+    def test_unhashable_file_on_disk_is_not_remapped(self, tmp_path, monkeypatch):
+        """A file whose hash cannot be computed is not treated as renamed away."""
+        import web.core as core
+
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 unhashable content")
+        sidecar = tmp_path / "Bach - Suite.json"
+        sidecar.write_text('{"version":2,"pages":{},"rotations":{}}')
+        state.set_library(str(tmp_path))
+
+        # A copy carrying the original's hash appears, while the original stops
+        # hashing but stays on disk.  Bump its mtime so the scan cache cannot
+        # supply the previously computed hash.
+        copies = tmp_path / "copies"
+        copies.mkdir()
+        (copies / "Bach - Suite.pdf").write_bytes(b"%PDF-1.4 unhashable content")
+        os.utime(str(pdf), (0, 0))
+
+        real_hash = core.compute_content_hash
+
+        def fake_hash(filepath, size=None):
+            if os.path.basename(os.path.dirname(filepath)) != "copies":
+                return ""
+            return real_hash(filepath, size=size)
+
+        monkeypatch.setattr(core, "compute_content_hash", fake_hash)
+        state.set_library(str(tmp_path))
+
+        assert sidecar.exists()
+        assert not (copies / "Bach - Suite.json").exists()
+
 
 # ---------------------------------------------------------------------------
 # Recent endpoints

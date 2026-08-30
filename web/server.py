@@ -176,14 +176,30 @@ def _heal_references(st: "AppState") -> None:
     """Compare content hashes against the previous index to detect renames.
 
     Heals setlist paths and annotation sidecars, then saves the new index.
+
+    Hashes shared by more than one live file are omitted from the index:
+    duplicate content cannot distinguish a rename from a copy.
     """
     index_path = st.hash_index_path()
 
-    # Build new index: hash -> portable path
-    new_index: dict[str, str] = {}
+    # Build hash -> paths.  A hash claimed by more than one live file carries
+    # no rename signal, so it is kept out of both the index and the remap.
+    by_hash: dict[str, list[str]] = defaultdict(list)
     for s in st.scores:
         if s.content_hash:
-            new_index[s.content_hash] = portable_path(s.filepath)
+            by_hash[s.content_hash].append(portable_path(s.filepath))
+
+    new_index: dict[str, str] = {}
+    for h, paths in by_hash.items():
+        if len(paths) > 1:
+            log.warning("Duplicate content in %d files, skipping rename "
+                        "detection: %s", len(paths), ", ".join(sorted(paths)))
+            continue
+        new_index[h] = paths[0]
+
+    # Every path in the library, ambiguous hashes included: distinguishes
+    # "renamed away" from "still on disk".
+    live_paths = {portable_path(s.filepath) for s in st.scores}
 
     # Load previous index
     try:
@@ -193,11 +209,10 @@ def _heal_references(st: "AppState") -> None:
 
     # Detect renames: same hash, different path
     remap: dict[str, str] = {}
-    new_paths = set(new_index.values())
     for h, old_path in old_index.items():
         if h in new_index and new_index[h] != old_path:
             # Only remap if the old path no longer exists in the library
-            if old_path not in new_paths:
+            if old_path not in live_paths:
                 remap[old_path] = new_index[h]
 
     if remap:
@@ -300,7 +315,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.9.0",
+    title="Folio", version="2.9.1",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
