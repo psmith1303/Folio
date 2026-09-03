@@ -24,6 +24,9 @@ if (typeof crypto !== "undefined" && !crypto.randomUUID) {
   if (typeof HTMLDialogElement !== "undefined") return;
 
   document.querySelectorAll("dialog").forEach(function (dlg) {
+    // Opt this dialog into the manual centring rules in app.css. The native
+    // path must NOT get them — see the comment on .dialog-polyfilled.
+    dlg.classList.add("dialog-polyfilled");
     dlg.style.display = "none";
 
     var backdrop = document.createElement("div");

@@ -858,12 +858,22 @@ dialog {
   border-radius: 8px;
   padding: 20px;
   min-width: 400px;
+  max-width: 90vw;
+}
+
+/* Centring is deliberately left to the UA. showModal() promotes the dialog to
+   the top layer, where the browser centres it (position:fixed; inset:0;
+   margin:auto). Overriding that with a translate() transform desyncs the
+   painted box from the hit-test box in WebKit: the dialog draws where you see
+   it, but taps resolve against the untransformed position, so a tap on Close
+   fires the button beside it. Only the polyfill below needs manual centring,
+   because it renders the dialog in normal flow rather than the top layer. */
+dialog.dialog-polyfilled {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
   z-index: 1000;
-  max-width: 90vw;
 }
 
 dialog::backdrop {
