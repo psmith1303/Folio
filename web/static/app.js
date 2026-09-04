@@ -232,6 +232,15 @@ function getServiceWorkerVersion() {
 // sessionStorage so we reload at most once per server version (no loop).
 async function reloadIfShellStale(serverVersion) {
   if (!serverVersion || !("serviceWorker" in navigator)) return;
+  // serverVersion comes from /api/config, which the service worker now caches
+  // (see sw.js) so a cold offline launch can still boot. That cache is not
+  // version-keyed, so it can outlive the shell that wrote it: a flaky link
+  // where the new SW activates but the follow-up config fetch fails would
+  // leave the old version cached. Offline, that stale version would look like
+  // a mismatch against the (correctly reported) running SW and schedule a
+  // reload a few seconds into the session — dropping the open score. There is
+  // nothing to self-heal while offline, so skip the check entirely.
+  if (!navigator.onLine) return;
   const swVersion = await getServiceWorkerVersion();
   if (!swVersion || swVersion === serverVersion) return;
 

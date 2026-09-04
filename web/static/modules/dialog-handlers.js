@@ -18,6 +18,7 @@ import {
   libraryStatus,
 } from "./dom.js";
 import { api } from "./api.js";
+import { refreshCachedConfig } from "./cache.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
   saveAnnotations, drawAnnotations,
@@ -63,6 +64,7 @@ function initDirDialog() {
       });
       getState().selectedTags.clear();
       if (_loadLibrary) await _loadLibrary();
+      refreshCachedConfig();
     } catch (err) {
       libraryStatus.textContent = `Error: ${err.message}`;
     }

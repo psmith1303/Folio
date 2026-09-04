@@ -27,7 +27,7 @@ import {
   setInvalidatePrerenderFn,
 } from "./annotations.js";
 import { addToRecent } from "./recent.js";
-import { CACHE_AVAILABLE, refreshCacheStatus } from "./cache.js";
+import { CACHE_AVAILABLE, refreshCacheStatus, refreshCachedConfig } from "./cache.js";
 
 // Register callbacks so annotations module can trigger navigation
 setNavCallbacks(nextPage, prevPage);
@@ -198,6 +198,7 @@ export async function openScore(score, { startPage = 1 } = {}) {
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
       if (_loadLibrary) await _loadLibrary();
+      refreshCachedConfig();
       showView("library");
       libraryStatus.textContent = `"${score.title}" is no longer available — library refreshed`;
     } else {
@@ -339,6 +340,7 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
       if (_loadLibrary) await _loadLibrary();
+      refreshCachedConfig();
       showView("library");
       libraryStatus.textContent = `"${song.title}" is no longer available — library refreshed`;
     } else {

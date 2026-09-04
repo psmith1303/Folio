@@ -197,10 +197,29 @@ export async function clearPdfCache() {
   await clearAllLruEntries();
 }
 
+// Fire-and-forget re-fetch of /api/config, to keep the SW's cached copy from
+// going stale. Call after anything that can change library_dir/score_count
+// (setting the folder, a rescan) — otherwise a launch that only ever ran
+// cacheLibrary() before the change would still read the pre-change snapshot
+// offline and bounce to the "pick a folder" dialog instead of the library.
+export function refreshCachedConfig() {
+  if (!CACHE_AVAILABLE) return;
+  fetch("/api/config").catch(() => {});
+}
+
 export async function cacheLibrary() {
-  // Fetch triggers the SW's handleApiGetFetch which caches the response
-  const resp = await fetch("/api/library");
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  // Fetch triggers the SW's handleApiGetFetch, which caches each response.
+  // /api/config is included even though nothing here reads it: it is fetched
+  // once at boot and never again, so a stale cached copy (score_count: 0,
+  // from before the library was set up) permanently sends a cold offline
+  // launch to the "pick a folder" dialog instead of the cached library —
+  // this is the one control meant to prepare for exactly that launch.
+  const [libResp, cfgResp] = await Promise.all([
+    fetch("/api/library"),
+    fetch("/api/config"),
+  ]);
+  if (!libResp.ok) throw new Error(`HTTP ${libResp.status}`);
+  if (!cfgResp.ok) throw new Error(`HTTP ${cfgResp.status}`);
 }
 
 // ---------------------------------------------------------------------------

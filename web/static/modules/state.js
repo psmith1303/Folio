@@ -8,6 +8,10 @@ const state = {
   returnView: "library",
 
   // Library
+  // allScores is the unfiltered set as fetched; scores is the filtered,
+  // sorted view actually rendered. Filtering happens client-side — see
+  // applyFilters() in library.js.
+  allScores: [],
   scores: [],
   composers: [],
   tags: [],

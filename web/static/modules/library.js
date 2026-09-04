@@ -13,7 +13,7 @@ import { showView } from "./views.js";
 import { openScore, cleanupScore } from "./viewer.js";
 import {
   CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
-  ICON_PINNED, ICON_NOT_CACHED,
+  ICON_PINNED, ICON_NOT_CACHED, refreshCachedConfig,
 } from "./cache.js";
 
 // ---------------------------------------------------------------------------
@@ -22,35 +22,116 @@ import {
 
 let _loadGen = 0;
 
+// The server can filter, but the library view no longer asks it to:
+// loadLibrary() pulls the whole set once and every subsequent narrowing runs
+// through applyFilters() below, against the in-memory allScores — no network
+// round-trip at all.
+//
+// That is what makes filtering work offline. Previously each filter produced
+// its own request URL, and the service worker caches API responses under the
+// exact URL (handleApiGetFetch in sw.js), so a filtered view existed offline
+// only if that precise query string had been fetched while online. Anything
+// else got a 503, and loadLibrary's catch returned before rendering — leaving
+// the table showing its previous rows, which read as the filter doing nothing.
+//
+// Two things this does NOT claim. A cold offline launch additionally depends
+// on /api/config being cached, because initApp() awaits it before calling
+// loadLibrary() at all (see the cached-GET list in sw.js). And the setlist
+// song picker (renderSongPicker in setlists.js) still filters server-side, so
+// it keeps the failure described above; it could filter from allScores too.
 export async function loadLibrary() {
   const gen = ++_loadGen;
   const s = getState();
-  const params = new URLSearchParams();
-  const q = searchInput.value.trim();
-  if (q) params.set("q", q);
-  const comp = composerFilter.value;
-  if (comp) params.set("composer", comp);
-  for (const t of s.selectedTags) {
-    params.append("tag", t);
-  }
-  params.set("sort", s.sortCol);
-  if (s.sortDesc) params.set("desc", "true");
-
   try {
-    const data = await api(`/api/library?${params}`);
+    const data = await api("/api/library");
     if (gen !== _loadGen) return;
-    s.scores = data.scores;
-    s.composers = data.composers;
-    s.tags = data.tags;
-    renderLibrary();
-    renderComposerFilter();
-    renderTags();
-    libraryStatus.textContent = `${data.total} scores`;
-    if (CACHE_AVAILABLE) refreshCacheStatus();
+    s.allScores = data.scores;
+    applyFilters();
   } catch (err) {
     if (gen !== _loadGen) return;
     libraryStatus.textContent = `Error: ${err.message}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Client-side filtering
+//
+// Mirrors get_library() in web/server.py: case-insensitive substring on title
+// or composer, exact composer match, and all selected tags present. Tag
+// matching is an exact subset here — the endpoint lowercases the requested
+// tags before comparing them against the score's raw tags, which would drop
+// any tag carrying uppercase. Selected tags always come from the server's own
+// tag list, so exact matching is both correct and free of that edge.
+// ---------------------------------------------------------------------------
+
+const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+// Element-wise, shorter-is-smaller — matches how Python orders tuples/lists.
+function cmpArr(a, b) {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const c = cmpStr(a[i], b[i]);
+    if (c !== 0) return c;
+  }
+  return a.length - b.length;
+}
+
+const SORTERS = {
+  composer: (a, b) => cmpArr(
+    [a.composer.toLowerCase(), a.title.toLowerCase()],
+    [b.composer.toLowerCase(), b.title.toLowerCase()],
+  ),
+  title: (a, b) => cmpArr(
+    [a.title.toLowerCase(), a.composer.toLowerCase()],
+    [b.title.toLowerCase(), b.composer.toLowerCase()],
+  ),
+  // Title is a third key the endpoint does not have. Sorting by tags leaves
+  // same-composer/same-tag scores tied, and their order would then depend on
+  // how the fetched list happened to be ordered. Breaking on title makes the
+  // ordering total and independent of that.
+  tags: (a, b) =>
+    cmpArr([...a.tags].sort(cmpStr), [...b.tags].sort(cmpStr)) ||
+    cmpStr(a.composer.toLowerCase(), b.composer.toLowerCase()) ||
+    cmpStr(a.title.toLowerCase(), b.title.toLowerCase()),
+};
+
+function applyFilters() {
+  const s = getState();
+  const q = searchInput.value.trim().toLowerCase();
+  const comp = composerFilter.value;
+  const selected = [...s.selectedTags];
+
+  const textMatch = (sc) =>
+    !q || sc.title.toLowerCase().includes(q) || sc.composer.toLowerCase().includes(q);
+  const compMatch = (sc) => !comp || sc.composer === comp;
+  const tagMatch = (sc) => selected.every((t) => sc.tags.includes(t));
+
+  const matches = s.allScores.filter(
+    (sc) => textMatch(sc) && compMatch(sc) && tagMatch(sc),
+  );
+  const sorter = SORTERS[s.sortCol];
+  if (sorter) matches.sort(s.sortDesc ? (a, b) => sorter(b, a) : sorter);
+
+  // Facets stay context-sensitive, as the endpoint had them: the composer list
+  // ignores the composer filter (so you can still switch to another), the tag
+  // list respects it.
+  const composers = new Set();
+  const tags = new Set();
+  for (const sc of s.allScores) {
+    if (!textMatch(sc) || !tagMatch(sc)) continue;
+    composers.add(sc.composer);
+    if (compMatch(sc)) for (const t of sc.tags) tags.add(t);
+  }
+
+  s.scores = matches;
+  s.composers = [...composers].sort(cmpStr);
+  s.tags = [...tags].sort(cmpStr);
+
+  renderLibrary();
+  renderComposerFilter();
+  renderTags();
+  libraryStatus.textContent = `${matches.length} scores`;
+  if (CACHE_AVAILABLE) refreshCacheStatus();
 }
 
 function renderLibrary() {
@@ -107,7 +188,7 @@ function renderTags() {
       } else {
         s.selectedTags.add(t);
       }
-      loadLibrary();
+      applyFilters();
     });
     tagBar.appendChild(chip);
   }
@@ -152,17 +233,17 @@ export function initLibraryEvents() {
         s.sortDesc = false;
       }
       updateSortHeaders();
-      loadLibrary();
+      applyFilters();
     });
   });
 
   let searchTimer = null;
   searchInput.addEventListener("input", () => {
     if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(loadLibrary, 200);
+    searchTimer = setTimeout(applyFilters, 200);
   });
 
-  composerFilter.addEventListener("change", loadLibrary);
+  composerFilter.addEventListener("change", applyFilters);
 
   btnReset.addEventListener("click", async () => {
     if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
@@ -182,6 +263,7 @@ export function initLibraryEvents() {
     try {
       await api("/api/library/rescan", { method: "POST" });
       await loadLibrary();
+      refreshCachedConfig();
     } catch (err) {
       libraryStatus.textContent = `Rescan failed: ${err.message}`;
     } finally {

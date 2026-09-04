@@ -1,9 +1,14 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.9.4";
+const APP_VERSION = "2.9.7";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 const PDF_CACHE = "folio-pdfs-v1";
+// Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
+// (the library snapshot that makes an offline launch possible), not part of
+// the shell. Keying them by version meant every release silently discarded
+// the offline library and it only came back after being online again.
+const API_CACHE = "folio-api-v1";
 const MAX_AUTO_CACHED = 100;
 
 const SHELL_URLS = [
@@ -161,7 +166,7 @@ self.addEventListener("activate", (e) => {
     caches.keys().then((names) =>
       Promise.all(
         names
-          .filter((n) => n !== SHELL_CACHE && n !== PDF_CACHE)
+          .filter((n) => n !== SHELL_CACHE && n !== PDF_CACHE && n !== API_CACHE)
           .map((n) => caches.delete(n))
       )
     )
@@ -190,10 +195,26 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // Library/annotations GET: network-first with cache fallback
+  // Cached API GETs: network-first with cache fallback.
+  //
+  // /api/config belongs here even though nothing renders from it directly:
+  // initApp() awaits it before it will call loadLibrary() (app.js), so if it
+  // cannot be served offline the boot aborts in its catch and the cached
+  // library is never even requested. Without this, offline mode only worked
+  // if the app was already open when the network went away.
+  //
+  // /api/library is cached only with NO query string. The library view
+  // always requests it bare (library.js filters client-side); the only other
+  // caller is the setlist song picker, which fetches a distinct URL per
+  // keystroke. Those have no offline value — nothing re-fetches a stale
+  // partial-query snapshot — and API_CACHE, unlike the old version-keyed
+  // SHELL_CACHE, is never swept, so every keystroke would otherwise become a
+  // permanent entry.
   if (
     e.request.method === "GET" &&
-    (url.pathname === "/api/library" || url.pathname === "/api/annotations")
+    ((url.pathname === "/api/library" && !url.search) ||
+      url.pathname === "/api/annotations" ||
+      url.pathname === "/api/config")
   ) {
     e.respondWith(handleApiGetFetch(e.request));
     return;
@@ -332,21 +353,35 @@ function cacheFullPdfInBackground(pdfPath, cacheKey) {
 }
 
 async function handleApiGetFetch(request) {
+  let resp;
   try {
-    const resp = await fetch(request, { cache: "no-store" });
-    if (resp.ok) {
-      const clone = resp.clone();
-      const cache = await caches.open(SHELL_CACHE);
-      await cache.put(request, clone);
-    }
-    return resp;
+    resp = await fetch(request, { cache: "no-store" });
   } catch {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response(JSON.stringify({ error: "Offline" }), {
-      status: 503,
-      headers: { "Content-Type": "application/json" },
-    });
+    return handleApiGetFetchOffline(request);
   }
+  if (resp.ok) {
+    // Caching is a side effect of a successful fetch, not a condition of
+    // returning one. A cache write can fail on its own (QuotaExceededError,
+    // most likely) — if that failure shared the fetch's try/catch, it used
+    // to discard a perfectly good response and answer with stale data or a
+    // 503 while the server had just answered correctly.
+    try {
+      const cache = await caches.open(API_CACHE);
+      await cache.put(request, resp.clone());
+    } catch (err) {
+      console.warn(`[sw] not caching ${request.url}:`, err);
+    }
+  }
+  return resp;
+}
+
+async function handleApiGetFetchOffline(request) {
+  const cache = await caches.open(API_CACHE);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  return new Response(JSON.stringify({ error: "Offline" }), {
+    status: 503,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
