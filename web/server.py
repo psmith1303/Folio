@@ -28,8 +28,14 @@ from .core import (
     Score,
     annotation_sidecar_path,
     load_annotations,
+    load_hash_index,
+    load_recent,
+    load_setlists,
     normalize_path,
     portable_path,
+    remap_hash_index,
+    remap_recent_paths,
+    remap_setlist_paths,
     rename_score_tags,
     save_annotations,
     scan_library,
@@ -213,7 +219,7 @@ def _heal_references(st: "AppState") -> None:
 
     # Load previous index
     try:
-        old_index = SafeJSON.load(index_path, default={})
+        old_index = load_hash_index(index_path)
     except SafeJSONError:
         old_index = {}
 
@@ -276,29 +282,14 @@ def _heal_annotation_sidecars(remap: dict[str, str]) -> None:
 def _heal_setlist_paths(remap: dict[str, str]) -> None:
     """Rewrite setlist song paths through *remap* (old portable -> new)."""
     data = _load_setlists()
-    changed = False
-    for sl in data.values():
-        for item in sl["items"]:
-            if item.get("type", "song") != "song":
-                continue
-            old = item.get("path", "")
-            if old in remap:
-                item["path"] = remap[old]
-                changed = True
-    if changed:
+    if remap_setlist_paths(data, remap):
         _save_setlists(data)
 
 
 def _heal_recent_paths(remap: dict[str, str]) -> None:
     """Rewrite recent-list filepaths through *remap* (old portable -> new)."""
     data = _load_recent()
-    changed = False
-    for entry in data:
-        old = entry.get("filepath", "")
-        if old in remap:
-            entry["filepath"] = remap[old]
-            changed = True
-    if changed:
+    if remap_recent_paths(data, remap):
         _save_recent(data)
 
 
@@ -340,7 +331,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.11.1",
+    title="Folio", version="2.11.2",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -581,9 +572,8 @@ def update_score_tags(req: UpdateTagsRequest):
 
         # Keep hash index in sync with in-app renames
         try:
-            idx = SafeJSON.load(state.hash_index_path(), default={})
-            if new_score.content_hash in idx:
-                idx[new_score.content_hash] = new_portable
+            idx = load_hash_index(state.hash_index_path())
+            if remap_hash_index(idx, {old_portable: new_portable}):
                 SafeJSON.save(state.hash_index_path(), idx)
         except SafeJSONError:
             pass
@@ -707,10 +697,9 @@ MAX_RECENT = 50
 
 def _load_recent() -> list[dict]:
     try:
-        data = SafeJSON.load(state.recent_path(), default=[])
+        return load_recent(state.recent_path())
     except SafeJSONError:
         return []
-    return data if isinstance(data, list) else []
 
 
 def _save_recent(data: list[dict]) -> None:
@@ -791,30 +780,11 @@ def clear_recent():
 # ---------------------------------------------------------------------------
 
 
-def _normalize_setlist_value(v) -> dict:
-    """Normalize a stored setlist value to {"items": [...], "shuffle": bool}.
-
-    Older versions stored each setlist as a bare list of items; this lifts
-    them into the new dict form transparently on load.
-    """
-    if isinstance(v, list):
-        return {"items": v, "shuffle": False}
-    if isinstance(v, dict):
-        items = v.get("items")
-        if not isinstance(items, list):
-            items = []
-        return {"items": items, "shuffle": bool(v.get("shuffle", False))}
-    return {"items": [], "shuffle": False}
-
-
 def _load_setlists() -> dict:
     try:
-        raw = SafeJSON.load(state.setlist_path(), default={})
+        return load_setlists(state.setlist_path())
     except SafeJSONError:
         return {}
-    if not isinstance(raw, dict):
-        return {}
-    return {name: _normalize_setlist_value(v) for name, v in raw.items()}
 
 
 def _save_setlists(data: dict) -> None:

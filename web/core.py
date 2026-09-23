@@ -239,11 +239,9 @@ def build_tagged_filename(composer: str, title: str,
 
 
 def rename_score_tags(score: Score, new_tags: set[str]) -> Score:
-    """Rename a score's file on disk to reflect *new_tags*.
+    """Rename *score*'s file to carry *new_tags*; see rename_score_file.
 
-    Also renames the annotation sidecar JSON if it exists.
-    Returns a new Score with updated filepath/filename/tags.
-    Raises FileExistsError if the target filename already exists.
+    Returns *score* unchanged if its tags already match.
     """
     if new_tags == score.filename_tags:
         return score
@@ -252,10 +250,27 @@ def rename_score_tags(score: Score, new_tags: set[str]) -> Score:
     new_filename = build_tagged_filename(
         score.composer, score.title, new_tags, ext
     )
+    return rename_score_file(score, new_filename)
+
+
+def rename_score_file(score: Score, new_filename: str) -> Score:
+    """Rename *score*'s PDF within its directory, moving its sidecar with it.
+
+    If the sidecar rename fails the PDF rename is rolled back and the error
+    re-raised. Returns a new Score for the renamed file.
+    Raises FileExistsError if the target filename is another existing file.
+    A case-only rename is allowed: on case-insensitive filesystems (Windows,
+    macOS, WSL /mnt drives) the "target" found is the source itself. Any
+    other existing target -- including a hard link to the source -- is
+    refused.
+    """
     old_dir = os.path.dirname(score.filepath)
     new_filepath = os.path.join(old_dir, new_filename)
 
-    if os.path.exists(new_filepath):
+    case_only = (new_filepath != score.filepath
+                 and new_filepath.lower() == score.filepath.lower())
+    if (os.path.exists(new_filepath)
+            and not (case_only and os.path.samefile(score.filepath, new_filepath))):
         raise FileExistsError(f"Target file already exists: {new_filename}")
 
     # Rename PDF
@@ -484,3 +499,95 @@ def save_annotations(
     }
     SafeJSON.save(sidecar, data)
     return annotations_etag(pdf_path)
+
+
+# ---------------------------------------------------------------------------
+# Setlists and the recent list
+# ---------------------------------------------------------------------------
+
+
+def _normalize_setlist_value(v) -> dict:
+    """Normalize a stored setlist value to {"items": [...], "shuffle": bool}.
+
+    Older versions stored each setlist as a bare list of items; this lifts
+    them into the new dict form transparently on load.
+    """
+    if isinstance(v, list):
+        return {"items": v, "shuffle": False}
+    if isinstance(v, dict):
+        items = v.get("items")
+        if not isinstance(items, list):
+            items = []
+        return {"items": items, "shuffle": bool(v.get("shuffle", False))}
+    return {"items": [], "shuffle": False}
+
+
+def load_setlists(path: str) -> dict:
+    """Load setlists.json at *path* into normalized form ({} if missing).
+
+    Raises SafeJSONError if the file is unreadable or corrupt.
+    """
+    raw = SafeJSON.load(path, default={})
+    if not isinstance(raw, dict):
+        return {}
+    return {name: _normalize_setlist_value(v) for name, v in raw.items()}
+
+
+def load_recent(path: str) -> list[dict]:
+    """Load the recent list at *path* ([] if missing).
+
+    Raises SafeJSONError if the file is unreadable or corrupt.
+    """
+    data = SafeJSON.load(path, default=[])
+    return data if isinstance(data, list) else []
+
+
+def remap_setlist_paths(data: dict, remap: dict[str, str]) -> int:
+    """Rewrite song paths in loaded setlists through *remap* (old -> new
+    portable path), in place. Malformed (non-dict) items are skipped.
+    Returns the number of items changed."""
+    count = 0
+    for sl in data.values():
+        for item in sl["items"]:
+            if not isinstance(item, dict) or item.get("type", "song") != "song":
+                continue
+            old = item.get("path", "")
+            if old in remap:
+                item["path"] = remap[old]
+                count += 1
+    return count
+
+
+def load_hash_index(path: str) -> dict:
+    """Load _hash_index.json at *path* ({} if missing or not an object).
+
+    Raises SafeJSONError if the file is unreadable or corrupt.
+    """
+    data = SafeJSON.load(path, default={})
+    return data if isinstance(data, dict) else {}
+
+
+def remap_hash_index(index: dict, remap: dict[str, str]) -> int:
+    """Rewrite hash-index paths (content hash -> portable path) through
+    *remap*, in place. Malformed (non-string) paths are skipped.
+    Returns the number of entries changed."""
+    count = 0
+    for content_hash, stored_path in index.items():
+        if isinstance(stored_path, str) and stored_path in remap:
+            index[content_hash] = remap[stored_path]
+            count += 1
+    return count
+
+
+def remap_recent_paths(data: list[dict], remap: dict[str, str]) -> int:
+    """Rewrite recent-list filepaths through *remap*, in place. Malformed
+    (non-dict) entries are skipped. Returns the number of entries changed."""
+    count = 0
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        old = entry.get("filepath", "")
+        if old in remap:
+            entry["filepath"] = remap[old]
+            count += 1
+    return count

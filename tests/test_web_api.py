@@ -978,6 +978,42 @@ class TestUpdateTags:
         sl = client.get("/api/setlists/Test").json()
         assert sl["items"][0]["path"] == new_path
 
+    def test_hash_index_follows_rename(self, client, library_with_pdfs):
+        old_path = os.path.join(library_with_pdfs, "Bach - Cello Suite.pdf")
+        # Unique content: duplicate-content PDFs are kept out of the index
+        with open(old_path, "wb") as f:
+            f.write(b"%PDF-1.4 unique cello")
+        client.post("/api/library", json={"path": library_with_pdfs})
+        resp = client.put("/api/scores/tags", json={
+            "path": old_path, "filename_tags": ["baroque"],
+        })
+        assert resp.status_code == 200
+        idx = SafeJSON.load(os.path.join(library_with_pdfs, "_hash_index.json"))
+        new_path = resp.json()["score"]["filepath"]
+        assert new_path in idx.values()
+        assert srv.portable_path(old_path) not in idx.values()
+
+    def test_non_object_hash_index_does_not_break_rename(self, client, library_with_pdfs):
+        """Regression: a hash index of the wrong JSON shape gave a 500 after
+        the file had already been renamed."""
+        client.post("/api/library", json={"path": library_with_pdfs})
+        with open(os.path.join(library_with_pdfs, "_hash_index.json"), "w") as f:
+            f.write("[]")
+        resp = client.put("/api/scores/tags", json={
+            "path": os.path.join(library_with_pdfs, "Bach - Cello Suite.pdf"),
+            "filename_tags": ["baroque"],
+        })
+        assert resp.status_code == 200
+
+    def test_non_object_hash_index_does_not_break_rescan(self, client, library_with_pdfs):
+        # Unique content, so the rescan has hashes and reads the old index
+        with open(os.path.join(library_with_pdfs, "Bach - Cello Suite.pdf"), "wb") as f:
+            f.write(b"%PDF-1.4 unique cello")
+        with open(os.path.join(library_with_pdfs, "_hash_index.json"), "w") as f:
+            f.write("[]")
+        resp = client.post("/api/library", json={"path": library_with_pdfs})
+        assert resp.status_code == 200
+
     def test_target_exists_returns_409(self, client, library_with_pdfs):
         client.post("/api/library", json={"path": library_with_pdfs})
         # Create a file that would collide
@@ -1045,6 +1081,28 @@ class TestHealReferences:
         # Check setlist was healed (and migrated to new schema shape)
         data = SafeJSON.load(state.setlist_path(), default={})
         assert data["My Set"]["items"][0]["path"] == portable_path(str(new_pdf))
+
+    def test_heal_survives_malformed_setlist_and_recent_entries(self, tmp_path):
+        """A stray non-dict item must not abort healing of the real ones."""
+        from web.core import SafeJSON, portable_path
+        pdf = tmp_path / "Bach - Suite.pdf"
+        pdf.write_bytes(b"%PDF-1.4 bach suite content")
+        state.set_library(str(tmp_path))
+        p = portable_path(str(pdf))
+        SafeJSON.save(state.setlist_path(), {"My Set": {"items": [
+            "junk", {"type": "song", "path": p, "title": "Suite", "composer": "Bach"},
+        ], "shuffle": False}})
+        SafeJSON.save(state.recent_path(), [None, {"filepath": p, "timestamp": 1}])
+
+        new_pdf = tmp_path / "Bach - Cello Suite No 1.pdf"
+        os.rename(str(pdf), str(new_pdf))
+        state.set_library(str(tmp_path))
+
+        new_p = portable_path(str(new_pdf))
+        items = SafeJSON.load(state.setlist_path())["My Set"]["items"]
+        assert items[0] == "junk" and items[1]["path"] == new_p
+        recent = SafeJSON.load(state.recent_path())
+        assert recent[0] is None and recent[1]["filepath"] == new_p
 
     def test_heal_annotation_sidecar_after_rename(self, tmp_path):
         """Externally renaming a PDF moves its annotation sidecar."""
