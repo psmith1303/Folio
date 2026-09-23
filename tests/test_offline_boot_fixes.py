@@ -22,11 +22,11 @@ F4 — a stale cached /api/config (predating the running shell) could trigger a
 
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from deno_harness import requires_deno, run_deno, slice_source
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 SW_JS = STATIC / "sw.js"
@@ -35,25 +35,6 @@ APP_JS = STATIC / "app.js"
 DIALOG_HANDLERS_JS = STATIC / "modules" / "dialog-handlers.js"
 LIBRARY_JS = STATIC / "modules" / "library.js"
 VIEWER_JS = STATIC / "modules" / "viewer.js"
-
-DENO = shutil.which("deno")
-requires_deno = pytest.mark.skipif(DENO is None, reason="deno not installed")
-
-
-def _run_deno(script: str) -> dict:
-    proc = subprocess.run(
-        [DENO, "run", "--no-check", "-"],
-        input=script, capture_output=True, text=True, timeout=60,
-    )
-    assert proc.returncode == 0, f"deno failed:\n{proc.stderr}"
-    return json.loads(proc.stdout)
-
-
-def _slice(source: str, start_marker: str, end_marker: str) -> str:
-    start = source.index(start_marker)
-    end = source.index(end_marker, start)
-    return source[start:end]
-
 
 def _extract_balanced_parens(source: str, open_paren_index: int) -> str:
     """Return the text strictly inside the parens opening at `open_paren_index`."""
@@ -107,7 +88,7 @@ const e = {{ request: {{ method: {json.dumps(method)} }} }};
 const url = new URL("https://x.test{pathname}{search}");
 console.log(JSON.stringify({{ matched: !!({condition}) }}));
 """
-    result = _run_deno(script)
+    result = run_deno(script)
     assert result["matched"] == expected
 
 
@@ -171,7 +152,7 @@ class TestCacheWriteFailureIsolation:
             "fetch_throws": "true" if fetch_throws else "false",
             "core": core,
         }
-        return _run_deno(script)
+        return run_deno(script)
 
     def test_successful_fetch_and_successful_cache_write(self):
         result = self._run(fetch_throws=False, put_throws=False)
@@ -216,7 +197,7 @@ console.log(JSON.stringify({ scheduledReload: __scheduledReload }));
 
 
 def _extract_reload_if_shell_stale(app_src: str) -> str:
-    return _slice(
+    return slice_source(
         app_src,
         "async function reloadIfShellStale(serverVersion) {",
         "// ---------------------------------------------------------------------------\n// Boot",
@@ -233,7 +214,7 @@ class TestStaleShellOfflineGuard:
             "server_version": json.dumps(server_version),
             "core": core,
         }
-        return _run_deno(script)
+        return run_deno(script)
 
     def test_mismatch_while_offline_does_not_schedule_a_reload(self):
         """The regression: a stale cached config used to reload mid-offline-session."""
@@ -276,7 +257,7 @@ console.log(JSON.stringify({ fetched: __fetched }));
 
 
 def _extract_cache_functions(cache_src: str) -> str:
-    return _slice(
+    return slice_source(
         cache_src,
         "export function refreshCachedConfig() {",
         "// ---------------------------------------------------------------------------\n// UI",
@@ -292,7 +273,7 @@ class TestConfigCacheStaysFresh:
             "core": core,
             "call": call,
         }
-        return _run_deno(script)
+        return run_deno(script)
 
     def test_cache_library_primes_config_as_well_as_library(self):
         """The regression: 'Refresh Library Cache' left a stale config cached."""

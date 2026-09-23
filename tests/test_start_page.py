@@ -2,36 +2,26 @@
 
 Runs the REAL shipped JavaScript under Deno (utils.js is imported directly;
 getPageRange is sliced out of viewer.js with only getState stubbed), in the
-same spirit as test_offline_boot_fixes.py.
+same spirit as test_offline_boot_fixes.py (see deno_harness.py).
 """
 
 import json
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+
+from deno_harness import requires_deno, run_deno, slice_source
 
 MODULES = Path(__file__).resolve().parent.parent / "web" / "static" / "modules"
 UTILS_JS = MODULES / "utils.js"
 VIEWER_JS = MODULES / "viewer.js"
 
-DENO = shutil.which("deno")
-pytestmark = pytest.mark.skipif(DENO is None, reason="deno not installed")
-
-
-def _run_deno(script: str):
-    proc = subprocess.run(
-        [DENO, "run", "--no-check", "--allow-read", "-"],
-        input=script, capture_output=True, text=True, timeout=60,
-    )
-    assert proc.returncode == 0, f"deno failed:\n{proc.stderr}"
-    return json.loads(proc.stdout)
+pytestmark = requires_deno
 
 
 def _call(expr: str):
     """Evaluate *expr* with the utils.js exports in scope."""
-    return _run_deno(
+    return run_deno(
         f'import {{ findStartPage, songStartPage }} from "{UTILS_JS.as_uri()}";\n'
         f"console.log(JSON.stringify({expr}));\n"
     )
@@ -79,11 +69,10 @@ def test_song_start_page(song, pages, expected):
 # ---------------------------------------------------------------------------
 
 def _page_range(state: dict):
-    src = VIEWER_JS.read_text()
-    start = src.index("export function getPageRange()")
-    end = src.index("export function goToPage", start)
-    fn = src[start:end].replace("export function", "function")
-    return _run_deno(
+    fn = slice_source(VIEWER_JS.read_text(encoding="utf-8"),
+                      "export function getPageRange()",
+                      "export function goToPage").replace("export function", "function")
+    return run_deno(
         f'import {{ songStartPage }} from "{UTILS_JS.as_uri()}";\n'
         f"const _s = {json.dumps(state)};\n"
         "const getState = () => _s;\n"

@@ -16,20 +16,17 @@ the drift hazard these tests exist to contain. They guard both halves:
 
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
 import web.server as srv
+from deno_harness import requires_deno, run_deno, slice_source
 from web.core import Score
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 LIBRARY_JS = STATIC / "modules" / "library.js"
 CACHE_JS = STATIC / "modules" / "cache.js"
-
-DENO = shutil.which("deno")
 
 
 def _api_url_in(source: str, func: str) -> str:
@@ -140,31 +137,18 @@ console.log(JSON.stringify(out));
 
 
 def _extract_core(source: str) -> str:
-    try:
-        start = source.index("const cmpStr =")
-        end = source.index("function renderLibrary()")
-    except ValueError as exc:
-        raise AssertionError(
-            "could not locate the filtering block in library.js; the markers in "
-            "_extract_core need updating"
-        ) from exc
-    return source[start:end]
+    return slice_source(source, "const cmpStr =", "function renderLibrary()")
 
 
 @pytest.fixture(scope="module")
-def js_results(tmp_path_factory):
+def js_results():
     """Run the real applyFilters() over every case in a single deno process."""
     script = HARNESS % {
         "core": _extract_core(LIBRARY_JS.read_text(encoding="utf-8")),
         "all": json.dumps([s.to_dict() for s in LIBRARY]),
         "cases": json.dumps(CASES),
     }
-    path = tmp_path_factory.mktemp("parity") / "harness.js"
-    path.write_text(script, encoding="utf-8")
-    proc = subprocess.run([DENO, "run", "--no-check", str(path)],
-                          capture_output=True, text=True, timeout=180)
-    assert proc.returncode == 0, f"deno failed:\n{proc.stderr}"
-    return json.loads(proc.stdout)
+    return run_deno(script, timeout=180)
 
 
 def _server_view(case, monkeypatch):
@@ -174,7 +158,7 @@ def _server_view(case, monkeypatch):
                            desc=case["desc"])
 
 
-@pytest.mark.skipif(DENO is None, reason="deno not installed")
+@requires_deno
 @pytest.mark.parametrize("idx", range(len(CASES)), ids=[
     "q={},comp={},tags={},{}{}".format(
         c["q"] or "-", c["composer"] or "-", "+".join(c["tags"]) or "-",
