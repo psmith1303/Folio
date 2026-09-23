@@ -22,7 +22,7 @@
 ;;   * Setlist Name
 ;;   | # | Title       | Composer | Start | End | Path          |
 ;;   |---+-------------+----------+-------+-----+---------------|
-;;   | 1 | Amazing ... | Newton   |     1 |     | Z:/Music/...  |
+;;   | 1 | Amazing ... | Newton   |     1 |     | Hymns/Amaz... |
 ;;
 ;; Columns:
 ;;   #        — decorative row number; ignored when parsing back.
@@ -32,7 +32,7 @@
 ;;   Composer — composer name (blank for setlist references).
 ;;   Start    — start_page integer (1-based; blank for setlist references).
 ;;   End      — end_page integer, or blank for JSON null ("last page").
-;;   Path     — full portable path to the PDF; editable (blank for refs).
+;;   Path     — PDF path relative to the library root; editable (blank for refs).
 ;;
 ;; Limitation: pipe characters (|) in titles or paths will corrupt the
 ;; table and should be avoided.

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import web.server as srv
-from web.core import SafeJSON
+from web.core import SafeJSON, load_hash_index, load_recent, load_setlists
 from web.server import app, state
 
 
@@ -988,7 +988,8 @@ class TestUpdateTags:
             "path": old_path, "filename_tags": ["baroque"],
         })
         assert resp.status_code == 200
-        idx = SafeJSON.load(os.path.join(library_with_pdfs, "_hash_index.json"))
+        idx = load_hash_index(os.path.join(library_with_pdfs, "_hash_index.json"),
+                              state.library_dir)
         new_path = resp.json()["score"]["filepath"]
         assert new_path in idx.values()
         assert srv.portable_path(old_path) not in idx.values()
@@ -1079,7 +1080,7 @@ class TestHealReferences:
         state.set_library(str(tmp_path))
 
         # Check setlist was healed (and migrated to new schema shape)
-        data = SafeJSON.load(state.setlist_path(), default={})
+        data = load_setlists(state.setlist_path(), state.library_dir)
         assert data["My Set"]["items"][0]["path"] == portable_path(str(new_pdf))
 
     def test_heal_survives_malformed_setlist_and_recent_entries(self, tmp_path):
@@ -1099,9 +1100,9 @@ class TestHealReferences:
         state.set_library(str(tmp_path))
 
         new_p = portable_path(str(new_pdf))
-        items = SafeJSON.load(state.setlist_path())["My Set"]["items"]
+        items = load_setlists(state.setlist_path(), state.library_dir)["My Set"]["items"]
         assert items[0] == "junk" and items[1]["path"] == new_p
-        recent = SafeJSON.load(state.recent_path())
+        recent = load_recent(state.recent_path(), state.library_dir)
         assert recent[0] is None and recent[1]["filepath"] == new_p
 
     def test_heal_annotation_sidecar_after_rename(self, tmp_path):
@@ -1136,6 +1137,7 @@ class TestHealReferences:
              "title": "Suite", "composer": "Bach"},
         ]}
         SafeJSON.save(state.setlist_path(), setlist_data)
+        state.set_library(str(tmp_path))  # one-time conversion to relative paths
         mtime = os.path.getmtime(state.setlist_path())
 
         # Rescan — no changes
@@ -1190,11 +1192,9 @@ class TestHealReferences:
 
         state.set_library(str(tmp_path))
 
-        # Nothing was healed, so the file keeps its original un-migrated shape.
-        data = SafeJSON.load(state.setlist_path(), default={})
-        entry = data["My Set"]
-        items = entry["items"] if isinstance(entry, dict) else entry
-        assert items[0]["path"] == portable_path(str(pdf))
+        # Nothing was healed, so the entry still points at the original.
+        data = load_setlists(state.setlist_path(), state.library_dir)
+        assert data["My Set"]["items"][0]["path"] == portable_path(str(pdf))
 
     def test_rename_still_heals_alongside_duplicates(self, tmp_path):
         """Skipping ambiguous hashes must not block genuine rename healing."""
@@ -1270,8 +1270,8 @@ class TestHealReferencesRobustness:
         os.remove(str(pdf))
         state.set_library(str(tmp_path))
 
-        after = SafeJSON.load(state.hash_index_path(), default={})
-        assert after == before
+        assert SafeJSON.load(state.hash_index_path(), default={}) == before
+        after = load_hash_index(state.hash_index_path(), state.library_dir)
         assert portable_path(str(pdf)) in after.values()
 
     def test_scan_without_usable_hashes_keeps_index(self, tmp_path, monkeypatch):
@@ -1338,7 +1338,7 @@ class TestHealReferencesRobustness:
         # set_library survived and still recorded the directory ...
         assert state.config["last_directory"] == portable_path(str(tmp_path))
         # ... and the index still points at the OLD path, so the remap recurs.
-        idx = SafeJSON.load(state.hash_index_path(), default={})
+        idx = load_hash_index(state.hash_index_path(), state.library_dir)
         assert old_portable in idx.values()
         assert portable_path(str(new_pdf)) not in idx.values()
 
@@ -1346,10 +1346,8 @@ class TestHealReferencesRobustness:
         monkeypatch.setattr(srv, "_save_setlists", real_save_setlists)
         state.set_library(str(tmp_path))
 
-        data = SafeJSON.load(state.setlist_path(), default={})
-        entry = data["My Set"]
-        items = entry["items"] if isinstance(entry, dict) else entry
-        assert items[0]["path"] == portable_path(str(new_pdf))
+        data = load_setlists(state.setlist_path(), state.library_dir)
+        assert data["My Set"]["items"][0]["path"] == portable_path(str(new_pdf))
 
 
 # ---------------------------------------------------------------------------

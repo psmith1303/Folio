@@ -40,7 +40,7 @@ songs.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `type` | string | no | `"song"` (default if omitted for backward compatibility). |
-| `path` | string | **yes** | Portable path to the PDF file (see [Path encoding](#path-encoding)). |
+| `path` | string | **yes** | Path to the PDF, relative to the library root (see [Path encoding](#path-encoding)). |
 | `title` | string | **yes** | Display title shown in the UI and window title bar. |
 | `composer` | string | **yes** | Composer name (may be empty string `""`). |
 | `start_page` | integer | **yes** | 1-based page number where playback of this item begins. Minimum value: `1`. |
@@ -59,7 +59,7 @@ songs.
 ```json
 {
   "type": "song",
-  "path": "Z:/Music/Scores/Bach/Goldberg.pdf",
+  "path": "Scores/Bach/Goldberg.pdf",
   "title": "Goldberg Variations",
   "composer": "Bach",
   "start_page": 1,
@@ -72,7 +72,7 @@ songs.
 ```json
 {
   "type": "song",
-  "path": "/mnt/z/Music/Scores/Bach/Goldberg.pdf",
+  "path": "Scores/Bach/Goldberg.pdf",
   "title": "Aria",
   "composer": "Bach",
   "start_page": 3,
@@ -114,15 +114,22 @@ reference is expanded recursively into a flat song list.
 
 ## Path encoding
 
-Paths are stored in **portable form** (function `portable_path()`):
+Paths are stored **relative to the library root**, with forward slashes only
+(no escaping needed in JSON): `Scores/Bach/Goldberg.pdf`. The same rule applies
+to `_recent.json`, `_hash_index.json` and `_scan_cache.json`. Because nothing
+stored depends on where the library is mounted, the files stay valid on
+Windows, WSL, inside the Docker container, or after the folder is moved.
 
-- Forward slashes only — no backslashes, so no escaping is needed in JSON.
-- Windows absolute paths keep the drive letter: `Z:/PARA/Scores/foo.pdf`
-- WSL/Linux mount paths are kept as-is: `/mnt/z/PARA/Scores/foo.pdf`
+In memory and over the HTTP API, paths are absolute under the current library
+root; `load_setlists()` / `save_setlists()` in `web/core.py` convert at the
+file boundary (`to_library_relative()` / `from_library_relative()`).
 
-At read time, `normalize_path()` converts to the OS-native format and translates
-between Windows (`Z:/...`) and WSL (`/mnt/z/...`) automatically, so a setlist
-saved on Windows loads correctly on WSL and vice versa.
+**Older files** stored absolute portable paths (`/mnt/z/PARA/Scores/foo.pdf`
+or Windows `Z:/PARA/Scores/foo.pdf`, which are treated as the same place).
+They are still read correctly, and are converted in place the first time the
+library is opened; each converted file is first backed up as
+`<name>.pre-relative.bak`. Absolute paths outside the library can't be
+converted: they are left as they are and logged.
 
 ---
 
@@ -133,7 +140,7 @@ saved on Windows loads correctly on WSL and vice versa.
   "Warm-up": [
     {
       "type": "song",
-      "path": "Z:/Music/Exercises/Long Tones.pdf",
+      "path": "Exercises/Long Tones.pdf",
       "title": "Long Tones",
       "composer": "",
       "start_page": 1,
@@ -141,7 +148,7 @@ saved on Windows loads correctly on WSL and vice versa.
     },
     {
       "type": "song",
-      "path": "Z:/Music/Exercises/Scales.pdf",
+      "path": "Exercises/Scales.pdf",
       "title": "Scales",
       "composer": "",
       "start_page": 1,
@@ -155,7 +162,7 @@ saved on Windows loads correctly on WSL and vice versa.
     },
     {
       "type": "song",
-      "path": "Z:/Music/Hymns/Amazing Grace.pdf",
+      "path": "Hymns/Amazing Grace.pdf",
       "title": "Amazing Grace",
       "composer": "Newton",
       "start_page": 1,
@@ -165,7 +172,7 @@ saved on Windows loads correctly on WSL and vice versa.
   "Concert Programme": [
     {
       "type": "song",
-      "path": "Z:/Music/Classical/Moonlight Sonata.pdf",
+      "path": "Classical/Moonlight Sonata.pdf",
       "title": "Moonlight Sonata (1st mvt)",
       "composer": "Beethoven",
       "start_page": 1,

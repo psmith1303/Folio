@@ -22,6 +22,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .core import (
+    HASH_INDEX_FILE,
+    RECENT_FILE,
+    SCAN_CACHE_FILE,
+    SETLISTS_FILE,
     AnnotationConflictError,
     SafeJSON,
     SafeJSONError,
@@ -30,7 +34,9 @@ from .core import (
     load_annotations,
     load_hash_index,
     load_recent,
+    load_scan_cache,
     load_setlists,
+    migrate_to_relative,
     normalize_path,
     portable_path,
     remap_hash_index,
@@ -38,6 +44,10 @@ from .core import (
     remap_setlist_paths,
     rename_score_tags,
     save_annotations,
+    save_hash_index,
+    save_recent,
+    save_scan_cache,
+    save_setlists,
     scan_library,
 )
 
@@ -137,18 +147,17 @@ class AppState:
     def set_library(self, path: str) -> None:
         path = normalize_path(path)
         self.library_dir = path
+        _migrate_to_relative(path)
         cache_path = self.scan_cache_path()
         try:
-            hash_cache = SafeJSON.load(cache_path, default={})
-            if not isinstance(hash_cache, dict):
-                hash_cache = {}
+            hash_cache = load_scan_cache(cache_path, path)
         except SafeJSONError as e:
             log.warning("Could not load scan cache: %s", e)
             hash_cache = {}
         self.scores = scan_library(path, hash_cache=hash_cache)
         if self.scores:
             try:
-                SafeJSON.save(cache_path, hash_cache)
+                save_scan_cache(cache_path, hash_cache, path)
             except SafeJSONError as e:
                 log.warning("Could not save scan cache: %s", e)
         _heal_references(self)
@@ -160,19 +169,36 @@ class AppState:
 
     def setlist_path(self) -> str:
         if self.library_dir:
-            return os.path.join(self.library_dir, "setlists.json")
-        return os.path.join(CONFIG_DIR, "setlists.json")
+            return os.path.join(self.library_dir, SETLISTS_FILE)
+        return os.path.join(CONFIG_DIR, SETLISTS_FILE)
 
     def hash_index_path(self) -> str:
-        return os.path.join(self.library_dir, "_hash_index.json")
+        return os.path.join(self.library_dir, HASH_INDEX_FILE)
 
     def scan_cache_path(self) -> str:
-        return os.path.join(self.library_dir, "_scan_cache.json")
+        return os.path.join(self.library_dir, SCAN_CACHE_FILE)
 
     def recent_path(self) -> str:
         if self.library_dir:
-            return os.path.join(self.library_dir, "_recent.json")
-        return os.path.join(CONFIG_DIR, "_recent.json")
+            return os.path.join(self.library_dir, RECENT_FILE)
+        return os.path.join(CONFIG_DIR, RECENT_FILE)
+
+
+def _migrate_to_relative(library_dir: str) -> None:
+    """Convert the library's stored paths to relative form, logging what
+    changed and any paths that point outside the library."""
+    try:
+        report = migrate_to_relative(library_dir)
+    except SafeJSONError as e:
+        log.warning("Could not migrate stored paths to relative form: %s", e)
+        return
+    for name, (converted, foreign) in report.items():
+        if converted:
+            log.info("Converted %d path(s) in %s to library-relative form",
+                     converted, name)
+        if foreign:
+            log.warning("%s: %d path(s) outside the library left as-is: %s",
+                        name, len(foreign), ", ".join(foreign[:5]))
 
 
 def _heal_references(st: "AppState") -> None:
@@ -219,7 +245,7 @@ def _heal_references(st: "AppState") -> None:
 
     # Load previous index
     try:
-        old_index = load_hash_index(index_path)
+        old_index = load_hash_index(index_path, st.library_dir)
     except SafeJSONError:
         old_index = {}
 
@@ -254,7 +280,7 @@ def _heal_references(st: "AppState") -> None:
 
     # Save new index
     try:
-        SafeJSON.save(index_path, new_index)
+        save_hash_index(index_path, new_index, st.library_dir)
     except SafeJSONError as e:
         log.warning("Could not save hash index: %s", e)
 
@@ -331,7 +357,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.11.2",
+    title="Folio", version="2.12.0",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -572,9 +598,9 @@ def update_score_tags(req: UpdateTagsRequest):
 
         # Keep hash index in sync with in-app renames
         try:
-            idx = load_hash_index(state.hash_index_path())
+            idx = load_hash_index(state.hash_index_path(), state.library_dir)
             if remap_hash_index(idx, {old_portable: new_portable}):
-                SafeJSON.save(state.hash_index_path(), idx)
+                save_hash_index(state.hash_index_path(), idx, state.library_dir)
         except SafeJSONError:
             pass
 
@@ -697,13 +723,13 @@ MAX_RECENT = 50
 
 def _load_recent() -> list[dict]:
     try:
-        return load_recent(state.recent_path())
+        return load_recent(state.recent_path(), state.library_dir)
     except SafeJSONError:
         return []
 
 
 def _save_recent(data: list[dict]) -> None:
-    SafeJSON.save(state.recent_path(), data)
+    save_recent(state.recent_path(), data, state.library_dir)
 
 
 class AddRecentRequest(BaseModel):
@@ -782,13 +808,13 @@ def clear_recent():
 
 def _load_setlists() -> dict:
     try:
-        return load_setlists(state.setlist_path())
+        return load_setlists(state.setlist_path(), state.library_dir)
     except SafeJSONError:
         return {}
 
 
 def _save_setlists(data: dict) -> None:
-    SafeJSON.save(state.setlist_path(), data)
+    save_setlists(state.setlist_path(), data, state.library_dir)
 
 
 _MAX_NESTING_DEPTH = 10

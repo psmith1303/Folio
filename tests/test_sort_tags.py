@@ -1,6 +1,7 @@
 """scripts/sort_tags.py and the setlist/recent/hash-index helpers it shares
 with the server: every stored reference follows a rename, in the current
-on-disk formats, and a failure part-way leaves the library unchanged."""
+on-disk formats (paths relative to the library root), and a failure part-way
+leaves the library unchanged."""
 
 import json
 import os
@@ -20,6 +21,7 @@ from web.core import (
     load_hash_index,
     load_recent,
     load_setlists,
+    migrate_to_relative,
     portable_path,
     remap_hash_index,
     rename_score_file,
@@ -55,7 +57,7 @@ def lib(tmp_path):
     pdf = tmp_path / OLD
     pdf.write_bytes(b"%PDF-1.4 fake")
     Path(annotation_sidecar_path(str(pdf))).write_text('{"pages": {}}')
-    p = portable_path(str(pdf))
+    p = OLD
     (tmp_path / "setlists.json").write_text(json.dumps({
         "Gig": {
             "items": [
@@ -74,7 +76,8 @@ def lib(tmp_path):
 
 
 def _new_portable(lib: Path) -> str:
-    return portable_path(str(lib / NEW))
+    """NEW as stored on disk: relative to the library root."""
+    return NEW
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +110,7 @@ def test_apply_heals_hash_index_and_moves_sidecar(lib, monkeypatch):
 
 
 def test_legacy_list_format_setlist_is_healed(lib, monkeypatch):
-    p = portable_path(str(lib / OLD))
+    p = OLD
     (lib / "setlists.json").write_text(json.dumps({
         "Old": [{"path": p, "title": "Suite", "composer": "Bach",
                  "start_page": 1, "end_page": None}],
@@ -208,6 +211,89 @@ def test_failed_save_reports_and_still_saves_the_others(lib, monkeypatch):
     assert _read(lib / "_hash_index.json") == old_index
     assert _read(lib / "setlists.json")["Gig"]["items"][0]["path"] == _new_portable(lib)
     assert _read(lib / "_recent.json")[0]["filepath"] == _new_portable(lib)
+
+
+# ---------------------------------------------------------------------------
+# Library-relative storage
+# ---------------------------------------------------------------------------
+
+
+def test_heals_files_written_under_another_mount_root(tmp_path, monkeypatch):
+    """Regression: Folio (in Docker) stored paths under the container's root,
+    so the script run on the host path matched none of them and updated
+    nothing. Now the server stores them relative, so any root works."""
+    container = tmp_path / "container" / "Music"
+    container.mkdir(parents=True)
+    (container / OLD).write_bytes(b"%PDF-1.4 fake")
+    p = portable_path(str(container / OLD))
+    (container / "setlists.json").write_text(json.dumps(
+        {"Gig": {"items": [{"type": "song", "path": p}], "shuffle": False}}))
+    (container / "_recent.json").write_text(json.dumps([{"filepath": p}]))
+    (container / "_hash_index.json").write_text(json.dumps({"abc123": p}))
+    migrate_to_relative(str(container))  # what the server does on open
+
+    host = tmp_path / "host" / "Music"
+    host.parent.mkdir()
+    os.rename(container, host)
+    assert _run(host, "--apply", monkeypatch=monkeypatch) == 0
+    assert _read(host / "setlists.json")["Gig"]["items"][0]["path"] == NEW
+    assert _read(host / "_recent.json")[0]["filepath"] == NEW
+    assert _read(host / "_hash_index.json") == {"abc123": NEW}
+
+
+def test_relative_library_argument(lib, monkeypatch):
+    monkeypatch.chdir(lib)
+    assert _run(Path("."), "--apply", monkeypatch=monkeypatch) == 0
+    assert (lib / NEW).exists()
+    assert _read(lib / "setlists.json")["Gig"]["items"][0]["path"] == NEW
+
+
+def test_legacy_absolute_paths_inside_library_are_healed(lib, monkeypatch):
+    """Files not yet converted by the server, but written under this same
+    root, still heal -- and are saved in relative form."""
+    p = portable_path(str(lib / OLD))
+    (lib / "setlists.json").write_text(json.dumps(
+        {"Gig": {"items": [{"type": "song", "path": p}], "shuffle": False}}))
+    (lib / "_recent.json").write_text(json.dumps([{"filepath": p}]))
+    (lib / "_hash_index.json").write_text(json.dumps({"abc123": p}))
+    assert _run(lib, "--apply", monkeypatch=monkeypatch) == 0
+    assert _read(lib / "setlists.json")["Gig"]["items"][0]["path"] == NEW
+    assert _read(lib / "_recent.json")[0]["filepath"] == NEW
+    assert _read(lib / "_hash_index.json") == {"abc123": NEW}
+
+
+def test_unconverted_files_from_another_root_stop_before_any_rename(
+        lib, monkeypatch, capsys):
+    """Absolute paths under a different root, with nothing yet converted:
+    renaming now would leave every one of them pointing at the old name."""
+    p = "/elsewhere/Music/" + OLD
+    (lib / "setlists.json").write_text(json.dumps(
+        {"Gig": {"items": [{"type": "song", "path": p}], "shuffle": False}}))
+    (lib / "_recent.json").write_text(json.dumps([{"filepath": p}]))
+    (lib / "_hash_index.json").write_text(json.dumps({"abc123": p}))
+    before = {q.name: q.read_bytes() for q in lib.iterdir()}
+    assert _run(lib, "--apply", monkeypatch=monkeypatch) == 1
+    assert {q.name: q.read_bytes() for q in lib.iterdir()} == before
+    err = capsys.readouterr().err
+    assert "Open this library in Folio once" in err
+    assert "No files were renamed" in err
+
+
+def test_outside_paths_in_converted_files_do_not_block_renames(
+        lib, monkeypatch, capsys):
+    """Regression: once converted, a genuine reference outside the library
+    (which Folio allows) made the script refuse every future run."""
+    outside = "/elsewhere/Other.pdf"
+    sl = _read(lib / "setlists.json")
+    sl["Gig"]["items"].append({"type": "song", "path": outside})
+    (lib / "setlists.json").write_text(json.dumps(sl))
+
+    assert _run(lib, "--apply", monkeypatch=monkeypatch) == 0
+    assert (lib / NEW).exists()
+    items = _read(lib / "setlists.json")["Gig"]["items"]
+    assert items[0]["path"] == NEW
+    assert items[2] == {"type": "song", "path": outside}
+    assert "1 stored path(s) point outside the library" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------
@@ -343,9 +429,10 @@ def test_remap_recent_paths_counts():
 
 
 def test_loaders_default_when_missing(tmp_path):
-    assert load_setlists(str(tmp_path / "setlists.json")) == {}
-    assert load_recent(str(tmp_path / "_recent.json")) == []
-    assert load_hash_index(str(tmp_path / "_hash_index.json")) == {}
+    root = str(tmp_path)
+    assert load_setlists(str(tmp_path / "setlists.json"), root) == {}
+    assert load_recent(str(tmp_path / "_recent.json"), root) == []
+    assert load_hash_index(str(tmp_path / "_hash_index.json"), root) == {}
 
 
 @pytest.mark.parametrize("loader", [load_setlists, load_recent, load_hash_index])
@@ -353,13 +440,14 @@ def test_loaders_raise_on_corrupt(tmp_path, loader):
     path = tmp_path / "f.json"
     path.write_text("{oops")
     with pytest.raises(SafeJSONError):
-        loader(str(path))
+        loader(str(path), str(tmp_path))
 
 
 def test_loaders_ignore_wrong_top_level_type(tmp_path):
     path = tmp_path / "f.json"
+    root = str(tmp_path)
     path.write_text("[1, 2]")
-    assert load_setlists(str(path)) == {}
-    assert load_hash_index(str(path)) == {}
+    assert load_setlists(str(path), root) == {}
+    assert load_hash_index(str(path), root) == {}
     path.write_text('{"a": 1}')
-    assert load_recent(str(path)) == []
+    assert load_recent(str(path), root) == []

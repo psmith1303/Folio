@@ -5,16 +5,19 @@ Error conditions raise exceptions; the calling HTTP layer converts them
 to proper API responses.
 """
 
+import copy
 import hashlib
 import json
 import logging
 import os
+import posixpath
 import re
 import shutil
 import sys
 import tempfile
 import uuid
 from dataclasses import dataclass, field
+from typing import Callable
 
 log = logging.getLogger("folio")
 
@@ -502,8 +505,126 @@ def save_annotations(
 
 
 # ---------------------------------------------------------------------------
-# Setlists and the recent list
+# Library-relative paths
 # ---------------------------------------------------------------------------
+#
+# Files that store score paths (setlists, the recent list, the hash index and
+# the scan cache) hold them relative to the library root, so they stay valid
+# wherever the library is mounted (host vs container, WSL vs Windows). In
+# memory and over the API, paths stay absolute under the current root: the
+# conversion happens only in the loaders and savers below.
+
+# The files in a library root that store score paths.
+SETLISTS_FILE = "setlists.json"
+RECENT_FILE = "_recent.json"
+HASH_INDEX_FILE = "_hash_index.json"
+SCAN_CACHE_FILE = "_scan_cache.json"
+
+
+def is_library_relative(path: str) -> bool:
+    """True if stored *path* is in relative form. Anything starting with "/"
+    counts as absolute on every OS (on Windows, Python 3.13+ ``isabs`` says
+    otherwise for root-only paths such as ``/data/x.pdf``)."""
+    p = portable_path(path)
+    return not p.startswith("/") and not os.path.isabs(normalize_path(p))
+
+
+def to_library_relative(path: str, root: str) -> str | None:
+    """Return *path* relative to *root* in portable form, or None if it isn't
+    inside *root* (or *root* is empty).
+
+    Accepts relative paths and absolute ones in WSL (``/mnt/z/...``) or
+    Windows (``Z:/...``) form; the two are treated as the same place.
+    """
+    if not root or not path:
+        return None
+    if is_library_relative(path):
+        rel = posixpath.normpath(portable_path(path))
+        return None if rel == ".." or rel.startswith("../") else rel
+    abs_p = portable_path(normalize_path(portable_path(path)))
+    r = portable_path(normalize_path(root)).rstrip("/")
+    if abs_p.startswith(r + "/"):
+        return abs_p[len(r) + 1:]
+    return None
+
+
+def from_library_relative(path: str, root: str) -> str:
+    """Return the absolute portable path for a stored *path* under *root*.
+
+    Relative paths are joined to *root*. Absolute paths (legacy entries) are
+    normalised to *root*'s form when they lie inside it, else returned as-is.
+    """
+    rel = to_library_relative(path, root)
+    if rel is None:
+        return path
+    return portable_path(normalize_path(root)).rstrip("/") + "/" + rel
+
+
+def to_stored_path(path: str, root: str) -> str:
+    """The form *path* is written to disk in: relative to *root* when it lies
+    inside it, else unchanged (paths outside the library, or no library)."""
+    rel = to_library_relative(path, root)
+    return path if rel is None else rel
+
+
+# Path walkers: apply *fn* to every stored path in a loaded file, in place,
+# skipping malformed entries. Each returns the number of paths *fn* changed.
+
+def map_setlist_paths(data: dict, fn: Callable[[str], str]) -> int:
+    count = 0
+    for sl in data.values():
+        for item in sl["items"]:
+            if not isinstance(item, dict) or item.get("type", "song") != "song":
+                continue
+            old = item.get("path")
+            if isinstance(old, str) and (new := fn(old)) != old:
+                item["path"] = new
+                count += 1
+    return count
+
+
+def map_recent_paths(data: list, fn: Callable[[str], str]) -> int:
+    count = 0
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        old = entry.get("filepath")
+        if isinstance(old, str) and (new := fn(old)) != old:
+            entry["filepath"] = new
+            count += 1
+    return count
+
+
+def map_hash_index_paths(index: dict, fn: Callable[[str], str]) -> int:
+    count = 0
+    for content_hash, old in index.items():
+        if isinstance(old, str) and (new := fn(old)) != old:
+            index[content_hash] = new
+            count += 1
+    return count
+
+
+def stored_paths(data, walk: Callable) -> list[str]:
+    """Every path in loaded *data*, via its path walker."""
+    found: list[str] = []
+    walk(data, lambda p: found.append(p) or p)
+    return found
+
+
+def foreign_paths(data, walk: Callable, root: str) -> list[str]:
+    """Paths in loaded *data* that don't lie inside *root*."""
+    return [p for p in stored_paths(data, walk)
+            if to_library_relative(p, root) is None]
+
+
+# ---------------------------------------------------------------------------
+# Setlists, the recent list and the hash index
+# ---------------------------------------------------------------------------
+#
+# Each file has a raw reader (paths exactly as stored) and a path walker; the
+# generic loader returns absolute paths under *root* and the generic saver
+# writes relative ones, without modifying the caller's data. An empty *root*
+# (no library set) stores paths unchanged.
 
 
 def _normalize_setlist_value(v) -> dict:
@@ -522,72 +643,148 @@ def _normalize_setlist_value(v) -> dict:
     return {"items": [], "shuffle": False}
 
 
-def load_setlists(path: str) -> dict:
-    """Load setlists.json at *path* into normalized form ({} if missing).
-
-    Raises SafeJSONError if the file is unreadable or corrupt.
-    """
+def _read_setlists(path: str) -> dict:
     raw = SafeJSON.load(path, default={})
     if not isinstance(raw, dict):
         return {}
     return {name: _normalize_setlist_value(v) for name, v in raw.items()}
 
 
-def load_recent(path: str) -> list[dict]:
-    """Load the recent list at *path* ([] if missing).
-
-    Raises SafeJSONError if the file is unreadable or corrupt.
-    """
+def _read_recent(path: str) -> list:
     data = SafeJSON.load(path, default=[])
     return data if isinstance(data, list) else []
 
 
-def remap_setlist_paths(data: dict, remap: dict[str, str]) -> int:
-    """Rewrite song paths in loaded setlists through *remap* (old -> new
-    portable path), in place. Malformed (non-dict) items are skipped.
-    Returns the number of items changed."""
-    count = 0
-    for sl in data.values():
-        for item in sl["items"]:
-            if not isinstance(item, dict) or item.get("type", "song") != "song":
-                continue
-            old = item.get("path", "")
-            if old in remap:
-                item["path"] = remap[old]
-                count += 1
-    return count
-
-
-def load_hash_index(path: str) -> dict:
-    """Load _hash_index.json at *path* ({} if missing or not an object).
-
-    Raises SafeJSONError if the file is unreadable or corrupt.
-    """
+def _read_hash_index(path: str) -> dict:
     data = SafeJSON.load(path, default={})
     return data if isinstance(data, dict) else {}
 
 
-def remap_hash_index(index: dict, remap: dict[str, str]) -> int:
-    """Rewrite hash-index paths (content hash -> portable path) through
-    *remap*, in place. Malformed (non-string) paths are skipped.
+# Files whose stored paths are migrated to relative form and healed after
+# renames: file name -> (raw reader, path walker). The scan cache is not
+# listed: its paths are keys rather than values, and it is a regenerable
+# cache rewritten on every scan (see load_scan_cache/save_scan_cache).
+PATH_STORES: dict[str, tuple[Callable[[str], object], Callable]] = {
+    SETLISTS_FILE: (_read_setlists, map_setlist_paths),
+    RECENT_FILE: (_read_recent, map_recent_paths),
+    HASH_INDEX_FILE: (_read_hash_index, map_hash_index_paths),
+}
+
+
+def load_store(name: str, path: str, root: str):
+    """Load the PATH_STORES file *name* at *path* with absolute paths under
+    *root* (empty/default value if missing or of the wrong shape).
+
+    Raises SafeJSONError if the file is unreadable or corrupt.
+    """
+    read, walk = PATH_STORES[name]
+    data = read(path)
+    walk(data, lambda p: from_library_relative(p, root))
+    return data
+
+
+def save_store(name: str, path: str, data, root: str) -> None:
+    """Save the PATH_STORES file *name* with paths relative to *root*."""
+    _read, walk = PATH_STORES[name]
+    data = copy.deepcopy(data)
+    walk(data, lambda p: to_stored_path(p, root))
+    SafeJSON.save(path, data)
+
+
+def load_setlists(path: str, root: str) -> dict:
+    return load_store(SETLISTS_FILE, path, root)
+
+
+def save_setlists(path: str, data: dict, root: str) -> None:
+    save_store(SETLISTS_FILE, path, data, root)
+
+
+def load_recent(path: str, root: str) -> list:
+    return load_store(RECENT_FILE, path, root)
+
+
+def save_recent(path: str, data: list, root: str) -> None:
+    save_store(RECENT_FILE, path, data, root)
+
+
+def load_hash_index(path: str, root: str) -> dict:
+    return load_store(HASH_INDEX_FILE, path, root)
+
+
+def save_hash_index(path: str, index: dict, root: str) -> None:
+    save_store(HASH_INDEX_FILE, path, index, root)
+
+
+def load_scan_cache(path: str, root: str) -> dict:
+    """Load the scan cache (path -> {size, mtime, hash}) with absolute keys
+    ({} if missing or not an object).
+
+    Raises SafeJSONError if the file is unreadable or corrupt.
+    """
+    data = SafeJSON.load(path, default={})
+    if not isinstance(data, dict):
+        return {}
+    return {from_library_relative(k, root): v for k, v in data.items()}
+
+
+def save_scan_cache(path: str, cache: dict, root: str) -> None:
+    SafeJSON.save(path, {to_stored_path(k, root): v for k, v in cache.items()})
+
+
+def remap_setlist_paths(data: dict, remap: dict[str, str]) -> int:
+    """Rewrite song paths in loaded setlists through *remap* (old -> new
+    path), in place. Returns the number of items changed."""
+    return map_setlist_paths(data, lambda p: remap.get(p, p))
+
+
+def remap_recent_paths(data: list, remap: dict[str, str]) -> int:
+    """Rewrite recent-list filepaths through *remap*, in place.
     Returns the number of entries changed."""
-    count = 0
-    for content_hash, stored_path in index.items():
-        if isinstance(stored_path, str) and stored_path in remap:
-            index[content_hash] = remap[stored_path]
-            count += 1
-    return count
+    return map_recent_paths(data, lambda p: remap.get(p, p))
 
 
-def remap_recent_paths(data: list[dict], remap: dict[str, str]) -> int:
-    """Rewrite recent-list filepaths through *remap*, in place. Malformed
-    (non-dict) entries are skipped. Returns the number of entries changed."""
-    count = 0
-    for entry in data:
-        if not isinstance(entry, dict):
+def remap_hash_index(index: dict, remap: dict[str, str]) -> int:
+    """Rewrite hash-index paths (content hash -> path) through *remap*, in
+    place. Returns the number of entries changed."""
+    return map_hash_index_paths(index, lambda p: remap.get(p, p))
+
+
+# ---------------------------------------------------------------------------
+# One-time migration to library-relative storage
+# ---------------------------------------------------------------------------
+
+MIGRATION_BACKUP_SUFFIX = ".pre-relative.bak"
+
+
+def migrate_to_relative(library_dir: str) -> dict[str, tuple[int, list[str]]]:
+    """Rewrite the PATH_STORES files in *library_dir* to relative form.
+
+    A file that still holds absolute paths inside the library is first copied
+    to ``<name>.pre-relative.bak`` (unless that backup already exists), then
+    rewritten. Absolute paths outside the library are left as they are and
+    reported. Returns {file name: (paths converted, paths left absolute)}.
+    Raises SafeJSONError if a file is unreadable or corrupt, or can't be
+    backed up or saved (e.g. a read-only library); it is safe to retry, as
+    already-converted files are left alone.
+    """
+    report: dict[str, tuple[int, list[str]]] = {}
+    for name, (read, walk) in PATH_STORES.items():
+        file_path = os.path.join(library_dir, name)
+        if not os.path.exists(file_path):
             continue
-        old = entry.get("filepath", "")
-        if old in remap:
-            entry["filepath"] = remap[old]
-            count += 1
-    return count
+        stored = read(file_path)
+        foreign = foreign_paths(stored, walk, library_dir)
+        converted = sum(1 for p in stored_paths(stored, walk)
+                        if p not in foreign and not is_library_relative(p))
+        if converted:
+            backup = file_path + MIGRATION_BACKUP_SUFFIX
+            if not os.path.exists(backup):
+                try:
+                    shutil.copy2(file_path, backup)
+                except OSError as e:
+                    raise SafeJSONError(
+                        f"Cannot back up {file_path} before converting it: {e}"
+                    ) from e
+            save_store(name, file_path, stored, library_dir)
+        report[name] = (converted, foreign)
+    return report
