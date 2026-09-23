@@ -339,6 +339,46 @@ def test_rename_score_file_refuses_hard_link(tmp_path):
         rename_score_file(Score(str(src), src.name), "A -- a b.pdf")
 
 
+def _require_case_sensitive(d: Path) -> None:
+    probe = d / "Probe"
+    probe.write_bytes(b"")
+    insensitive = (d / "probe").exists()
+    probe.unlink()
+    if insensitive:
+        pytest.skip("tmp_path is on a case-insensitive filesystem")
+
+
+def test_case_only_hard_link_is_refused_on_case_sensitive_fs(tmp_path, monkeypatch):
+    """Regression: on a case-sensitive drive (e.g. inside the container) a
+    hard link whose name differs only in case passed the case-only
+    exception; os.rename did nothing, yet the sidecar and every reference
+    moved to the new name."""
+    _require_case_sensitive(tmp_path)
+    src = tmp_path / CASE_OLD
+    src.write_bytes(b"%PDF-1.4 fake")
+    Path(annotation_sidecar_path(str(src))).write_text("{}")
+    os.link(src, tmp_path / CASE_NEW)
+    with pytest.raises(FileExistsError):
+        rename_score_file(Score(str(src), src.name), CASE_NEW)
+
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    assert _run(tmp_path, "--apply", monkeypatch=monkeypatch) == 1
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
+def test_case_only_rename_on_real_case_sensitive_fs(tmp_path, monkeypatch):
+    """A plain case-only rename where the new name doesn't exist yet. The
+    simulated test above fakes exists(), so without this nothing checks the
+    ordinary Linux/container path (a check reordered to call samefile() on
+    the missing target crashed here)."""
+    _require_case_sensitive(tmp_path)
+    (tmp_path / CASE_OLD).write_bytes(b"%PDF-1.4 fake")
+    Path(annotation_sidecar_path(str(tmp_path / CASE_OLD))).write_text("{}")
+    assert _run(tmp_path, "--apply", monkeypatch=monkeypatch) == 0
+    assert sorted(os.listdir(tmp_path)) == sorted(
+        [CASE_NEW, Path(annotation_sidecar_path(str(tmp_path / CASE_NEW))).name])
+
+
 def _case_insensitive_dir():
     """A scratch dir on the repo's own drive if that drive ignores case
     (e.g. the /mnt/z checkout), else None."""

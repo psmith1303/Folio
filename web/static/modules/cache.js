@@ -7,7 +7,7 @@ import { libraryBody } from "./dom.js";
 export const PDF_CACHE = "folio-pdfs-v1";
 
 // Cache Storage key for a PDF — must match the service worker's (sw.js).
-export function pdfCacheKey(path) { return pdfCacheKey(path); }
+export function pdfCacheKey(path) { return "/api/pdf?path=" + encodeURIComponent(path); }
 const MAX_AUTO_CACHED = 100;
 
 // Cache API and Service Workers require a secure context (HTTPS or localhost).

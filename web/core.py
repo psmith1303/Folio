@@ -263,8 +263,9 @@ def rename_score_file(score: Score, new_filename: str) -> Score:
     re-raised. Returns a new Score for the renamed file.
     Raises FileExistsError if the target filename is another existing file.
     A case-only rename is allowed: on case-insensitive filesystems (Windows,
-    macOS, WSL /mnt drives) the "target" found is the source itself. Any
-    other existing target -- including a hard link to the source -- is
+    macOS, WSL /mnt drives) the "target" found is the source itself, and the
+    directory lists only the old name. Any other existing target -- including
+    a hard link to the source, even one whose name differs only in case -- is
     refused.
     """
     old_dir = os.path.dirname(score.filepath)
@@ -272,8 +273,10 @@ def rename_score_file(score: Score, new_filename: str) -> Score:
 
     case_only = (new_filepath != score.filepath
                  and new_filepath.lower() == score.filepath.lower())
-    if (os.path.exists(new_filepath)
-            and not (case_only and os.path.samefile(score.filepath, new_filepath))):
+    if os.path.exists(new_filepath) and not (
+            case_only
+            and os.path.samefile(score.filepath, new_filepath)
+            and new_filename not in os.listdir(old_dir)):
         raise FileExistsError(f"Target file already exists: {new_filename}")
 
     # Rename PDF
