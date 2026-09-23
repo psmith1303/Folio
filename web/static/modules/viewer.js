@@ -27,8 +27,10 @@ import {
   setInvalidatePrerenderFn,
 } from "./annotations.js";
 import { addToRecent } from "./recent.js";
-import { findStartPage, songStartPage } from "./utils.js";
-import { CACHE_AVAILABLE, refreshCacheStatus, refreshCachedConfig } from "./cache.js";
+import { explicitStartPage, findStartPage, songStartPage } from "./utils.js";
+import {
+  CACHE_AVAILABLE, PDF_CACHE, pdfCacheKey, refreshCacheStatus, refreshCachedConfig,
+} from "./cache.js";
 
 // Register callbacks so annotations module can trigger navigation
 setNavCallbacks(nextPage, prevPage);
@@ -36,7 +38,7 @@ setRenderPageFn(renderPage);
 setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
-const VIEWER_TAG = "[viewer v2.8.25]";
+const VIEWER_TAG = "[viewer]";
 function dbg(...args) {
   if (typeof localStorage !== "undefined" && localStorage.folioDebug === "1") {
     console.log(VIEWER_TAG, ...args);
@@ -108,10 +110,8 @@ async function _fetchPdfDoc(filepath, { showRetryToast = true } = {}) {
       console.warn(VIEWER_TAG, `PDF load attempt ${attempt + 1} failed:`, err);
       if (attempt + 1 < 2) {
         try {
-          const cache = await caches.open("folio-pdfs-v1");
-          const purged = await cache.delete(
-            "/api/pdf?path=" + encodeURIComponent(filepath)
-          );
+          const cache = await caches.open(PDF_CACHE);
+          const purged = await cache.delete(pdfCacheKey(filepath));
           if (purged) console.warn(VIEWER_TAG, "purged corrupt cache entry for", filepath);
         } catch (e) {
           console.warn(VIEWER_TAG, "cache purge failed:", e);
@@ -143,8 +143,9 @@ async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null 
     annotData = prefetched.annotData || { pages: {}, rotations: {}, etag: null };
     newDoc = prefetched.pdfDoc;
   } else {
-    annotData = await _fetchAnnotations(filepath);
-    newDoc = await _fetchPdfDoc(filepath);
+    [annotData, newDoc] = await Promise.all([
+      _fetchAnnotations(filepath), _fetchPdfDoc(filepath),
+    ]);
   }
 
   // Commit state only after successful load. Destroy the previous doc to
@@ -301,10 +302,9 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
   const total = s.setlistPlayback.songs.length;
   dbg("openSetlistSong", { index, goToEnd, autoAdvance, path: song.path });
 
-  // A start_page of 1 is "not specified" (null), so the stamp decides.
   const targetPage = goToEnd
     ? (song.end_page || Number.MAX_SAFE_INTEGER)
-    : (song.start_page > 1 ? song.start_page : null);
+    : explicitStartPage(song);
 
   const prevTitle = titleDisplay.textContent;
   titleDisplay.textContent = `Loading ${song.composer} — ${song.title}…`;
@@ -457,7 +457,6 @@ async function _rasterizePageImpl(pageNum) {
     // Page size in PDF points (canonical orientation). Lets annotations that
     // need a physical size (stamps) convert points -> on-screen CSS px.
     pdfW: unscaledViewport.width,
-    pdfH: unscaledViewport.height,
     userRot,
     displayMode: layoutCtx.displayMode,
     containerW: layoutCtx.containerW,
@@ -544,7 +543,7 @@ async function renderSinglePage(pageNum, pdfCanvas, annotCanvas) {
   annotCanvas.style.width = cssW + "px";
   annotCanvas.style.height = cssH + "px";
 
-  return { cssW, cssH, pdfW: entry.pdfW, pdfH: entry.pdfH };
+  return { cssW, cssH, pdfW: entry.pdfW };
 }
 
 // Background prerender of the next view (and the previous view, since users
@@ -760,35 +759,19 @@ export function initViewerEvents() {
     pdfContainer.focus();
   });
 
-  btnZoomFit.addEventListener("click", () => {
+  // A manual mode choice locks out auto side-by-side switching.
+  const chooseMode = (mode) => {
     const s = getState();
-    s.displayMode = "fit";
+    s.displayMode = mode;
     s.userLockedMode = true;
     invalidatePrerenders();
     updateModeButtons();
     setTool("nav");
     renderPage();
-  });
-
-  btnZoomWide.addEventListener("click", () => {
-    const s = getState();
-    s.displayMode = "wide";
-    s.userLockedMode = true;
-    invalidatePrerenders();
-    updateModeButtons();
-    setTool("nav");
-    renderPage();
-  });
-
-  btnSideBySide.addEventListener("click", () => {
-    const s = getState();
-    s.displayMode = "2up";
-    s.userLockedMode = true;
-    invalidatePrerenders();
-    updateModeButtons();
-    setTool("nav");
-    renderPage();
-  });
+  };
+  btnZoomFit.addEventListener("click", () => chooseMode("fit"));
+  btnZoomWide.addEventListener("click", () => chooseMode("wide"));
+  btnSideBySide.addEventListener("click", () => chooseMode("2up"));
 
   btnFullscreen.addEventListener("click", toggleFullscreen);
 

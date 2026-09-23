@@ -6,9 +6,8 @@ export const UNDO_DEPTH = 20;
 
 // The size slider maps to these PDF point sizes, shared by text and stamps
 // (the pen/stamp toolbar slider only goes up to index 8 / 22pt; the text
-// dialog's own slider uses the full range up to 44pt). Kept in sync with
-// _POINT_SIZES in web/core.py.
-export const POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22, 26, 30, 34, 38, 44];
+// dialog's own slider uses the full range up to 44pt).
+const POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22, 26, 30, 34, 38, 44];
 
 export function sizeToPt(size) {
   const i = Math.max(1, Math.min(POINT_SIZES.length, size || 1)) - 1;
@@ -60,10 +59,14 @@ export function findStartPage(pages) {
   return null;
 }
 
-// First page of a setlist song. A start_page of 1 (the default) is treated as
-// "not specified", so the stamp wins; any later start_page wins over it.
+// A setlist song's start_page, or null when "not specified". A start_page of
+// 1 (the default) counts as not specified, so the stamp wins over it; any
+// later start_page wins over the stamp.
+export function explicitStartPage(song) {
+  return song.start_page > 1 ? song.start_page : null;
+}
+
+// First page of a setlist song: its explicit start_page, else the stamp, else 1.
 export function songStartPage(song, pages) {
-  const explicit = song.start_page || 1;
-  if (explicit > 1) return explicit;
-  return findStartPage(pages) || 1;
+  return explicitStartPage(song) || findStartPage(pages) || 1;
 }

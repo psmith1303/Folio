@@ -4,7 +4,10 @@
 
 import { libraryBody } from "./dom.js";
 
-const PDF_CACHE = "folio-pdfs-v1";
+export const PDF_CACHE = "folio-pdfs-v1";
+
+// Cache Storage key for a PDF — must match the service worker's (sw.js).
+export function pdfCacheKey(path) { return pdfCacheKey(path); }
 const MAX_AUTO_CACHED = 100;
 
 // Cache API and Service Workers require a secure context (HTTPS or localhost).
@@ -110,7 +113,7 @@ async function evictIfNeeded() {
   const cache = await caches.open(PDF_CACHE);
   const toEvict = unpinned.slice(0, unpinned.length - MAX_AUTO_CACHED);
   for (const entry of toEvict) {
-    await cache.delete("/api/pdf?path=" + encodeURIComponent(entry.path));
+    await cache.delete(pdfCacheKey(entry.path));
     await removeLruEntry(entry.path);
   }
 }
@@ -120,7 +123,7 @@ async function evictIfNeeded() {
 // ---------------------------------------------------------------------------
 
 export async function cachePdf(path) {
-  const cacheKey = "/api/pdf?path=" + encodeURIComponent(path);
+  const cacheKey = pdfCacheKey(path);
   const url = cacheKey + "&_t=" + Date.now();
   const resp = await fetch(url);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -157,7 +160,7 @@ export async function cachePdf(path) {
 
 export async function evictPdf(path) {
   const cache = await caches.open(PDF_CACHE);
-  await cache.delete("/api/pdf?path=" + encodeURIComponent(path));
+  await cache.delete(pdfCacheKey(path));
   await removeLruEntry(path);
   _cachedPaths.delete(path);
   _pinnedPaths.delete(path);
@@ -168,7 +171,7 @@ export async function evictPdf(path) {
 // re-downloading. This is what "Cache setlist" and the per-row toggle use so
 // that already-cached-but-unpinned PDFs actually get pinned.
 export async function pinPdf(path) {
-  const cacheKey = "/api/pdf?path=" + encodeURIComponent(path);
+  const cacheKey = pdfCacheKey(path);
   const cache = await caches.open(PDF_CACHE);
   const existing = await cache.match(cacheKey);
   if (existing) {

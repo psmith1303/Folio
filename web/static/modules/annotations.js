@@ -10,14 +10,9 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import {
-  NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, esc, sizeToPt,
+  NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, sizeToPt,
 } from "./utils.js";
 import { getStampImage, stampCursorPng, getStampMeta } from "./stamps.js";
-
-// Text annotation size (PDF points) for a slider value; sizeToPt lives in
-// utils.js (shared with the stamp palette). Scaled to CSS px on screen by the
-// page render scale so the viewer matches the export.
-function textPt(size) { return sizeToPt(size); }
 
 // Callbacks registered by dialog-handlers to avoid circular deps
 let _conflictHandler = null;
@@ -98,8 +93,7 @@ function drawStartStamp(ctx, annot, w, h, rot, pdfW) {
 // On-screen stamp width/height in CSS px. The stamp's SMuFL width/height (in
 // staff spaces, from the manifest) times the slider's points-per-staff-space,
 // scaled to CSS px by the page render scale (cssW / pdfW). This preserves true
-// SMuFL proportions (a repeat barline is tall, a crescendo short and wide) and
-// matches the PDF export.
+// SMuFL proportions (a repeat barline is tall, a crescendo short and wide).
 function stampCssSize(stampId, sizeVal, cssW, pdfW) {
   const meta = getStampMeta(stampId);
   const cssScale = pdfW ? cssW / pdfW : 1;
@@ -139,13 +133,17 @@ function drawInk(ctx, annot, w, h, rot) {
   ctx.stroke();
 }
 
+// On-screen text size in CSS px: the slider's point size scaled by the page
+// render scale, with note glyphs enlarged 6x. Shared by draw and hit-test so
+// the eraser/move target always matches what is drawn.
+function textCssSize(annot, w, pdfW) {
+  const sz = sizeToPt(annot.size) * (pdfW ? w / pdfW : 1);
+  return NOTE_GLYPHS.has(annot.text) ? Math.round(sz * 6) : sz;
+}
+
 function drawText(ctx, annot, w, h, rot, pdfW) {
   const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-  const scale = pdfW ? w / pdfW : 1;
-  let sz = textPt(annot.size) * scale;
-  if (NOTE_GLYPHS.has(annot.text)) {
-    sz = Math.round(sz * 6);
-  }
+  const sz = textCssSize(annot, w, pdfW);
   const font = annot.font || "sans-serif";
   ctx.font = `${sz}px ${font}`;
   ctx.fillStyle = annot.color || "black";
@@ -220,6 +218,12 @@ function startStampCursorPng(sz) {
   c.width = c.height = sz;
   c.getContext("2d").drawImage(img, 0, 0, sz, sz);
   return c.toDataURL("image/png");
+}
+
+// Tools that place one mark on the next tap, then return to Nav. Escape and
+// off-page clicks cancel them.
+export function isPlacementTool(tool) {
+  return tool === "stamp" || tool === "startpage";
 }
 
 // Enter stamp-placement mode with the given stamp id (called from the palette).
@@ -530,9 +534,7 @@ function hitTest(annot, px, py, w, h, rot, halo, pdfW) {
     return false;
   } else if (annot.type === "text") {
     const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    const scale = pdfW ? w / pdfW : 1;
-    let sz = textPt(annot.size) * scale;
-    if (NOTE_GLYPHS.has(annot.text)) sz = Math.round(sz * 6);
+    const sz = textCssSize(annot, w, pdfW);
     const lines = String(annot.text).split("\n");
     const lineH = sz * 1.2;
     const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
@@ -806,8 +808,7 @@ export function initAnnotationEvents() {
   // stamp mode. A click on a canvas places the stamp and switches back to nav
   // first (it bubbles here afterwards), so this only fires for off-page clicks.
   pdfContainer.addEventListener("pointerdown", (e) => {
-    const tool = getState().activeTool;
-    if ((tool === "stamp" || tool === "startpage") && !e.target.closest(".annot-layer")) {
+    if (isPlacementTool(getState().activeTool) && !e.target.closest(".annot-layer")) {
       setTool("nav");
     }
   });

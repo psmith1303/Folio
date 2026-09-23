@@ -27,8 +27,6 @@ export function setStampSelectHandler(fn) { _selectHandler = fn; }
 let _readyHandler = null;
 export function setStampsReadyHandler(fn) { _readyHandler = fn; }
 
-export function getStamps() { return _manifest; }
-
 // Per-stamp width/height in staff spaces (drives true SMuFL proportions).
 export function getStampMeta(id) { return _meta.get(id) || null; }
 

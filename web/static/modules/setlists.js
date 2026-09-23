@@ -15,7 +15,7 @@ import {
   titleDisplay,
 } from "./dom.js";
 import { api } from "./api.js";
-import { esc } from "./utils.js";
+import { esc, explicitStartPage } from "./utils.js";
 import { showView } from "./views.js";
 import { openSetlistSong, openScore } from "./viewer.js";
 import {
@@ -196,8 +196,7 @@ function renderSetlistDetail() {
             title: item.title || "",
             composer: item.composer || "",
           },
-          // Same rule as playback: start_page 1 defers to the stamp.
-          { startPage: item.start_page > 1 ? item.start_page : null },
+          { startPage: explicitStartPage(item) },
         );
       });
     }

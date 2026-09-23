@@ -23,13 +23,13 @@ Runs on any device with a browser, including iPad.
 
 ## Requirements
 - Python 3.10+
-- Dependencies: `fastapi`, `uvicorn`, `pymupdf`
+- Dependencies: `fastapi`, `uvicorn`
 
 ## How to Run
 
 ### WSL / Debian / Ubuntu (recommended)
 ```
-sudo apt install python3-uvicorn python3-fastapi python3-pymupdf
+sudo apt install python3-uvicorn python3-fastapi
 ```
 
 ### Or via pip

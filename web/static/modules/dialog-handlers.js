@@ -21,7 +21,7 @@ import { api } from "./api.js";
 import { refreshCachedConfig } from "./cache.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
-  saveAnnotations, drawAnnotations,
+  saveAnnotations,
   setConflictHandler, setTextDialogHandler,
   commitTextAnnotation, cancelTextAnnotation,
   clearCurrentPageAnnotations,

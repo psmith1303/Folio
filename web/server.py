@@ -29,7 +29,6 @@ from .core import (
     annotation_sidecar_path,
     load_annotations,
     normalize_path,
-    pdf_page_count,
     portable_path,
     rename_score_tags,
     save_annotations,
@@ -231,12 +230,12 @@ def _heal_references(st: "AppState") -> None:
         log.info("Detected %d renamed score(s), healing references", len(remap))
         _heal_annotation_sidecars(remap)
         try:
-            _heal_setlist_paths(st, remap)
+            _heal_setlist_paths(remap)
         except SafeJSONError as e:
             healed_ok = False
             log.warning("Could not heal setlist paths: %s", e)
         try:
-            _heal_recent_paths(st, remap)
+            _heal_recent_paths(remap)
         except SafeJSONError as e:
             healed_ok = False
             log.warning("Could not heal recent paths: %s", e)
@@ -274,8 +273,8 @@ def _heal_annotation_sidecars(remap: dict[str, str]) -> None:
             log.warning("Failed to move sidecar %s: %s", old_sidecar, e)
 
 
-def _heal_setlist_paths(st: "AppState", remap: dict[str, str]) -> None:
-    """Update setlist song paths that were renamed externally."""
+def _heal_setlist_paths(remap: dict[str, str]) -> None:
+    """Rewrite setlist song paths through *remap* (old portable -> new)."""
     data = _load_setlists()
     changed = False
     for sl in data.values():
@@ -290,8 +289,8 @@ def _heal_setlist_paths(st: "AppState", remap: dict[str, str]) -> None:
         _save_setlists(data)
 
 
-def _heal_recent_paths(st: "AppState", remap: dict[str, str]) -> None:
-    """Update recent-list filepaths that were renamed externally."""
+def _heal_recent_paths(remap: dict[str, str]) -> None:
+    """Rewrite recent-list filepaths through *remap* (old portable -> new)."""
     data = _load_recent()
     changed = False
     for entry in data:
@@ -341,7 +340,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.11.0",
+    title="Folio", version="2.11.1",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -533,6 +532,15 @@ class UpdateTagsRequest(BaseModel):
     filename_tags: list[str]
 
 
+def _find_score(resolved: str) -> tuple[int, Score]:
+    """Return (index, score) for the library score at *resolved*, or 404."""
+    target = os.path.normpath(resolved)
+    for i, sc in enumerate(state.scores):
+        if os.path.normpath(sc.filepath) == target:
+            return i, sc
+    raise HTTPException(status_code=404, detail="Score not found in library")
+
+
 @app.get("/api/scores")
 def get_score(path: str = Query(..., description="Score filepath")):
     """Return one score, including its folder/filename tag split.
@@ -540,32 +548,13 @@ def get_score(path: str = Query(..., description="Score filepath")):
     The library list is filtered by the client's current search, so a caller
     holding only a filepath cannot rely on it to recover a score's tags.
     """
-    if not state.library_dir:
-        raise HTTPException(status_code=400, detail="No library directory set")
-    resolved = _validate_library_path(path)
-    for sc in state.scores:
-        if os.path.normpath(sc.filepath) == os.path.normpath(resolved):
-            return sc.to_dict()
-    raise HTTPException(status_code=404, detail="Score not found in library")
+    return _find_score(_validate_library_path(path))[1].to_dict()
 
 
 @app.put("/api/scores/tags")
 def update_score_tags(req: UpdateTagsRequest):
     """Update the filename tags on a score, renaming the file on disk."""
-    if not state.library_dir:
-        raise HTTPException(status_code=400, detail="No library directory set")
-    resolved = _validate_library_path(req.path)
-
-    # Find the score in our in-memory library
-    score = None
-    score_idx = None
-    for i, s in enumerate(state.scores):
-        if os.path.normpath(s.filepath) == os.path.normpath(resolved):
-            score = s
-            score_idx = i
-            break
-    if score is None:
-        raise HTTPException(status_code=404, detail="Score not found in library")
+    score_idx, score = _find_score(_validate_library_path(req.path))
 
     # Clean tags: lowercase, alphanumeric + hyphens only
     clean_tags = set()
@@ -588,15 +577,7 @@ def update_score_tags(req: UpdateTagsRequest):
     old_portable = portable_path(score.filepath)
     new_portable = portable_path(new_score.filepath)
     if old_portable != new_portable:
-        data = _load_setlists()
-        changed = False
-        for sl in data.values():
-            for item in sl["items"]:
-                if item.get("type", "song") == "song" and item.get("path") == old_portable:
-                    item["path"] = new_portable
-                    changed = True
-        if changed:
-            _save_setlists(data)
+        _heal_setlist_paths({old_portable: new_portable})
 
         # Keep hash index in sync with in-app renames
         try:
@@ -607,18 +588,10 @@ def update_score_tags(req: UpdateTagsRequest):
         except SafeJSONError:
             pass
 
-        # Update recent-list entries that point to the old path
-        recent = _load_recent()
-        r_changed = False
-        for entry in recent:
-            if entry.get("filepath") == old_portable:
-                entry["filepath"] = new_portable
-                r_changed = True
-        if r_changed:
-            try:
-                _save_recent(recent)
-            except SafeJSONError:
-                pass
+        try:
+            _heal_recent_paths({old_portable: new_portable})
+        except SafeJSONError:
+            pass
 
     return {"ok": True, "score": new_score.to_dict()}
 
@@ -682,33 +655,14 @@ def serve_pdf(path: str = Query(..., description="Score filepath")):
     )
 
 
-@app.get("/api/pdf/pages")
-def pdf_pages(path: str = Query(..., description="Score filepath")):
-    resolved = _validate_library_path(path)
-    try:
-        count = pdf_page_count(resolved)
-    except Exception:
-        log.exception("Page count failed for %s", resolved)
-        raise HTTPException(status_code=500, detail="Failed to read PDF")
-    return {"path": portable_path(path), "pages": count}
-
-
 # ---------------------------------------------------------------------------
 # Annotation endpoints
 # ---------------------------------------------------------------------------
 
 
-def _validate_pdf_in_library(filepath: str) -> str:
-    """Like _validate_library_path but allows the file to not exist yet
-    (annotations can be created before the sidecar JSON exists)."""
-    return _resolve_under_library(filepath)
-
-
 @app.get("/api/annotations")
 def get_annotations(path: str = Query(..., description="PDF filepath")):
-    resolved = _validate_pdf_in_library(path)
-    if not os.path.isfile(resolved):
-        raise HTTPException(status_code=404, detail="PDF not found")
+    resolved = _validate_library_path(path)
     try:
         data = load_annotations(resolved)
     except Exception:
@@ -726,9 +680,7 @@ class SaveAnnotationsRequest(BaseModel):
 
 @app.put("/api/annotations")
 def put_annotations(req: SaveAnnotationsRequest):
-    resolved = _validate_pdf_in_library(req.path)
-    if not os.path.isfile(resolved):
-        raise HTTPException(status_code=404, detail="PDF not found")
+    resolved = _validate_library_path(req.path)
     try:
         new_etag = save_annotations(
             resolved, req.pages, req.rotations,
@@ -804,8 +756,6 @@ def get_newest(limit: int = Query(20, ge=1, le=200)):
 
 @app.post("/api/recent")
 def add_recent(req: AddRecentRequest):
-    if not state.library_dir:
-        raise HTTPException(status_code=400, detail="No library directory set")
     resolved = _validate_library_path(req.path)
     pkey = portable_path(resolved)
     score = next(
@@ -927,39 +877,15 @@ def _detect_cycle(
     return False
 
 
-def _flatten_setlist(
-    data: dict, name: str, _expanding: frozenset[str] | None = None,
-    _depth: int = 0,
-) -> list[dict]:
-    """Recursively expand setlist_ref items into a flat song list."""
-    if _expanding is None:
-        _expanding = frozenset()
-    if name not in data or name in _expanding or _depth > _MAX_NESTING_DEPTH:
-        return []
-    _expanding = _expanding | {name}
-    result: list[dict] = []
-    for item in _normalize_items(list(data[name]["items"])):
-        if item.get("type") == "setlist_ref":
-            result.extend(
-                _flatten_setlist(
-                    data, item["setlist_name"], _expanding, _depth + 1,
-                )
-            )
-        else:
-            result.append(item)
-    return result
-
-
-def _expand_for_playback(
-    data: dict, name: str, rng,
+def _expand_setlist(
+    data: dict, name: str, rng=None,
     _expanding: frozenset[str] | None = None, _depth: int = 0,
 ) -> list[dict]:
-    """Recursively expand for playback, shuffling per-setlist when flagged.
+    """Recursively expand setlist_ref items into a flat song list.
 
-    Semantics:
-      * If this setlist has shuffle=True, its top-level items are shuffled.
-      * setlist_ref items are recursively expanded; the referenced setlist's
-        own shuffle flag governs its expansion.
+    With an *rng* (playback), a setlist flagged shuffle=True has its top-level
+    items shuffled; each referenced setlist's own flag governs its expansion.
+    Without one, order is preserved.
     """
     if _expanding is None:
         _expanding = frozenset()
@@ -967,16 +893,15 @@ def _expand_for_playback(
         return []
     sl = data[name]
     items = _normalize_items(list(sl["items"]))
-    if sl.get("shuffle"):
+    if rng is not None and sl.get("shuffle"):
         rng.shuffle(items)
     _expanding = _expanding | {name}
     result: list[dict] = []
     for item in items:
         if item.get("type") == "setlist_ref":
             result.extend(
-                _expand_for_playback(
-                    data, item["setlist_name"], rng,
-                    _expanding, _depth + 1,
+                _expand_setlist(
+                    data, item["setlist_name"], rng, _expanding, _depth + 1,
                 )
             )
         else:
@@ -989,7 +914,7 @@ def get_setlists():
     data = _load_setlists()
     result = []
     for name, sl in sorted(data.items()):
-        flat = _flatten_setlist(data, name)
+        flat = _expand_setlist(data, name)
         result.append({
             "name": name,
             "count": len(sl["items"]),
@@ -1011,7 +936,7 @@ def get_setlist(name: str):
         if item.get("type") == "setlist_ref":
             ref_name = item["setlist_name"]
             exists = ref_name in data
-            flat = _flatten_setlist(data, ref_name) if exists else []
+            flat = _expand_setlist(data, ref_name) if exists else []
             enriched.append({**item, "exists": exists, "flat_count": len(flat)})
         else:
             enriched.append(item)
@@ -1028,7 +953,7 @@ def get_setlist_flat(name: str):
     data = _load_setlists()
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
-    songs = _flatten_setlist(data, name)
+    songs = _expand_setlist(data, name)
     return {"name": name, "songs": songs}
 
 
@@ -1042,7 +967,7 @@ def get_setlist_playback(name: str):
     data = _load_setlists()
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
-    songs = _expand_for_playback(data, name, random.Random())
+    songs = _expand_setlist(data, name, random.Random())
     return {"name": name, "songs": songs}
 
 

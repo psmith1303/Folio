@@ -10,7 +10,6 @@ ENV HOME=/config \
 
 WORKDIR /app
 
-# pymupdf ships manylinux wheels, so no compiler/toolchain needed.
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

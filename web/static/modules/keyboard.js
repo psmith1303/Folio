@@ -9,7 +9,7 @@ import {
   conflictDialog, offlineDialog, stampDialog, tagEditorDialog,
   btnLibrary, btnSetlists, btnRecent, btnNewest, btnReset, searchInput,
 } from "./dom.js";
-import { setTool, doUndo } from "./annotations.js";
+import { setTool, doUndo, isPlacementTool } from "./annotations.js";
 import {
   nextPage, prevPage, goToPage, closeScore,
   toggleFullscreen, applyFullscreen,
@@ -151,8 +151,8 @@ function handleViewerShortcuts(e) {
   if (matches(e, "last_page")) { e.preventDefault(); goToPage(s.totalPages); return true; }
 
   if (matches(e, "close_score")) {
-    // Escape first cancels stamp-placement mode, before closing the score.
-    if (s.activeTool === "stamp") { setTool("nav"); return true; }
+    // Escape first cancels a placement tool, before closing the score.
+    if (isPlacementTool(s.activeTool)) { setTool("nav"); return true; }
     if (s.pseudoFullscreen) applyFullscreen(false);
     else closeScore();
     return true;

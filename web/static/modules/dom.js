@@ -48,7 +48,6 @@ export const canvas1 = $("#pdf-canvas");
 export const canvas2 = $("#pdf-canvas-2");
 export const annotCanvas1 = $("#annot-canvas");
 export const annotCanvas2 = $("#annot-canvas-2");
-export const pageWrap1 = $("#page-wrap-1");
 export const pageWrap2 = $("#page-wrap-2");
 export const viewerToast = $("#viewer-toast");
 export const btnFullscreen = $("#btn-fullscreen");

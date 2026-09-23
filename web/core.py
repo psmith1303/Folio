@@ -85,7 +85,7 @@ def compute_content_hash(filepath: str, size: int | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SafeJSON — Atomic JSON persistence (no Tk dialogs)
+# SafeJSON — Atomic JSON persistence
 # ---------------------------------------------------------------------------
 
 
@@ -96,8 +96,8 @@ class SafeJSONError(Exception):
 class SafeJSON:
     """Atomic JSON read/write.
 
-    Unlike the Tk version, errors raise SafeJSONError instead of showing
-    message dialogs, so the calling HTTP layer can return proper responses.
+    Errors raise SafeJSONError so the calling HTTP layer can return proper
+    responses.
     """
 
     @staticmethod
@@ -108,10 +108,10 @@ class SafeJSON:
             with open(filepath, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except json.JSONDecodeError as e:
-            logging.error(f"Corrupt JSON in {filepath}: {e}")
+            log.error(f"Corrupt JSON in {filepath}: {e}")
             raise SafeJSONError(f"Corrupt JSON in {filepath}: {e}") from e
         except Exception as e:
-            logging.error(f"Error reading JSON {filepath}: {e}")
+            log.error(f"Error reading JSON {filepath}: {e}")
             raise SafeJSONError(f"Error reading {filepath}: {e}") from e
 
     @staticmethod
@@ -203,7 +203,7 @@ class Score:
             else:
                 self.title = base.strip()
         except Exception as exc:
-            logging.warning(f"Could not parse filename '{self.filename}': {exc}")
+            log.warning(f"Could not parse filename '{self.filename}': {exc}")
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-friendly dict."""
@@ -380,19 +380,6 @@ def scan_library(
         hash_cache.update(new_cache)
 
     return found
-
-
-# ---------------------------------------------------------------------------
-# PDF metadata helper
-# ---------------------------------------------------------------------------
-
-
-def pdf_page_count(filepath: str) -> int:
-    """Return the number of pages in a PDF without rendering anything."""
-    import pymupdf as fitz
-
-    with fitz.open(filepath) as doc:
-        return len(doc)
 
 
 # ---------------------------------------------------------------------------

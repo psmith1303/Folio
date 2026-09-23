@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.11.0";
+const APP_VERSION = "2.11.1";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 const PDF_CACHE = "folio-pdfs-v1";
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
@@ -99,16 +99,6 @@ async function getAllLruEntries() {
     const req = tx.objectStore("entries").getAll();
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
-  });
-}
-
-async function clearAllLruEntries() {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    tx.objectStore("entries").clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
   });
 }
 

@@ -810,7 +810,7 @@ class TestSecurity:
         state.set_library(library_with_pdfs)
         # Use a path inside the library that doesn't exist
         fake = os.path.join(library_with_pdfs, "nonexistent.pdf")
-        resp = client.get(f"/api/pdf/pages?path={fake}")
+        resp = client.get(f"/api/pdf?path={fake}")
         assert resp.status_code == 404
         detail = resp.json().get("detail", "")
         assert library_with_pdfs not in detail
