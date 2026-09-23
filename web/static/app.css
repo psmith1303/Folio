@@ -521,6 +521,7 @@ th.sortable:hover {
 .annot-layer.tool-eraser { cursor: pointer; }
 .annot-layer.tool-move { cursor: move; }
 .annot-layer.tool-stamp { cursor: crosshair; }
+.annot-layer.tool-startpage { cursor: crosshair; }
 
 /* Stamp palette — tiles flow and size to their content so each preview shows
    the stamp at its true on-page size. A min size keeps tiny marks clickable. */

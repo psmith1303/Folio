@@ -5,7 +5,7 @@
 import { getState } from "./state.js";
 import {
   annotCanvas1, annotCanvas2, sizeSlider, pdfContainer,
-  btnNav, btnPen, btnText, btnEraser, btnMove, btnStamp, btnPencilOnly, btnUndo,
+  btnNav, btnPen, btnText, btnEraser, btnMove, btnStamp, btnStartPage, btnPencilOnly, btnUndo,
   btnRotCCW, btnRotCW,
 } from "./dom.js";
 import { api } from "./api.js";
@@ -57,8 +57,42 @@ function drawPageAnnotations(annotCanvas, layout) {
       drawText(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
     } else if (annot.type === "stamp") {
       drawStamp(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
+    } else if (annot.type === "startpage") {
+      drawStartStamp(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
     }
   }
+}
+
+// Start-page stamp: a fixed-colour raster, always 20mm square on the page
+// regardless of zoom (72pt per inch, 25.4mm per inch).
+const START_STAMP_PT = 20 / 25.4 * 72;
+const START_STAMP_SRC = "/stamps/start-page.png";
+let _startStampImg = null;
+
+// Returns the loaded image, or null until it's ready (then redraws and
+// re-applies the start-page cursor).
+function startStampImage() {
+  if (!_startStampImg) {
+    _startStampImg = new Image();
+    _startStampImg.onload = () => {
+      drawAnnotations();
+      if (getState().activeTool === "startpage") setTool("startpage");
+    };
+    _startStampImg.src = START_STAMP_SRC;
+  }
+  return _startStampImg.complete && _startStampImg.naturalWidth ? _startStampImg : null;
+}
+
+function startStampCssSize(cssW, pdfW) {
+  return START_STAMP_PT * (pdfW ? cssW / pdfW : 1);
+}
+
+function drawStartStamp(ctx, annot, w, h, rot, pdfW) {
+  const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+  const sz = startStampCssSize(w, pdfW);
+  const img = startStampImage();
+  if (!img) return;
+  ctx.drawImage(img, cx - sz / 2, cy - sz / 2, sz, sz);
 }
 
 // On-screen stamp width/height in CSS px. The stamp's SMuFL width/height (in
@@ -135,7 +169,7 @@ export function setTool(tool) {
   document.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
   const map = {
     nav: btnNav, pen: btnPen, text: btnText, eraser: btnEraser,
-    move: btnMove, stamp: btnStamp,
+    move: btnMove, stamp: btnStamp, startpage: btnStartPage,
   };
   if (map[tool]) map[tool].classList.add("active");
 
@@ -159,14 +193,33 @@ export function setTool(tool) {
     stampCursor = url
       ? `url("${url}") ${Math.round(wCss / 2)} ${Math.round(hCss / 2)}, crosshair`
       : "crosshair";
+  } else if (tool === "startpage") {
+    const layout = s.pageLayouts[0];
+    let sz = layout ? startStampCssSize(layout.cssW, layout.pdfW) : 0;
+    if (!(sz > 0)) sz = 24;
+    sz = Math.round(Math.min(sz, 128));  // browser cursor cap
+    const url = startStampCursorPng(sz);
+    stampCursor = url ? `url("${url}") ${sz >> 1} ${sz >> 1}, crosshair` : "crosshair";
   }
 
   for (const ac of [annotCanvas1, annotCanvas2]) {
-    ac.classList.remove("tool-pen", "tool-text", "tool-eraser", "tool-move", "tool-stamp");
+    ac.classList.remove("tool-pen", "tool-text", "tool-eraser", "tool-move", "tool-stamp",
+      "tool-startpage");
     if (tool !== "nav") ac.classList.add(`tool-${tool}`);
     ac.style.touchAction = tool === "nav" ? "auto" : "none";
     ac.style.cursor = stampCursor;
   }
+}
+
+// Cursor image for start-page mode, rendered at the stamp's on-screen size.
+// Returns null until the image has loaded (then re-applies the tool).
+function startStampCursorPng(sz) {
+  const img = startStampImage();
+  if (!img) return null;
+  const c = document.createElement("canvas");
+  c.width = c.height = sz;
+  c.getContext("2d").drawImage(img, 0, 0, sz, sz);
+  return c.toDataURL("image/png");
 }
 
 // Enter stamp-placement mode with the given stamp id (called from the palette).
@@ -375,6 +428,8 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
     handleTextClick(e, annotCanvas, layoutIndex);
   } else if (s.activeTool === "stamp") {
     handleStampClick(e, annotCanvas, layoutIndex);
+  } else if (s.activeTool === "startpage") {
+    handleStartPageClick(e, annotCanvas, layoutIndex);
   }
 }
 
@@ -491,6 +546,10 @@ function hitTest(annot, px, py, w, h, rot, halo, pdfW) {
     const halfW = Math.max(halo, wCss / 2);
     const halfH = Math.max(halo, hCss / 2);
     return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
+  } else if (annot.type === "startpage") {
+    const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+    const half = Math.max(halo, startStampCssSize(w, pdfW) / 2);
+    return Math.abs(cx - px) < half && Math.abs(cy - py) < half;
   }
   return false;
 }
@@ -570,7 +629,7 @@ function moveTo(e, annotCanvas) {
   if (annot.type === "ink") {
     annot.points = d.orig.map(([ox, oy]) => [ox + dx, oy + dy]);
   } else {
-    // text and stamp are both anchored by a single (x, y) point
+    // text, stamp and startpage are all anchored by a single (x, y) point
     annot.x = d.orig.x + dx;
     annot.y = d.orig.y + dy;
   }
@@ -694,6 +753,42 @@ function handleStampClick(e, annotCanvas, layoutIndex) {
 }
 
 // ---------------------------------------------------------------------------
+// Start-page tool — one per document; placing it again moves it
+// ---------------------------------------------------------------------------
+
+function handleStartPageClick(e, annotCanvas, layoutIndex) {
+  const s = getState();
+  const layout = s.pageLayouts[layoutIndex];
+  if (!layout) return;
+
+  const { x, y } = canvasCoords(e, annotCanvas);
+  const pg = String(layout.page - 1);
+  const rot = (s.rotations[pg] || 0) % 360;
+  const [origX, origY] = inverseTransformPt(x / layout.cssW, y / layout.cssH, rot);
+
+  // Remove the existing stamp wherever it is. Undo is per page, so a move
+  // across pages is undone on each page separately.
+  for (const [p, annots] of Object.entries(s.annotations)) {
+    if (p !== pg && annots.some((a) => a.type === "startpage")) {
+      pushUndo(p);
+      s.annotations[p] = annots.filter((a) => a.type !== "startpage");
+    }
+  }
+  pushUndo(pg);
+  s.annotations[pg] = (s.annotations[pg] || []).filter((a) => a.type !== "startpage");
+  s.annotations[pg].push({
+    uuid: crypto.randomUUID(),
+    type: "startpage",
+    x: origX,
+    y: origY,
+  });
+
+  saveAnnotations();
+  setTool("nav");
+  drawAnnotations();
+}
+
+// ---------------------------------------------------------------------------
 // Init event listeners
 // ---------------------------------------------------------------------------
 
@@ -711,7 +806,8 @@ export function initAnnotationEvents() {
   // stamp mode. A click on a canvas places the stamp and switches back to nav
   // first (it bubbles here afterwards), so this only fires for off-page clicks.
   pdfContainer.addEventListener("pointerdown", (e) => {
-    if (getState().activeTool === "stamp" && !e.target.closest(".annot-layer")) {
+    const tool = getState().activeTool;
+    if ((tool === "stamp" || tool === "startpage") && !e.target.closest(".annot-layer")) {
       setTool("nav");
     }
   });
@@ -721,6 +817,9 @@ export function initAnnotationEvents() {
   btnText.addEventListener("click", () => setTool("text"));
   btnEraser.addEventListener("click", () => setTool("eraser"));
   btnMove.addEventListener("click", () => setTool("move"));
+  btnStartPage.addEventListener("click", () => {
+    setTool(getState().activeTool === "startpage" ? "nav" : "startpage");
+  });
 
   // Pencil-only toggle — restored from localStorage so iPad users don't
   // re-enable on every reload.

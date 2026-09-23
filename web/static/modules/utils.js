@@ -48,3 +48,22 @@ export function inverseTransformPt(nx, ny, rot) {
   if (rot === 270) { return [ny, 1.0 - nx]; }
   return [nx, ny];
 }
+
+// Start-page stamp: at most one per document, marking the page a score opens
+// on when no page is asked for. `pages` is the annotation map (0-based page
+// string -> annotation list). Returns the 1-based page, or null if unstamped.
+export function findStartPage(pages) {
+  const keys = Object.keys(pages || {}).map(Number).sort((a, b) => a - b);
+  for (const k of keys) {
+    if ((pages[String(k)] || []).some((a) => a.type === "startpage")) return k + 1;
+  }
+  return null;
+}
+
+// First page of a setlist song. A start_page of 1 (the default) is treated as
+// "not specified", so the stamp wins; any later start_page wins over it.
+export function songStartPage(song, pages) {
+  const explicit = song.start_page || 1;
+  if (explicit > 1) return explicit;
+  return findStartPage(pages) || 1;
+}

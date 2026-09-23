@@ -27,6 +27,7 @@ import {
   setInvalidatePrerenderFn,
 } from "./annotations.js";
 import { addToRecent } from "./recent.js";
+import { findStartPage, songStartPage } from "./utils.js";
 import { CACHE_AVAILABLE, refreshCacheStatus, refreshCachedConfig } from "./cache.js";
 
 // Register callbacks so annotations module can trigger navigation
@@ -131,7 +132,9 @@ async function _fetchAnnotations(filepath) {
   }
 }
 
-async function loadAndRenderPdf(filepath, { startPage = 1, prefetched = null } = {}) {
+// startPage null means "not specified": open on the start-page stamp, or
+// page 1 if the score has none.
+async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null } = {}) {
   const s = getState();
 
   let annotData, newDoc;
@@ -159,6 +162,7 @@ async function loadAndRenderPdf(filepath, { startPage = 1, prefetched = null } =
   pageTotal.textContent = s.totalPages;
   pageInput.max = s.totalPages;
 
+  if (startPage == null) startPage = findStartPage(s.annotations) || 1;
   // Clamp startPage — pass Number.MAX_SAFE_INTEGER to land on the last page.
   s.currentPage = Math.max(1, Math.min(startPage, s.totalPages));
   pageInput.value = s.currentPage;
@@ -177,7 +181,7 @@ async function loadAndRenderPdf(filepath, { startPage = 1, prefetched = null } =
 let _loadLibrary = null;
 export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
 
-export async function openScore(score, { startPage = 1 } = {}) {
+export async function openScore(score, { startPage = null } = {}) {
   const s = getState();
   dbg("openScore", score.filepath, "startPage", startPage);
   s.currentScore = score;
@@ -297,9 +301,10 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
   const total = s.setlistPlayback.songs.length;
   dbg("openSetlistSong", { index, goToEnd, autoAdvance, path: song.path });
 
+  // A start_page of 1 is "not specified" (null), so the stamp decides.
   const targetPage = goToEnd
     ? (song.end_page || Number.MAX_SAFE_INTEGER)
-    : Math.max(1, song.start_page || 1);
+    : (song.start_page > 1 ? song.start_page : null);
 
   const prevTitle = titleDisplay.textContent;
   titleDisplay.textContent = `Loading ${song.composer} — ${song.title}…`;
@@ -324,6 +329,9 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
     s.setlistPlayback.index = index;
     s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
     titleDisplay.textContent = `${song.composer} — ${song.title} (${index + 1}/${total})`;
+    // A stamp placed after the song's end_page would open outside its range.
+    const range = getPageRange();
+    if (s.currentPage < range.min || s.currentPage > range.max) goToPage(s.currentPage);
     addToRecent({ filepath: song.path, composer: song.composer, title: song.title });
   } catch (err) {
     // Auto-advance at a song boundary: keep the user on the current song
@@ -616,8 +624,10 @@ export function getPageRange() {
   const s = getState();
   if (!s.setlistPlayback) return { min: 1, max: s.totalPages };
   const song = s.setlistPlayback.songs[s.setlistPlayback.index];
-  const min = Math.max(1, Math.min(song.start_page || 1, s.totalPages));
   const max = song.end_page ? Math.min(song.end_page, s.totalPages) : s.totalPages;
+  // The start-page stamp moves the song's first page, so going back from it
+  // leaves for the previous song. Never let it push min past max.
+  const min = Math.max(1, Math.min(songStartPage(song, s.annotations), max));
   return { min, max };
 }
 

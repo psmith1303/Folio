@@ -9,6 +9,7 @@ Runs on any device with a browser, including iPad.
 - 7-colour palette, adjustable pen/text size, musical symbol shortcuts
 - Touch and Apple Pencil support (Pointer Events API), with optional Pencil-only mode that ignores finger/mouse input on the pen tool for palm-rejection during writing
 - Metadata search by composer, title, and folder tags
+- Start-page stamp: mark the page a score should open on; Library, Recent, Newest and setlists (whose start page is left at 1) open there
 - Add scores to setlists directly from the viewer (`s` key)
 - Click-to-navigate in Fit/2-up modes: right/bottom half = next page, left/top half = previous
 - Wide mode: scroll vertically, arrow/space keys scroll natively; page turns via toolbar, PageUp/PageDown, or scroll-boundary in fullscreen
@@ -142,7 +143,7 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 59 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
-| `tests/test_web_api.py` | 129 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
+| `tests/test_web_api.py` | 130 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
 

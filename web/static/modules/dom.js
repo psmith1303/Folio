@@ -60,6 +60,7 @@ export const btnText = $("#btn-text");
 export const btnEraser = $("#btn-eraser");
 export const btnMove = $("#btn-move");
 export const btnStamp = $("#btn-stamp");
+export const btnStartPage = $("#btn-start-page");
 export const btnClearPage = $("#btn-clear-page");
 export const btnPencilOnly = $("#btn-pencil-only");
 export const btnUndo = $("#btn-undo");

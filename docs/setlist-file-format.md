@@ -49,6 +49,7 @@ songs.
 #### Constraints
 
 - `start_page` ≥ 1.
+- `start_page` of `1` means "not specified": if the PDF has a start-page stamp, the song starts on the stamped page instead (and going back from it moves to the previous song). Any other value is used as-is.
 - `end_page` ≥ `start_page`, or `null`.
 - If `start_page` exceeds the actual page count of the PDF at runtime, the viewer clamps it to `0` (first page, 0-based internally).
 - If `end_page` exceeds the actual page count, the viewer clamps it to `total_pages - 1` (0-based internally).

@@ -289,6 +289,21 @@ class TestPutAnnotations:
         assert len(data["pages"]["0"]) == 1
         assert data["pages"]["0"][0]["color"] == "red"
 
+    def test_startpage_round_trip(self, client, library_with_pdfs):
+        """The start-page stamp is stored as an ordinary annotation."""
+        state.set_library(library_with_pdfs)
+        scores = client.get("/api/library").json()["scores"]
+        path = scores[0]["filepath"]
+
+        stamp = {"uuid": "s1", "type": "startpage", "x": 0.8, "y": 0.1}
+        resp = client.put("/api/annotations", json={
+            "path": path, "pages": {"2": [stamp]}, "rotations": {}
+        })
+        assert resp.status_code == 200
+
+        resp = client.get(f"/api/annotations?path={path}")
+        assert resp.json()["pages"]["2"] == [stamp]
+
     def test_rotation_round_trip(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
         scores = client.get("/api/library").json()["scores"]

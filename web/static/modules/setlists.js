@@ -196,7 +196,8 @@ function renderSetlistDetail() {
             title: item.title || "",
             composer: item.composer || "",
           },
-          { startPage: item.start_page || 1 },
+          // Same rule as playback: start_page 1 defers to the stamp.
+          { startPage: item.start_page > 1 ? item.start_page : null },
         );
       });
     }

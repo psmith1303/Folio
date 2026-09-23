@@ -30,6 +30,17 @@
 - [ ] Add to setlist — press =s= while viewing a score, pick a setlist
 - [ ] Back — Escape or Back button returns to library
 
+* Start page stamp
+- [ ] Place — open a score, click "Start", tap a page; the red START stamp appears where tapped, at ~20mm whatever the zoom; the tool drops back to Nav
+- [ ] Cursor — on desktop the cursor shows the stamp while placing; clicking "Start" again (or off the page) cancels
+- [ ] One per score — place it on page 3, then on page 5; page 3's stamp is gone. Undo on page 5 removes the new one; undo on page 3 brings the old one back
+- [ ] Erase / Move — the eraser removes it; the Move tool drags it; rotated pages keep it upright and aligned
+- [ ] Opens on the stamp — close and reopen the score from Library, Recent and Newest; each opens on the stamped page. With no stamp, page 1
+- [ ] 2-up — opening a stamped score in 2-up shows the stamped page on the left
+- [ ] Setlist, default start — a song with start page 1 and a stamp on page 3 opens on page 3; pressing back on page 3 goes to the previous song; coming back from the next song lands on this song's last page
+- [ ] Setlist, explicit start — set the song's start page to 2; it opens on page 2 and ignores the stamp; the setlist ▷ button does the same
+- [ ] Offline — with the app cached, go offline and reopen a stamped score; the stamp still draws
+
 * Tag editing (regression: tags were silently destroyed, v2.9.3)
 - [ ] From the library — open a tagged score, press the edit-tags key, confirm existing chips show; add one, Save; filename keeps the old tags plus the new one
 - [ ] From Recent — open the SAME score via the Recent list, edit tags; existing chips must still show (they used to come up empty)
