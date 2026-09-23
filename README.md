@@ -17,7 +17,6 @@ Runs on any device with a browser, including iPad.
 - Setlist management: create, edit, reorder, rename, delete, playback with page constraints
 - Nested setlists: setlists can reference other setlists as sub-items, with automatic flattening for playback
 - Dark/light theme toggle (remembered across sessions)
-- Export annotated PDF with annotations baked in
 - Fullscreen mode for distraction-free viewing (f key or toolbar button)
 - Directories with a `.exclude` file are hidden from the library
 
@@ -142,8 +141,8 @@ python3 -m pytest -v
 
 | File | Tests | What is tested |
 |---|---|---|
-| `tests/test_web_core.py` | 76 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming, PDF export with intrinsic-rotation handling |
-| `tests/test_web_api.py` | 139 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), PDF export, content-hash reference healing, path traversal, security |
+| `tests/test_web_core.py` | 59 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
+| `tests/test_web_api.py` | 129 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
 

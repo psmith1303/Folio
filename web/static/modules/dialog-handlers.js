@@ -363,7 +363,7 @@ function initTagEditorDialog() {
       }
       // The viewer may have moved to another score while the PUT was in
       // flight; stamping this record onto that one would misdirect annotation
-      // saves, export and bake.
+      // saves.
       if (!s.currentScore || s.currentScore.filepath !== editedPath) return;
       s.currentScore.filepath = data.score.filepath;
       s.currentScore.filename = data.score.filename;
