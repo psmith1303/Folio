@@ -173,39 +173,25 @@ class TestGetLibrary:
         data = resp.json()
         assert data["total"] == 3
 
-    def test_text_search(self, client, library_with_pdfs):
+    @pytest.mark.parametrize("query", [
+        "q=bach", "composer=Mozart", "tag=jazz", "sort=title&desc=true",
+    ])
+    def test_query_parameters_are_ignored(self, client, library_with_pdfs, query):
+        """/api/library is a plain list: clients filter and sort it themselves
+        (library-filter.js), so every query string gets the same full list."""
         state.set_library(library_with_pdfs)
-        resp = client.get("/api/library?q=bach")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["scores"][0]["composer"] == "Bach"
+        bare = client.get("/api/library").json()
+        assert client.get(f"/api/library?{query}").json() == bare
+        assert sorted(s["composer"] for s in bare["scores"]) == ["Bach", "Davis", "Mozart"]
 
-    def test_composer_filter(self, client, library_with_pdfs):
+    def test_scores_carry_what_clients_filter_on(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
-        resp = client.get("/api/library?composer=Mozart")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["scores"][0]["composer"] == "Mozart"
-
-    def test_tag_filter(self, client, library_with_pdfs):
-        state.set_library(library_with_pdfs)
-        resp = client.get("/api/library?tag=jazz")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["scores"][0]["composer"] == "Davis"
-
-    def test_returns_available_composers(self, client, library_with_pdfs):
-        state.set_library(library_with_pdfs)
-        resp = client.get("/api/library")
-        data = resp.json()
-        assert "Bach" in data["composers"]
-        assert "Mozart" in data["composers"]
-
-    def test_sort_by_title(self, client, library_with_pdfs):
-        state.set_library(library_with_pdfs)
-        resp = client.get("/api/library?sort=title")
-        titles = [s["title"] for s in resp.json()["scores"]]
-        assert titles == sorted(titles, key=str.lower)
+        data = client.get("/api/library").json()
+        assert set(data) == {"scores", "total"}
+        for sc in data["scores"]:
+            assert {"filepath", "composer", "title", "tags"} <= set(sc)
+        davis = next(sc for sc in data["scores"] if sc["composer"] == "Davis")
+        assert davis["tags"] == ["jazz", "swing"]
 
 
 # ---------------------------------------------------------------------------
@@ -861,26 +847,6 @@ class TestGetScore:
         assert data["folder_tags"] == ["jazz"]
         assert data["filename_tags"] == ["swing"]
         assert "swing" in data["tags"] and "jazz" in data["tags"]
-
-    def test_tags_returned_regardless_of_library_filter(self, client,
-                                                        library_with_pdfs):
-        """A filtered library view must not affect what this endpoint returns.
-
-        The client-side score list is filtered by the user's current search,
-        which is why the tag editor cannot use it as a source.
-        """
-        state.set_library(library_with_pdfs)
-        path = os.path.join(library_with_pdfs, "jazz", "Davis - Blue -- swing.pdf")
-
-        # A filter that excludes the score entirely.
-        filtered = client.get("/api/library?q=mozart")
-        assert filtered.status_code == 200
-        paths = [s["filepath"] for s in filtered.json()["scores"]]
-        assert not any(p.endswith("Davis - Blue -- swing.pdf") for p in paths)
-
-        resp = client.get(f"/api/scores?path={path}")
-        assert resp.status_code == 200
-        assert resp.json()["filename_tags"] == ["swing"]
 
     def test_unknown_path_in_library_returns_404(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)

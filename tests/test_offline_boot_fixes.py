@@ -65,7 +65,7 @@ def _extract_cached_get_condition(sw_src: str) -> str:
 CACHE_ROUTING_CASES = [
     # (pathname, search, method, expected_cached)
     ("/api/library", "", "GET", True),
-    ("/api/library", "?q=beeth", "GET", False),  # the regression: song-picker keystrokes
+    ("/api/library", "?q=beeth", "GET", False),  # the regression: old song-picker keystrokes (now only from stale clients)
     ("/api/library", "?", "GET", True),  # WHATWG URL normalizes a bare trailing "?" to empty search
     ("/api/library", "", "POST", False),  # only GET is ever routed here
     ("/api/annotations", "?path=%2Fm%2Fa.pdf", "GET", True),

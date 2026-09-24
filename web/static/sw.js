@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.12.2";
+const APP_VERSION = "2.13.0";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 const PDF_CACHE = "folio-pdfs-v1";
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
@@ -22,6 +22,7 @@ const SHELL_URLS = [
   "/modules/views.js",
   "/modules/theme.js",
   "/modules/library.js",
+  "/modules/library-filter.js",
   "/modules/viewer.js",
   "/modules/annotations.js",
   "/modules/setlists.js",
@@ -194,13 +195,11 @@ self.addEventListener("fetch", (e) => {
   // library is never even requested. Without this, offline mode only worked
   // if the app was already open when the network went away.
   //
-  // /api/library is cached only with NO query string. The library view
-  // always requests it bare (library.js filters client-side); the only other
-  // caller is the setlist song picker, which fetches a distinct URL per
-  // keystroke. Those have no offline value — nothing re-fetches a stale
-  // partial-query snapshot — and API_CACHE, unlike the old version-keyed
-  // SHELL_CACHE, is never swept, so every keystroke would otherwise become a
-  // permanent entry.
+  // /api/library is cached only with NO query string. It is a plain list
+  // that every view requests bare (library.js filters client-side, and the
+  // song picker searches the same in-memory set). A query string only comes
+  // from an old client; API_CACHE, unlike the old version-keyed SHELL_CACHE,
+  // is never swept, so caching per-query URLs would leave permanent entries.
   if (
     e.request.method === "GET" &&
     ((url.pathname === "/api/library" && !url.search) ||

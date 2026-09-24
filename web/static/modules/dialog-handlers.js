@@ -62,7 +62,13 @@ function initDirDialog() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),
       });
-      getState().selectedTags.clear();
+      // The old library's scores are no longer valid: drop them, so a failed
+      // reload leaves the song picker saying "not loaded" rather than
+      // offering songs from the previous library.
+      const s = getState();
+      s.selectedTags.clear();
+      s.allScores = [];
+      s.libraryLoaded = false;
       if (_loadLibrary) await _loadLibrary();
       refreshCachedConfig();
     } catch (err) {

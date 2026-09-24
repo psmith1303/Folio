@@ -18,6 +18,7 @@ import { api } from "./api.js";
 import { esc, explicitStartPage } from "./utils.js";
 import { showView } from "./views.js";
 import { openSetlistSong, openScore } from "./viewer.js";
+import { searchScores } from "./library-filter.js";
 import {
   CACHE_AVAILABLE, pinPdf, getCacheStatus, isCached, toggleCache,
   refreshCacheStatus, ICON_NOT_CACHED, ICON_PINNED,
@@ -332,29 +333,27 @@ export async function addCurrentScoreToSetlist(setlistName, startPage, endPage) 
 // Song picker
 // ---------------------------------------------------------------------------
 
-async function renderSongPicker(query) {
-  const params = new URLSearchParams();
-  if (query) params.set("q", query);
-  try {
-    const data = await api(`/api/library?${params}`);
-    songPickerList.innerHTML = "";
-    const s = getState();
-    for (const sc of data.scores) {
-      const div = document.createElement("div");
-      div.className = "picker-item";
-      div.textContent = `${sc.composer} \u2014 ${sc.title}`;
-      div.addEventListener("click", () => {
-        songPickerList.querySelectorAll(".picker-item").forEach(
-          (el) => el.classList.remove("selected")
-        );
-        div.classList.add("selected");
-        s.pickerSelectedScore = sc;
-        songPickerAdd.disabled = false;
-      });
-      songPickerList.appendChild(div);
-    }
-  } catch (err) {
-    songPickerList.innerHTML = `<p style="color:#f88">Error loading library</p>`;
+function renderSongPicker(query) {
+  const s = getState();
+  if (!s.libraryLoaded) {
+    // Not "no matches": the library itself couldn't be fetched (yet).
+    songPickerList.innerHTML = `<p style="color:#f88">Library not loaded</p>`;
+    return;
+  }
+  songPickerList.innerHTML = "";
+  for (const sc of searchScores(s.allScores, query)) {
+    const div = document.createElement("div");
+    div.className = "picker-item";
+    div.textContent = `${sc.composer} \u2014 ${sc.title}`;
+    div.addEventListener("click", () => {
+      songPickerList.querySelectorAll(".picker-item").forEach(
+        (el) => el.classList.remove("selected")
+      );
+      div.classList.add("selected");
+      s.pickerSelectedScore = sc;
+      songPickerAdd.disabled = false;
+    });
+    songPickerList.appendChild(div);
   }
 }
 
@@ -447,13 +446,13 @@ export function initSetlistEvents() {
   });
 
   // Add song
-  btnAddSong.addEventListener("click", async () => {
+  btnAddSong.addEventListener("click", () => {
     s.pickerSelectedScore = null;
     songSearch.value = "";
     songStart.value = 1;
     songEnd.value = 0;
     songPickerAdd.disabled = true;
-    await renderSongPicker("");
+    renderSongPicker("");
     songPickerDialog.showModal();
     songSearch.focus();
   });
@@ -461,7 +460,7 @@ export function initSetlistEvents() {
   let songSearchTimer = null;
   songSearch.addEventListener("input", () => {
     if (songSearchTimer) clearTimeout(songSearchTimer);
-    songSearchTimer = setTimeout(() => renderSongPicker(songSearch.value.trim()), 200);
+    songSearchTimer = setTimeout(() => renderSongPicker(songSearch.value), 200);
   });
 
   songPickerCancel.addEventListener("click", () => {

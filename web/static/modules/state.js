@@ -12,6 +12,7 @@ const state = {
   // sorted view actually rendered. Filtering happens client-side — see
   // applyFilters() in library.js.
   allScores: [],
+  libraryLoaded: false,  // allScores has been fetched at least once
   scores: [],
   composers: [],
   tags: [],

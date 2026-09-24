@@ -9,6 +9,7 @@ __pycache__/
 *.json
 !web/static/*.json
 !web/static/stamps/*.json
+!tests/data/*.json
 
 # Legacy build artifacts (PyInstaller)
 build/

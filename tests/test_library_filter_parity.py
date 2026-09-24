@@ -1,17 +1,18 @@
 """Parity tests for client-side library filtering.
 
 Since 2.9.5 the library view filters, sorts and derives facets in JavaScript
-(`applyFilters` in web/static/modules/library.js) instead of asking the server
-to. That is what makes filtering work offline: the service worker caches API
-responses under the *exact* request URL, so a server-filtered view was only
-available offline if that precise query string had been fetched while online.
-Anything else got a 503 and left the table showing its previous rows.
+instead of asking the server to. That is what makes filtering work offline:
+the service worker caches API responses under the *exact* request URL, so a
+server-filtered view was only available offline if that precise query string
+had been fetched while online. Since 2.13.0 /api/library is a plain list and
+the rules live only in web/static/modules/library-filter.js, which the library
+view and the setlist song picker share.
 
-The cost is the same filtering logic in two languages with no shared source —
-the drift hazard these tests exist to contain. They guard both halves:
+These tests guard:
 
 * source-level invariants that make offline filtering possible at all
-* an executable parity check running the real JS against the real endpoint
+* the real library-filter.js against the old endpoint's outputs, recorded in
+  tests/data/library_filter_golden.json before the server stopped filtering
 """
 
 import json
@@ -20,13 +21,14 @@ from pathlib import Path
 
 import pytest
 
-import web.server as srv
-from deno_harness import requires_deno, run_deno, slice_source
+from deno_harness import requires_deno, run_deno
 from web.core import Score
 
 STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 LIBRARY_JS = STATIC / "modules" / "library.js"
 CACHE_JS = STATIC / "modules" / "cache.js"
+FILTER_JS = STATIC / "modules" / "library-filter.js"
+GOLDEN = Path(__file__).resolve().parent / "data" / "library_filter_golden.json"
 
 
 def _api_url_in(source: str, func: str) -> str:
@@ -100,62 +102,30 @@ CASES = [
     for d in [False, True]
 ]
 
-# Stubs stand in for the DOM and the render calls; everything between them is
-# the real, unmodified source sliced out of library.js.
-HARNESS = """
-let __state;
-const getState = () => __state;
-const searchInput = { value: "" };
-const composerFilter = { value: "" };
-const libraryStatus = { textContent: "" };
-const renderLibrary = () => {};
-const renderComposerFilter = () => {};
-const renderTags = () => {};
-const CACHE_AVAILABLE = false;
-const refreshCacheStatus = () => {};
-
-%(core)s
-
-const ALL = %(all)s;
-const out = [];
-for (const c of %(cases)s) {
-  __state = {
-    allScores: ALL, scores: [], composers: [], tags: [],
-    selectedTags: new Set(c.tags), sortCol: c.sort, sortDesc: c.desc,
-  };
-  searchInput.value = c.q;
-  composerFilter.value = c.composer;
-  applyFilters();
-  out.push({
-    scores: __state.scores.map((s) => s.filepath),
-    composers: __state.composers,
-    tags: __state.tags,
-  });
-}
-console.log(JSON.stringify(out));
-"""
+# Recorded once from the server's get_library() (see the file's
+# "recorded_from"); it can't be regenerated, because the server no longer
+# filters. The library and cases above are the ones it was recorded with.
+GOLDEN_DATA = json.loads(GOLDEN.read_text(encoding="utf-8"))
+RECORDED = GOLDEN_DATA["views"]
 
 
-def _extract_core(source: str) -> str:
-    return slice_source(source, "const cmpStr =", "function renderLibrary()")
+def test_golden_matches_the_library_and_cases():
+    """Editing LIBRARY or CASES would silently invalidate the recording."""
+    assert GOLDEN_DATA["library"] == [s.to_dict() for s in LIBRARY]
+    assert [v["case"] for v in RECORDED] == CASES
 
 
 @pytest.fixture(scope="module")
 def js_results():
-    """Run the real applyFilters() over every case in a single deno process."""
-    script = HARNESS % {
-        "core": _extract_core(LIBRARY_JS.read_text(encoding="utf-8")),
-        "all": json.dumps([s.to_dict() for s in LIBRARY]),
-        "cases": json.dumps(CASES),
-    }
-    return run_deno(script, timeout=180)
-
-
-def _server_view(case, monkeypatch):
-    monkeypatch.setattr(srv.state, "scores", LIBRARY)
-    return srv.get_library(q=case["q"], composer=case["composer"],
-                           tag=list(case["tags"]), sort=case["sort"],
-                           desc=case["desc"])
+    """Run the real filterLibrary() over every case in a single deno process."""
+    return run_deno(f"""
+import {{ filterLibrary }} from "{FILTER_JS.as_uri()}";
+const all = {json.dumps(GOLDEN_DATA["library"])};
+console.log(JSON.stringify({json.dumps(CASES)}.map((c) => {{
+  const v = filterLibrary(all, c);
+  return {{ scores: v.scores.map((s) => s.filepath), composers: v.composers, tags: v.tags }};
+}})));
+""", timeout=180)
 
 
 @requires_deno
@@ -166,28 +136,24 @@ def _server_view(case, monkeypatch):
     for c in CASES
 ])
 class TestFilterParity:
-    def test_same_scores_selected(self, idx, js_results, monkeypatch):
-        expected = {s["filepath"]
-                    for s in _server_view(CASES[idx], monkeypatch)["scores"]}
-        assert set(js_results[idx]["scores"]) == expected
+    def test_same_scores_selected(self, idx, js_results):
+        assert set(js_results[idx]["scores"]) == set(RECORDED[idx]["scores"])
 
-    def test_same_facets(self, idx, js_results, monkeypatch):
-        view = _server_view(CASES[idx], monkeypatch)
-        assert js_results[idx]["composers"] == view["composers"]
-        assert js_results[idx]["tags"] == view["tags"]
+    def test_same_facets(self, idx, js_results):
+        assert js_results[idx]["composers"] == RECORDED[idx]["composers"]
+        assert js_results[idx]["tags"] == RECORDED[idx]["tags"]
 
-    def test_same_order(self, idx, js_results, monkeypatch):
+    def test_same_order(self, idx, js_results):
         """Order must match exactly, except that the JS breaks tags-sort ties.
 
-        The endpoint's tags key is (sorted(tags), composer), leaving
+        The endpoint's tags key was (sorted(tags), composer), leaving
         same-composer/same-tag scores tied and ordered by scan order. The JS
         adds title as a third key so the ordering is total and independent of
         how the fetched list arrived. Where they differ, the *sequence of sort
         keys* must still be identical — only exact ties may move.
         """
         case = CASES[idx]
-        scores = _server_view(case, monkeypatch)["scores"]
-        expected = [s["filepath"] for s in scores]
+        expected = RECORDED[idx]["scores"]
         got = js_results[idx]["scores"]
         if got == expected:
             return
@@ -195,7 +161,47 @@ class TestFilterParity:
             f"order diverged on sort={case['sort']}, where no divergence is sanctioned"
         )
         key = {s["filepath"]: (tuple(s["tags"]), s["composer"].lower())
-               for s in scores}
+               for s in GOLDEN_DATA["library"]}
         assert [key[p] for p in got] == [key[p] for p in expected], (
             "rows crossed a sort boundary; only exact ties may be reordered"
         )
+
+
+# ---------------------------------------------------------------------------
+# searchScores — the setlist song picker's search
+# ---------------------------------------------------------------------------
+
+
+def _search(queries: list[str], library=None) -> list[list[str]]:
+    return run_deno(f"""
+import {{ searchScores }} from "{FILTER_JS.as_uri()}";
+const all = {json.dumps(GOLDEN_DATA["library"] if library is None else library)};
+console.log(JSON.stringify({json.dumps(queries)}.map(
+  (q) => searchScores(all, q).map((s) => s.filepath))));
+""")
+
+
+def _recorded(q: str) -> list[str]:
+    """The old endpoint's /api/library?q=<q> (default composer sort)."""
+    case = {"q": q, "composer": "", "tags": [], "sort": "composer", "desc": False}
+    return next(v["scores"] for v in RECORDED if v["case"] == case)
+
+
+@requires_deno
+def test_search_matches_the_old_endpoint():
+    """Regression: the song picker fetched /api/library?q=... per keystroke,
+    which failed offline. It now searches the in-memory library and must
+    give what the endpoint gave."""
+    queries = ["", "bach", "SUITE", "zzz", "nomatch"]
+    assert _search(queries) == [_recorded(q) for q in queries]
+
+
+@requires_deno
+def test_search_trims_and_ignores_case():
+    padded, upper = _search(["  bach ", "BACH"])
+    assert padded == upper == _recorded("bach")
+
+
+@requires_deno
+def test_search_of_an_empty_library_is_empty():
+    assert _search(["bach", ""], library=[]) == [[], []]

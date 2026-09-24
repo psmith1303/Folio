@@ -1,0 +1,3483 @@
+{
+ "recorded_from": "web/server.py get_library() at e6e9f31, the last version that filtered server-side",
+ "library": [
+  {
+   "filepath": "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+   "filename": "Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+   "composer": "Bach, J.S.",
+   "title": "Suite No. 1",
+   "tags": [
+    "baroque",
+    "cello"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "baroque",
+    "cello"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+   "filename": "Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+   "composer": "Bach, J.S.",
+   "title": "Suite No. 2",
+   "tags": [
+    "baroque",
+    "cello"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "baroque",
+    "cello"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+   "filename": "bach, c.p.e. - SONATA -- baroque.pdf",
+   "composer": "bach, c.p.e.",
+   "title": "SONATA",
+   "tags": [
+    "baroque"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "baroque"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Mozart - Horn Concerto -- horn classical.pdf",
+   "filename": "Mozart - Horn Concerto -- horn classical.pdf",
+   "composer": "Mozart",
+   "title": "Horn Concerto",
+   "tags": [
+    "classical",
+    "horn"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "classical",
+    "horn"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Mozart - Bach Variations -- classical.pdf",
+   "filename": "Mozart - Bach Variations -- classical.pdf",
+   "composer": "Mozart",
+   "title": "Bach Variations",
+   "tags": [
+    "classical"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "classical"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Zelenka - Trio.pdf",
+   "filename": "Zelenka - Trio.pdf",
+   "composer": "Zelenka",
+   "title": "Trio",
+   "tags": [],
+   "folder_tags": [],
+   "filename_tags": [],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Mozart - Aria.pdf",
+   "filename": "Mozart - Aria.pdf",
+   "composer": "Mozart",
+   "title": "Aria",
+   "tags": [
+    "classical"
+   ],
+   "folder_tags": [
+    "classical"
+   ],
+   "filename_tags": [],
+   "content_hash": "",
+   "mtime": 0.0
+  },
+  {
+   "filepath": "/m/Mozart - Zzz -- classical.pdf",
+   "filename": "Mozart - Zzz -- classical.pdf",
+   "composer": "Mozart",
+   "title": "Zzz",
+   "tags": [
+    "classical"
+   ],
+   "folder_tags": [],
+   "filename_tags": [
+    "classical"
+   ],
+   "content_hash": "",
+   "mtime": 0.0
+  }
+ ],
+ "views": [
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Zelenka - Trio.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Zelenka - Trio.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Zelenka - Trio.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Zelenka - Trio.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Zelenka - Trio.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Zelenka - Trio.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "Zelenka",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf",
+    "/m/Mozart - Horn Concerto -- horn classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Horn Concerto -- horn classical.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Mozart - Aria.pdf",
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical",
+    "horn"
+   ]
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/bach, c.p.e. - SONATA -- baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "baroque",
+    "cello",
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Bach, J.S.",
+    "Mozart",
+    "bach, c.p.e."
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Bach Variations -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "bach",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Bach, J.S. - Suite No. 1 -- cello baroque.pdf",
+    "/m/Bach, J.S. - Suite No. 2 -- cello baroque.pdf"
+   ],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": [
+    "baroque",
+    "cello"
+   ]
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "SUITE",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [
+    "Bach, J.S."
+   ],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [
+    "/m/Mozart - Zzz -- classical.pdf"
+   ],
+   "composers": [
+    "Mozart"
+   ],
+   "tags": [
+    "classical"
+   ]
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "zzz",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "classical"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "composer",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "title",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": false
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  },
+  {
+   "case": {
+    "q": "nomatch",
+    "composer": "Mozart",
+    "tags": [
+     "cello",
+     "baroque"
+    ],
+    "sort": "tags",
+    "desc": true
+   },
+   "scores": [],
+   "composers": [],
+   "tags": []
+  }
+ ]
+}

@@ -392,7 +392,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.12.2",
+    title="Folio", version="2.13.0",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -647,50 +647,16 @@ def update_score_tags(req: UpdateTagsRequest):
 
 
 @app.get("/api/library")
-def get_library(
-    q: str = Query("", description="Text search (title or composer)"),
-    composer: str = Query("", description="Exact composer filter"),
-    tag: list[str] = Query([], description="Required tags"),
-    sort: str = Query("composer", description="Sort column: composer, title, tags"),
-    desc: bool = Query(False, description="Sort descending"),
-):
-    q_lower = q.lower()
-    tag_set = {t.lower() for t in tag}
+def get_library():
+    """Every score in the library, in scan order.
 
-    matches = [
-        s for s in state.scores
-        if (not q_lower or q_lower in s.title.lower() or q_lower in s.composer.lower())
-        and (not composer or s.composer == composer)
-        and tag_set.issubset(s.tags)
-    ]
-
-    key_map = {
-        "composer": lambda s: (s.composer.lower(), s.title.lower()),
-        "title": lambda s: (s.title.lower(), s.composer.lower()),
-        "tags": lambda s: (sorted(s.tags), s.composer.lower()),
-    }
-    if sort in key_map:
-        matches.sort(key=key_map[sort], reverse=desc)
-
-    # Gather available filter values (context-sensitive)
-    all_composers: set[str] = set()
-    all_tags: set[str] = set()
-    for s in state.scores:
-        title_match = (
-            not q_lower
-            or q_lower in s.title.lower()
-            or q_lower in s.composer.lower()
-        )
-        if title_match and tag_set.issubset(s.tags):
-            all_composers.add(s.composer)
-        if title_match and (not composer or s.composer == composer) and tag_set.issubset(s.tags):
-            all_tags.update(s.tags)
-
+    Clients filter, sort and build the composer/tag facets themselves
+    (library.js applyFilters/searchScores), so one cached response serves
+    every view, online or offline.
+    """
     return {
-        "scores": [s.to_dict() for s in matches],
-        "total": len(matches),
-        "composers": sorted(all_composers),
-        "tags": sorted(all_tags),
+        "scores": [s.to_dict() for s in state.scores],
+        "total": len(state.scores),
     }
 
 
