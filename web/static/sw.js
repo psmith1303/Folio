@@ -1,15 +1,19 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.13.9";
+const APP_VERSION = "2.13.10";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
-const PDF_CACHE = "folio-pdfs-v1";
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
 // the shell. Keying them by version meant every release silently discarded
 // the offline library and it only came back after being online again.
 const API_CACHE = "folio-api-v1";
-const MAX_AUTO_CACHED = 100;
+
+// The PDF cache name, its keys and the LRU store, shared with the page
+// (cache.js). Versioned URL: an unversioned one could come back stale from
+// the HTTP cache when a new service worker installs.
+importScripts("/modules/offline-lru.js?v=" + APP_VERSION);
+const { PDF_CACHE, pdfCacheKey, touchLruEntry, evictIfNeeded } = self.FolioLru;
 
 const SHELL_URLS = [
   "/",
@@ -23,6 +27,7 @@ const SHELL_URLS = [
   "/modules/theme.js",
   "/modules/library.js",
   "/modules/library-filter.js",
+  "/modules/offline-lru.js",
   "/modules/score-table.js",
   "/modules/viewer.js",
   "/modules/annotations.js",
@@ -46,93 +51,8 @@ const SHELL_URLS = [
 ];
 
 // ---------------------------------------------------------------------------
-// IndexedDB helpers for LRU metadata
-// ---------------------------------------------------------------------------
-
-function openLruDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("folio-lru", 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains("entries")) {
-        db.createObjectStore("entries", { keyPath: "path" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function touchLruEntry(path, size, pinned) {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    const store = tx.objectStore("entries");
-    const getReq = store.get(path);
-    getReq.onsuccess = () => {
-      const existing = getReq.result;
-      store.put({
-        path,
-        lastUsed: Date.now(),
-        size: size || (existing && existing.size) || 0,
-        // Preserve pinned status: only upgrade to pinned, never downgrade
-        pinned: pinned || (existing && existing.pinned) || false,
-      });
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function removeLruEntry(path) {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    tx.objectStore("entries").delete(path);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function getAllLruEntries() {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readonly");
-    const req = tx.objectStore("entries").getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// LRU eviction — only evict unpinned (auto-cached) entries
-// ---------------------------------------------------------------------------
-
-async function evictIfNeeded() {
-  const entries = await getAllLruEntries();
-  const unpinned = entries
-    .filter((e) => !e.pinned)
-    .sort((a, b) => a.lastUsed - b.lastUsed);
-
-  if (unpinned.length <= MAX_AUTO_CACHED) return;
-
-  const cache = await caches.open(PDF_CACHE);
-  const toEvict = unpinned.slice(0, unpinned.length - MAX_AUTO_CACHED);
-  for (const entry of toEvict) {
-    const cacheKey = "/api/pdf?path=" + encodeURIComponent(entry.path);
-    await cache.delete(cacheKey);
-    await removeLruEntry(entry.path);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // URL helpers
 // ---------------------------------------------------------------------------
-
-function pdfCacheKey(url) {
-  const path = new URL(url).searchParams.get("path");
-  return "/api/pdf?path=" + encodeURIComponent(path);
-}
 
 function getPathFromPdfUrl(url) {
   return new URL(url).searchParams.get("path");
@@ -273,8 +193,8 @@ async function safeCachePut(cache, cacheKey, resp) {
 }
 
 async function handlePdfFetch(request) {
-  const cacheKey = pdfCacheKey(request.url);
   const pdfPath = getPathFromPdfUrl(request.url);
+  const cacheKey = pdfCacheKey(pdfPath);
   const cache = await caches.open(PDF_CACHE);
 
   // Stale-while-revalidate: serve cached immediately, refresh in background
@@ -330,8 +250,7 @@ function revalidateInBackground(request, pdfPath, cacheKey) {
 }
 
 function cacheFullPdfInBackground(pdfPath, cacheKey) {
-  const url = "/api/pdf?path=" + encodeURIComponent(pdfPath);
-  fetch(url).then(async (resp) => {
+  fetch(cacheKey).then(async (resp) => {
     if (resp.status !== 200) return;
     const cache = await caches.open(PDF_CACHE);
     const stored = await safeCachePut(cache, cacheKey, resp);

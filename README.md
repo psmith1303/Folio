@@ -197,6 +197,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `touch.js` | Touch gestures — swipe navigation, double-tap, scroll-boundary page turns |
 | `recent.js` | Recent files list with content-hash based healing |
 | `cache.js` | Offline cache UI (pin/unpin PDFs) |
+| `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store, eviction); a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
 | `dialog-handlers.js` | Per-dialog show/close logic |
 | `theme.js` | Dark/light theme toggle |
 | `utils.js` | Shared utilities (HTML escaping, coordinate transforms, constants) |

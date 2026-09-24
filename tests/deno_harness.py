@@ -36,14 +36,17 @@ def slice_source(source: str, start_marker: str, end_marker: str) -> str:
     return source[start:end]
 
 
-def run_deno(script: str, *, timeout: int = 60) -> Any:
+def run_deno(script: str, *, timeout: int = 60, location: str | None = None) -> Any:
     """Run *script* under Deno and return its stdout parsed as JSON.
 
     The script may read files in the repo (e.g. import a shipped module by
-    file:// URL). Fails the test if Deno exits non-zero.
+    file:// URL). *location* sets the page origin that relative URLs (e.g.
+    ``new Request("/")``) resolve against. Fails the test if Deno exits
+    non-zero.
     """
+    loc = [f"--location={location}"] if location else []
     proc = subprocess.run(
-        [DENO, "run", "--no-check", f"--allow-read={REPO}", "-"],
+        [DENO, "run", "--no-check", f"--allow-read={REPO}", *loc, "-"],
         input=script, capture_output=True, text=True, timeout=timeout,
     )
     assert proc.returncode == 0, f"deno failed:\n{proc.stderr}"

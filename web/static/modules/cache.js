@@ -3,12 +3,15 @@
 // ---------------------------------------------------------------------------
 
 import { libraryBody } from "./dom.js";
+import "./offline-lru.js";  // defines self.FolioLru, shared with sw.js
 
-export const PDF_CACHE = "folio-pdfs-v1";
-
-// Cache Storage key for a PDF — must match the service worker's (sw.js).
-export function pdfCacheKey(path) { return "/api/pdf?path=" + encodeURIComponent(path); }
-const MAX_AUTO_CACHED = 100;
+// Cache names, keys and the LRU store are shared with the service worker.
+// The side-effect import above has run by now (imports evaluate first).
+const {
+  PDF_CACHE, MAX_AUTO_CACHED, pdfCacheKey,
+  touchLruEntry, removeLruEntry, getAllLruEntries, clearAllLruEntries, evictIfNeeded,
+} = self.FolioLru;
+export { PDF_CACHE, pdfCacheKey };
 
 // Cache API and Service Workers require a secure context (HTTPS or localhost).
 export const CACHE_AVAILABLE = window.isSecureContext && "caches" in window;
@@ -34,89 +37,6 @@ export const ICON_NOT_CACHED = _icon('<path d="M8 2.5v7"/><path d="M5 7l3 3 3-3"
 export const ICON_AUTO_CACHED = _icon('<circle cx="8" cy="8" r="5"/>');
 // Pinned for offline — check mark.
 export const ICON_PINNED = _icon('<path d="M3.5 8.5l3.5 3.5 5.5-7"/>');
-
-// ---------------------------------------------------------------------------
-// IndexedDB helpers (same schema as sw.js, shared database)
-// ---------------------------------------------------------------------------
-
-function openLruDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open("folio-lru", 2);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains("entries")) {
-        db.createObjectStore("entries", { keyPath: "path" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function touchLruEntry(path, size, pinned) {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    const store = tx.objectStore("entries");
-    const getReq = store.get(path);
-    getReq.onsuccess = () => {
-      const existing = getReq.result;
-      store.put({
-        path,
-        lastUsed: Date.now(),
-        size: size || (existing && existing.size) || 0,
-        pinned: pinned || (existing && existing.pinned) || false,
-      });
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function removeLruEntry(path) {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    tx.objectStore("entries").delete(path);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function getAllLruEntries() {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readonly");
-    const req = tx.objectStore("entries").getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function clearAllLruEntries() {
-  const db = await openLruDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction("entries", "readwrite");
-    tx.objectStore("entries").clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-async function evictIfNeeded() {
-  const entries = await getAllLruEntries();
-  const unpinned = entries
-    .filter((e) => !e.pinned)
-    .sort((a, b) => a.lastUsed - b.lastUsed);
-  if (unpinned.length <= MAX_AUTO_CACHED) return;
-
-  const cache = await caches.open(PDF_CACHE);
-  const toEvict = unpinned.slice(0, unpinned.length - MAX_AUTO_CACHED);
-  for (const entry of toEvict) {
-    await cache.delete(pdfCacheKey(entry.path));
-    await removeLruEntry(entry.path);
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Public API — all operations done directly, no SW messaging

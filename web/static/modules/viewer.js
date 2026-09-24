@@ -92,7 +92,7 @@ async function _fetchPdfDoc(filepath, { showRetryToast = true } = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const loadingTask = pdfjsLib.getDocument({
-        url: `/api/pdf?path=${encodeURIComponent(filepath)}&_t=${Date.now()}`,
+        url: `${pdfCacheKey(filepath)}&_t=${Date.now()}`,
         wasmUrl: PDFJS_BASE + "/wasm/",
         disableRange: true,
         disableStream: true,
