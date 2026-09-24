@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.14.1";
+const APP_VERSION = "2.14.2";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
@@ -200,7 +200,13 @@ async function handlePdfFetch(request) {
 
     if (pdfPath) {
       if (resp.status === 200) {
-        await storePdf(pdfPath, resp, false);
+        // Caching is a side effect of a good download, not a condition of
+        // returning it (as in handleApiGetFetch): a failed write, most
+        // likely QuotaExceededError, used to reach the catch below and
+        // answer the viewer 503 "Offline" with the PDF in hand.
+        await storePdf(pdfPath, resp, false).catch((err) => {
+          console.warn(`[sw] not caching ${pdfPath}:`, err);
+        });
       } else if (resp.status === 206) {
         fetchAndStoreInBackground(pdfPath);  // the whole PDF, for next time
       }
