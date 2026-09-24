@@ -143,3 +143,103 @@ def test_every_module_is_in_the_offline_shell():
                                         "const SHELL_URLS = [", "];")))
     modules = {f"/modules/{p.name}" for p in MODULES.glob("*.js")}
     assert modules - shell == set()
+
+
+def _edit_tags(*, opened_from_library: bool = False, library: list | None = None,
+               put_fails: bool = False, switch_during_put: bool = False) -> dict:
+    """Run the tag editor's close handler ("save") on the open score, with a
+    stubbed PUT that renames Bach - Suite.pdf, then return the loaded library
+    and what the picker offers for "bach"."""
+    src = DIALOGS_JS.read_text(encoding="utf-8")
+    handler = slice_source(src, 'tagEditorDialog.addEventListener("close", async () => {',
+                           "\n  });\n") + "\n  });\n"
+    old = "/m/Bach - Suite.pdf"
+    renamed = {"filepath": "/m/Bach - Suite -- baroque.pdf", "filename": "Bach - Suite -- baroque.pdf",
+               "composer": "Bach", "title": "Suite", "tags": ["baroque"],
+               "folder_tags": [], "filename_tags": ["baroque"]}
+    lib = SCORES if library is None else library
+    return run_deno(f"""
+import {{ searchScores }} from "{FILTER_JS.as_uri()}";
+{DOM_STUBS}
+const __lib = {json.dumps(lib)};
+const __s = {{
+  libraryLoaded: true, allScores: __lib, setlistPlayback: null,
+  _tagEditorLoaded: true, _tagEditorPath: {json.dumps(old)}, _editingFilenameTags: ["baroque"],
+}};
+// Opened from Recent or a setlist, the viewer holds its own copy of the score.
+__s.currentScore = {json.dumps(opened_from_library)}
+  ? __lib.find((sc) => sc.filepath === {json.dumps(old)})
+  : {{ ...{json.dumps(SCORES[1])} }};
+const getState = () => __s;
+let __putCalls = 0;
+const api = async () => {{
+  __putCalls++;
+  if ({json.dumps(switch_during_put)}) __s.currentScore = {{ filepath: "/m/Mozart - Sonata.pdf" }};
+  if ({json.dumps(put_fails)}) throw new Error("409");
+  return {{ ok: true, score: {json.dumps(renamed)} }};
+}};
+const alert = () => {{}};
+console.error = () => {{}};
+const titleDisplay = {{ textContent: "" }};
+let _tagEditorLoading = false;
+let onClose;
+const tagEditorDialog = {{ returnValue: "save", addEventListener: (ev, fn) => {{ onClose = fn; }} }};
+{handler}
+await onClose();
+console.log(JSON.stringify({{
+  paths: __s.allScores.map((sc) => sc.filepath),
+  offered: searchScores(__s.allScores, "suite").map((sc) => sc.filepath),
+  viewing: __s.currentScore.filepath,
+  saved: !_tagEditorLoading && __s._tagEditorPath === "" && __putCalls > 0,
+}}));
+""")
+
+
+@requires_deno
+def test_picker_offers_the_renamed_file_after_a_tag_edit():
+    """Regression: a score opened from Recent or a setlist is a copy, so a tag
+    edit (which renames the file) updated the viewer but not the loaded
+    library, and the picker added the old, now missing, path to setlists."""
+    r = _edit_tags()
+    assert r["offered"] == ["/m/Bach - Suite -- baroque.pdf"]
+    assert r["viewing"] == "/m/Bach - Suite -- baroque.pdf"
+
+
+@requires_deno
+def test_tag_edit_replaces_the_library_row_in_place():
+    r = _edit_tags()
+    assert r["paths"] == ["/m/Mozart - Sonata.pdf", "/m/Bach - Suite -- baroque.pdf",
+                          "/m/Bach - Air.pdf"]
+
+
+@requires_deno
+def test_library_row_is_renamed_even_if_the_viewer_moved_on_during_the_save():
+    """The file is renamed on disk whatever the viewer shows by the time the
+    PUT returns; only the viewer's own record is left alone."""
+    r = _edit_tags(switch_during_put=True)
+    assert r["offered"] == ["/m/Bach - Suite -- baroque.pdf"]
+    assert r["viewing"] == "/m/Mozart - Sonata.pdf"
+
+
+@requires_deno
+def test_score_opened_from_the_library_is_renamed_once():
+    """Opened from the library view, the viewer and the library share one
+    object; the rename must not duplicate or drop the row."""
+    r = _edit_tags(opened_from_library=True)
+    assert r["paths"].count("/m/Bach - Suite -- baroque.pdf") == 1
+    assert len(r["paths"]) == 3
+
+
+@requires_deno
+def test_failed_tag_save_leaves_the_library_alone():
+    r = _edit_tags(put_fails=True)
+    assert r["offered"] == ["/m/Bach - Suite.pdf"]
+
+
+@requires_deno
+def test_tag_edit_with_the_score_missing_from_the_library_adds_nothing():
+    lib = [s for s in SCORES if s["title"] != "Suite"]
+    r = _edit_tags(library=lib + [{**SCORES[1], "filepath": "/elsewhere/x.pdf"}])
+    assert r["saved"] and r["viewing"] == "/m/Bach - Suite -- baroque.pdf"
+    assert "/m/Bach - Suite -- baroque.pdf" not in r["paths"]
+    assert len(r["paths"]) == 3

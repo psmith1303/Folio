@@ -367,6 +367,11 @@ function initTagEditorDialog() {
           if (song.path === editedPath) song.path = data.score.filepath;
         }
       }
+      // Likewise the loaded library, which the song picker searches: the
+      // score may have been opened from Recent or a setlist (a separate
+      // copy), so its row there would keep offering the old path.
+      const i = s.allScores.findIndex((sc) => sc.filepath === editedPath);
+      if (i !== -1) s.allScores[i] = data.score;
       // The viewer may have moved to another score while the PUT was in
       // flight; stamping this record onto that one would misdirect annotation
       // saves.
