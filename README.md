@@ -206,7 +206,7 @@ Other static files:
 | `app.js` | Entry point: imports, wiring, boot sequence |
 | `app.css` | Dark/light theme, responsive layout, safe-area support |
 | `index.html` | Single-page app shell |
-| `sw.js` | Service worker: stale-while-revalidate PDF caching, offline support, LRU eviction |
+| `sw.js` | Service worker: stale-while-revalidate PDF caching (conditional: 304 when unchanged), offline support, LRU eviction |
 
 ### File naming convention
 

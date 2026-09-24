@@ -17,7 +17,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -396,7 +396,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.14.0",
+    title="Folio", version="2.14.1",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -680,15 +680,32 @@ def get_library():
     }
 
 
+def _etag_matches(if_none_match: str | None, etag: str) -> bool:
+    """True if an If-None-Match header names *etag* (weakly: a proxy that
+    compresses may send it back as W/"...")."""
+    if not if_none_match:
+        return False
+    tags = [t.strip().removeprefix("W/") for t in if_none_match.split(",")]
+    return etag.removeprefix("W/") in tags
+
+
 @app.get("/api/pdf")
-def serve_pdf(path: str = Query(..., description="Score filepath")):
+def serve_pdf(request: Request, path: str = Query(..., description="Score filepath")):
+    """The PDF, or 304 when the client's copy (If-None-Match) is current:
+    the service worker revalidates every cached PDF each time it is viewed."""
     resolved = _validate_library_path(path)
-    return FileResponse(
+    resp = FileResponse(
         resolved,
         media_type="application/pdf",
         filename=os.path.basename(resolved),
         headers={"Cache-Control": "no-cache"},
+        stat_result=os.stat(resolved),
     )
+    etag = resp.headers["etag"]
+    if _etag_matches(request.headers.get("if-none-match"), etag):
+        return Response(status_code=304,
+                        headers={"ETag": etag, "Cache-Control": "no-cache"})
+    return resp
 
 
 # ---------------------------------------------------------------------------

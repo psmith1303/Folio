@@ -92,6 +92,40 @@ self.FolioLru = (() => {
     });
   }
 
+  // Store a fetched PDF (a 200 response) for offline use, pinned or
+  // auto-cached, and evict if that takes the cache over its limit. Returns
+  // false, storing nothing, if the body is shorter than its Content-Length:
+  // a proxy (Tailscale) can truncate a response mid-flight, and a partial
+  // copy fails later in pdf.js with "Bad end offset". Reads a clone, so
+  // *resp* can still be returned to the page.
+  async function storePdf(path, resp, pinned) {
+    const expected = parseInt(resp.headers.get("content-length") || "0", 10);
+    const buf = await resp.clone().arrayBuffer();
+    if (expected > 0 && buf.byteLength !== expected) {
+      console.warn(`[offline] not caching ${path}: got ${buf.byteLength} of ${expected} bytes`);
+      return false;
+    }
+    const cache = await caches.open(PDF_CACHE);
+    await cache.put(pdfCacheKey(path), new Response(buf, {
+      status: resp.status,
+      statusText: resp.statusText,
+      headers: resp.headers,
+    }));
+    await touchLruEntry(path, buf.byteLength, pinned);
+    // Housekeeping: a failure here mustn't fail storing this PDF.
+    evictIfNeeded().catch((err) => console.warn("[offline] eviction failed:", err));
+    return true;
+  }
+
+  // Pin *path* if it's already cached (e.g. auto-cached after viewing),
+  // without downloading it again. Returns whether it was.
+  async function pinIfCached(path) {
+    const cache = await caches.open(PDF_CACHE);
+    if (!(await cache.match(pdfCacheKey(path)))) return false;
+    await touchLruEntry(path, 0, true);  // size 0 keeps the recorded size
+    return true;
+  }
+
   // Evict the least recently used unpinned PDFs beyond MAX_AUTO_CACHED.
   async function evictIfNeeded() {
     const entries = await getAllLruEntries();
@@ -111,5 +145,6 @@ self.FolioLru = (() => {
   return {
     PDF_CACHE, MAX_AUTO_CACHED, pdfCacheKey,
     touchLruEntry, removeLruEntry, getAllLruEntries, clearAllLruEntries, evictIfNeeded,
+    storePdf, pinIfCached,
   };
 })();

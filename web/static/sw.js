@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.14.0";
+const APP_VERSION = "2.14.1";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
@@ -17,7 +17,7 @@ const OLD_LRU_DB = "folio-lru";
 // (cache.js). Versioned URL: an unversioned one could come back stale from
 // the HTTP cache when a new service worker installs.
 importScripts("/modules/offline-lru.js?v=" + APP_VERSION);
-const { PDF_CACHE, pdfCacheKey, touchLruEntry, evictIfNeeded } = self.FolioLru;
+const { PDF_CACHE, pdfCacheKey, touchLruEntry, storePdf } = self.FolioLru;
 
 const SHELL_URLS = [
   "/",
@@ -176,29 +176,6 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// Read the response body fully and verify Content-Length before caching.
-// Tailscale (and other proxies) can truncate a streaming response mid-flight;
-// cache.put on such a response silently stores partial bytes, producing a
-// "cached" PDF that later fails with "Bad end offset" in pdf.js. Validating
-// the byte count prevents poisoning the cache with corrupt data.
-async function safeCachePut(cache, cacheKey, resp) {
-  const expected = parseInt(resp.headers.get("content-length") || "0", 10);
-  const buf = await resp.clone().arrayBuffer();
-  if (expected > 0 && buf.byteLength !== expected) {
-    console.warn(
-      `[sw] not caching ${cacheKey}: got ${buf.byteLength} of ${expected} bytes`
-    );
-    return false;
-  }
-  const verified = new Response(buf, {
-    status: resp.status,
-    statusText: resp.statusText,
-    headers: resp.headers,
-  });
-  await cache.put(cacheKey, verified);
-  return true;
-}
-
 async function handlePdfFetch(request) {
   const pdfPath = getPathFromPdfUrl(request.url);
   const cacheKey = pdfCacheKey(pdfPath);
@@ -207,26 +184,25 @@ async function handlePdfFetch(request) {
   // Stale-while-revalidate: serve cached immediately, refresh in background
   const cached = await cache.match(cacheKey);
   if (cached) {
-    if (pdfPath) touchLruEntry(pdfPath, 0, false).catch(() => {});
-    revalidateInBackground(request, pdfPath, cacheKey);
+    if (pdfPath) {
+      touchLruEntry(pdfPath, 0, false).catch(() => {});
+      fetchAndStoreInBackground(pdfPath, cached.headers.get("etag"));
+    }
     return cached;
   }
 
   // Cache miss — fetch from network. Retries happen at the viewer layer,
   // which can also purge the cache between attempts to self-heal corruption.
+  // Stored before answering, so the page's "Download for offline" (cachePdf)
+  // finds it cached when its fetch returns, and needn't store it again.
   try {
     const resp = await fetch(request);
 
     if (pdfPath) {
       if (resp.status === 200) {
-        const stored = await safeCachePut(cache, cacheKey, resp);
-        if (stored) {
-          const size = parseInt(resp.headers.get("content-length") || "0", 10);
-          await touchLruEntry(pdfPath, size, false);
-          evictIfNeeded().catch(() => {});
-        }
+        await storePdf(pdfPath, resp, false);
       } else if (resp.status === 206) {
-        cacheFullPdfInBackground(pdfPath, cacheKey);
+        fetchAndStoreInBackground(pdfPath);  // the whole PDF, for next time
       }
     }
 
@@ -239,33 +215,16 @@ async function handlePdfFetch(request) {
   }
 }
 
-function revalidateInBackground(request, pdfPath, cacheKey) {
-  fetch(request).then(async (resp) => {
-    if (!pdfPath) return;
-    if (resp.status === 200) {
-      const cache = await caches.open(PDF_CACHE);
-      const stored = await safeCachePut(cache, cacheKey, resp);
-      if (stored) {
-        const size = parseInt(resp.headers.get("content-length") || "0", 10);
-        await touchLruEntry(pdfPath, size, false);
-        evictIfNeeded().catch(() => {});
-      }
-    } else if (resp.status === 206) {
-      cacheFullPdfInBackground(pdfPath, cacheKey);
-    }
-  }).catch(() => {});
-}
-
-function cacheFullPdfInBackground(pdfPath, cacheKey) {
-  fetch(cacheKey).then(async (resp) => {
-    if (resp.status !== 200) return;
-    const cache = await caches.open(PDF_CACHE);
-    const stored = await safeCachePut(cache, cacheKey, resp);
-    if (stored) {
-      const size = parseInt(resp.headers.get("content-length") || "0", 10);
-      await touchLruEntry(pdfPath, size, false);
-      await evictIfNeeded();
-    }
+// Fetch the whole PDF and store it (auto-cached). Given the cached copy's
+// *etag*, it revalidates: the server answers 304 when that copy is current,
+// so viewing a cached PDF doesn't download it again, and only a changed PDF
+// (a 200) is stored. Its use was already recorded when it was served.
+function fetchAndStoreInBackground(pdfPath, etag) {
+  fetch(pdfCacheKey(pdfPath), {
+    cache: "no-store",
+    headers: etag ? { "If-None-Match": etag } : {},
+  }).then((resp) => {
+    if (resp.status === 200) return storePdf(pdfPath, resp, false);
   }).catch(() => {});
 }
 

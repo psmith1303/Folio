@@ -9,7 +9,7 @@ import "./offline-lru.js";  // defines self.FolioLru, shared with sw.js
 // The side-effect import above has run by now (imports evaluate first).
 const {
   PDF_CACHE, MAX_AUTO_CACHED, pdfCacheKey,
-  touchLruEntry, removeLruEntry, getAllLruEntries, clearAllLruEntries, evictIfNeeded,
+  removeLruEntry, getAllLruEntries, clearAllLruEntries, storePdf, pinIfCached,
 } = self.FolioLru;
 export { PDF_CACHE, pdfCacheKey };
 
@@ -43,32 +43,15 @@ export const ICON_PINNED = _icon('<path d="M3.5 8.5l3.5 3.5 5.5-7"/>');
 // ---------------------------------------------------------------------------
 
 export async function cachePdf(path) {
-  const cacheKey = pdfCacheKey(path);
-  const url = cacheKey + "&_t=" + Date.now();
-  const resp = await fetch(url);
+  // One download. The fetch goes through the service worker, which stores
+  // what it fetches before answering, so all that's left is to pin it. With
+  // no service worker, or if it didn't store it (a truncated download), it
+  // is stored here -- or, truncated, not at all.
+  const resp = await fetch(pdfCacheKey(path) + "&_t=" + Date.now());
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-  // Read the whole body before caching so we can verify it's complete.
-  // A streaming cache.put on a mid-flight-truncated response (e.g. Tailscale
-  // proxy dropping the connection) silently stores partial bytes, producing
-  // a "cached" PDF that later fails with "Bad end offset" in pdf.js.
-  const expected = parseInt(resp.headers.get("content-length") || "0", 10);
-  const buf = await resp.arrayBuffer();
-  if (expected > 0 && buf.byteLength !== expected) {
-    throw new Error(
-      `Incomplete download: got ${buf.byteLength} of ${expected} bytes — not caching`
-    );
+  if (!(await pinIfCached(path)) && !(await storePdf(path, resp, true))) {
+    throw new Error("Incomplete download — not caching");
   }
-
-  const verified = new Response(buf, {
-    status: resp.status,
-    statusText: resp.statusText,
-    headers: resp.headers,
-  });
-  const cache = await caches.open(PDF_CACHE);
-  await cache.put(cacheKey, verified);
-  await touchLruEntry(path, buf.byteLength, true);
-  await evictIfNeeded();
 
   // Keep the in-memory status sets in sync so any view rendered afterwards
   // (e.g. switching to Newest after a "Cache setlist") reflects the new state
@@ -91,11 +74,7 @@ export async function evictPdf(path) {
 // re-downloading. This is what "Cache setlist" and the per-row toggle use so
 // that already-cached-but-unpinned PDFs actually get pinned.
 export async function pinPdf(path) {
-  const cacheKey = pdfCacheKey(path);
-  const cache = await caches.open(PDF_CACHE);
-  const existing = await cache.match(cacheKey);
-  if (existing) {
-    await touchLruEntry(path, 0, true);  // size 0 → touchLruEntry keeps existing
+  if (await pinIfCached(path)) {
     _cachedPaths.add(path);
     _pinnedPaths.add(path);
     return;
