@@ -14,7 +14,6 @@ import posixpath
 import re
 import shutil
 import sys
-import tempfile
 import uuid
 from dataclasses import dataclass, field
 from typing import Callable
@@ -96,6 +95,9 @@ class SafeJSONError(Exception):
     """Raised when SafeJSON cannot load or save."""
 
 
+_UNREAD = object()  # SafeJSON.save: the caller hasn't read the target
+
+
 class SafeJSON:
     """Atomic JSON read/write.
 
@@ -104,25 +106,54 @@ class SafeJSON:
     """
 
     @staticmethod
-    def load(filepath: str, default=None):
-        if not os.path.exists(filepath):
-            return default if default is not None else {}
+    def read_bytes(filepath: str) -> bytes | None:
+        """The file's bytes, or None if it doesn't exist.
+
+        Raises SafeJSONError if it exists but can't be read.
+        """
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except json.JSONDecodeError as e:
-            log.error(f"Corrupt JSON in {filepath}: {e}")
-            raise SafeJSONError(f"Corrupt JSON in {filepath}: {e}") from e
-        except Exception as e:
+            with open(filepath, "rb") as f:
+                return f.read()
+        except FileNotFoundError:
+            return None
+        except OSError as e:
             log.error(f"Error reading JSON {filepath}: {e}")
             raise SafeJSONError(f"Error reading {filepath}: {e}") from e
 
     @staticmethod
-    def save(filepath: str, data) -> None:
-        """Write data via a local temp file then move/copy to the destination.
+    def parse(content: bytes, filepath: str):
+        """Decode JSON *content* read from *filepath*.
 
-        Raises SafeJSONError on failure.
+        Raises SafeJSONError if it is corrupt.
         """
+        try:
+            return json.loads(content)
+        except ValueError as e:
+            log.error(f"Corrupt JSON in {filepath}: {e}")
+            raise SafeJSONError(f"Corrupt JSON in {filepath}: {e}") from e
+
+    @staticmethod
+    def load(filepath: str, default=None):
+        content = SafeJSON.read_bytes(filepath)
+        if content is None:
+            return default if default is not None else {}
+        return SafeJSON.parse(content, filepath)
+
+    @staticmethod
+    def save(filepath: str, data, current: bytes | None | object = _UNREAD) -> bytes:
+        """Write *data* as JSON atomically; return the bytes now in the file.
+
+        The temp file is written beside the target, so os.replace is an
+        atomic rename: a temp file elsewhere (e.g. /tmp, used after 7fdc80a
+        saw hangs on an SMB drive) is on another filesystem from /mnt drives
+        and Docker bind mounts, and copying it over the target is not
+        atomic. If the target already holds exactly these bytes it is left
+        untouched (no mtime change, no file-sync churn); pass *current*
+        (its bytes, or None if absent) when the caller has already read it.
+        A target that exists but can't be read is overwritten. Raises
+        SafeJSONError on failure.
+        """
+        content = json.dumps(data, indent=4).encode("utf-8")
         tmp_name = None
         try:
             dir_name = os.path.dirname(filepath)
@@ -130,15 +161,30 @@ class SafeJSON:
                 raise SafeJSONError(
                     f"Cannot save — directory does not exist: {dir_name}"
                 )
-            fd, tmp_name = tempfile.mkstemp(text=True)
-            with os.fdopen(fd, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=4)
+            if current is _UNREAD:
+                try:
+                    current = SafeJSON.read_bytes(filepath)
+                except SafeJSONError:
+                    current = None  # unreadable (logged): overwrite it
+            if current == content:
+                return content
+            tmp_name = os.path.join(
+                dir_name,
+                f".{os.path.basename(filepath)}.{uuid.uuid4().hex[:8]}.tmp")
+            with open(tmp_name, "xb") as f:
+                f.write(content)
             try:
                 os.replace(tmp_name, filepath)
-            except OSError:
+            except PermissionError:
+                # Windows refuses to replace a file another process has
+                # open; fall back to a (non-atomic) copy there only.
+                if sys.platform != "win32":
+                    raise
+                log.warning(f"Non-atomic save of {filepath}: target in use")
                 shutil.copyfile(tmp_name, filepath)
                 os.remove(tmp_name)
             tmp_name = None
+            return content
         except SafeJSONError:
             raise
         except Exception as e:
@@ -419,19 +465,25 @@ def annotation_sidecar_path(pdf_path: str) -> str:
     return os.path.splitext(normalize_path(pdf_path))[0] + ".json"
 
 
+def _content_etag(content: bytes | None) -> str:
+    """Etag for a sidecar's bytes; "" when there is no sidecar."""
+    return "" if content is None else hashlib.sha256(content).hexdigest()[:16]
+
+
+def _read_sidecar(sidecar: str) -> bytes | None:
+    """The sidecar's bytes, or None if it doesn't exist or can't be read."""
+    try:
+        return SafeJSON.read_bytes(sidecar)
+    except SafeJSONError:
+        return None
+
+
 def annotations_etag(pdf_path: str) -> str:
     """Compute an etag from the annotation sidecar file content.
 
     Returns an empty string if no sidecar exists.
     """
-    sidecar = annotation_sidecar_path(pdf_path)
-    if not os.path.exists(sidecar):
-        return ""
-    try:
-        with open(sidecar, 'rb') as f:
-            return hashlib.sha256(f.read()).hexdigest()[:16]
-    except OSError:
-        return ""
+    return _content_etag(_read_sidecar(annotation_sidecar_path(pdf_path)))
 
 
 def load_annotations(pdf_path: str) -> dict:
@@ -441,10 +493,14 @@ def load_annotations(pdf_path: str) -> dict:
     Migrates old formats and assigns missing UUIDs.
     """
     sidecar = annotation_sidecar_path(pdf_path)
-    try:
-        raw = SafeJSON.load(sidecar, default={})
-    except SafeJSONError:
-        raw = {}
+    content = _read_sidecar(sidecar)
+    etag = _content_etag(content)
+    raw = {}
+    if content is not None:
+        try:
+            raw = SafeJSON.parse(content, sidecar)
+        except SafeJSONError:
+            pass  # logged; treated as empty
 
     # Normalise structure
     if "version" not in raw:
@@ -467,13 +523,13 @@ def load_annotations(pdf_path: str) -> dict:
                 dirty = True
 
     if dirty:
-        save_annotations(pdf_path, pages, rotations)
+        etag = save_annotations(pdf_path, pages, rotations)
 
     return {
         "version": ANNOTATION_VERSION,
         "rotations": rotations,
         "pages": pages,
-        "etag": annotations_etag(pdf_path),
+        "etag": etag,
     }
 
 
@@ -488,14 +544,13 @@ def save_annotations(
     If *expected_etag* is provided, the current file's etag must match or
     an ``AnnotationConflictError`` is raised.  Returns the new etag.
     """
-    if expected_etag is not None:
-        current = annotations_etag(pdf_path)
-        if current != expected_etag:
-            raise AnnotationConflictError(
-                "Annotations were modified by another session"
-            )
-
     sidecar = annotation_sidecar_path(pdf_path)
+    current = _read_sidecar(sidecar)
+    if expected_etag is not None and _content_etag(current) != expected_etag:
+        raise AnnotationConflictError(
+            "Annotations were modified by another session"
+        )
+
     # Only save non-zero rotations
     clean_rot = {k: v for k, v in rotations.items() if v % 360 != 0}
     data = {
@@ -503,8 +558,7 @@ def save_annotations(
         "rotations": clean_rot,
         "pages": pages,
     }
-    SafeJSON.save(sidecar, data)
-    return annotations_etag(pdf_path)
+    return _content_etag(SafeJSON.save(sidecar, data, current))
 
 
 # ---------------------------------------------------------------------------

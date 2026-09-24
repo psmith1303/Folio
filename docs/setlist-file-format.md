@@ -204,11 +204,12 @@ Switching to a different library folder reloads setlists from that folder automa
 
 ## Persistence
 
-- Loaded on every API request via `SafeJSON.load(state.setlist_path())`.
+- Loaded on every API request via `load_setlists()`, which returns absolute paths.
 - Written after every mutation (add setlist, rename, delete, reorder, add/remove
-  item) via `SafeJSON.save(state.setlist_path(), data)`.
-- `SafeJSON` writes atomically (temp file + `os.replace`) to avoid corruption on
-  power loss.
+  item) via `save_setlists()`, which stores paths relative to the library root.
+- `SafeJSON` writes atomically (a temp file beside the target, then
+  `os.replace`) to avoid corruption on power loss, and skips the write when the
+  content is unchanged.
 - If the file is absent, `SafeJSON.load` returns `{}` (no setlists).
 - If the file is corrupt JSON, `{}` is returned.
 

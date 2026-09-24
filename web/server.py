@@ -137,12 +137,41 @@ def _save_config(cfg: dict) -> None:
 
 
 class AppState:
-    """Mutable server-wide state."""
+    """Mutable server-wide state.
+
+    ``scores`` is indexed by path: assign a new list or use replace_score(),
+    never mutate the list in place.
+    """
+
+    _scores: list[Score]
+    _index: dict[str, int]  # normalize_path(filepath) -> position in _scores
 
     def __init__(self) -> None:
         self.config: dict = _load_config()
         self.library_dir: str = ""
-        self.scores: list[Score] = []
+        self.scores = []
+
+    @property
+    def scores(self) -> list[Score]:
+        return self._scores
+
+    @scores.setter
+    def scores(self, scores: list[Score]) -> None:
+        self._scores = scores
+        self._index = {}
+        for i, s in enumerate(scores):
+            self._index.setdefault(normalize_path(s.filepath), i)
+
+    def find_score(self, path: str) -> Score | None:
+        """The library score at *path* (any accepted form), or None."""
+        i = self._index.get(normalize_path(path))
+        return None if i is None else self._scores[i]
+
+    def replace_score(self, old: Score, new: Score) -> None:
+        """Put *new* in *old*'s place (e.g. after a rename)."""
+        i = self._index.pop(normalize_path(old.filepath))
+        self._scores[i] = new
+        self._index[normalize_path(new.filepath)] = i
 
     def set_library(self, path: str) -> None:
         path = normalize_path(path)
@@ -321,15 +350,18 @@ def _heal_recent_paths(remap: dict[str, str]) -> None:
 
 state = AppState()
 
-# Auto-load last directory on startup
-_last = state.config.get("last_directory", "")
-if _last:
-    _resolved = normalize_path(_last)
-    if os.path.isdir(_resolved):
+
+def _auto_load_library() -> None:
+    """Open the last-used library, if it still exists."""
+    last = state.config.get("last_directory", "")
+    if not last:
+        return
+    resolved = normalize_path(last)
+    if os.path.isdir(resolved):
         try:
-            state.set_library(_resolved)
+            state.set_library(resolved)
         except Exception as e:
-            log.warning(f"Could not auto-load library {_resolved}: {e}")
+            log.warning(f"Could not auto-load library {resolved}: {e}")
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -353,11 +385,14 @@ async def _lifespan(app: FastAPI):
     log.setLevel(uv.level)
     log.propagate = False
     log.info("Folio v%s starting", app.version)
+    # Scan here rather than at import, so importing the module (e.g. in
+    # tests) doesn't scan the configured library.
+    _auto_load_library()
     yield
 
 
 app = FastAPI(
-    title="Folio", version="2.12.1",
+    title="Folio", version="2.12.2",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -549,13 +584,12 @@ class UpdateTagsRequest(BaseModel):
     filename_tags: list[str]
 
 
-def _find_score(resolved: str) -> tuple[int, Score]:
-    """Return (index, score) for the library score at *resolved*, or 404."""
-    target = os.path.normpath(resolved)
-    for i, sc in enumerate(state.scores):
-        if os.path.normpath(sc.filepath) == target:
-            return i, sc
-    raise HTTPException(status_code=404, detail="Score not found in library")
+def _find_score(resolved: str) -> Score:
+    """Return the library score at *resolved*, or 404."""
+    score = state.find_score(resolved)
+    if score is None:
+        raise HTTPException(status_code=404, detail="Score not found in library")
+    return score
 
 
 @app.get("/api/scores")
@@ -565,13 +599,13 @@ def get_score(path: str = Query(..., description="Score filepath")):
     The library list is filtered by the client's current search, so a caller
     holding only a filepath cannot rely on it to recover a score's tags.
     """
-    return _find_score(_validate_library_path(path))[1].to_dict()
+    return _find_score(_validate_library_path(path)).to_dict()
 
 
 @app.put("/api/scores/tags")
 def update_score_tags(req: UpdateTagsRequest):
     """Update the filename tags on a score, renaming the file on disk."""
-    score_idx, score = _find_score(_validate_library_path(req.path))
+    score = _find_score(_validate_library_path(req.path))
 
     # Clean tags: lowercase, alphanumeric + hyphens only
     clean_tags = set()
@@ -588,7 +622,7 @@ def update_score_tags(req: UpdateTagsRequest):
         raise HTTPException(status_code=500, detail=f"Rename failed: {e}")
 
     # Update in-memory library
-    state.scores[score_idx] = new_score
+    state.replace_score(score, new_score)
 
     # Update setlist references that point to the old path
     old_portable = portable_path(score.filepath)
@@ -740,14 +774,14 @@ class AddRecentRequest(BaseModel):
 def get_recent():
     """Recent entries enriched with the score's current tags.
 
-    Tags are looked up live from the scanned library (matched by portable
-    path) rather than stored in the recent file, so renamed/retagged scores
-    stay accurate. Entries no longer in the library get an empty tag list.
+    Tags are looked up live from the scanned library (matched by path)
+    rather than stored in the recent file, so renamed/retagged scores stay
+    accurate. Entries no longer in the library get an empty tag list.
     """
-    by_path = {portable_path(s.filepath): s for s in state.scores}
     recent = _load_recent()
     for entry in recent:
-        score = by_path.get(entry.get("filepath"))
+        fp = entry.get("filepath")
+        score = state.find_score(fp) if isinstance(fp, str) and fp else None
         entry["tags"] = sorted(score.tags) if score else []
     return {"recent": recent}
 
@@ -773,11 +807,7 @@ def get_newest(limit: int = Query(20, ge=1, le=200)):
 def add_recent(req: AddRecentRequest):
     resolved = _validate_library_path(req.path)
     pkey = portable_path(resolved)
-    score = next(
-        (s for s in state.scores
-         if portable_path(s.filepath) == pkey),
-        None,
-    )
+    score = state.find_score(resolved)
     if score is None:
         raise HTTPException(status_code=404, detail="Score not in library")
     data = _load_recent()
