@@ -147,7 +147,8 @@ class SafeJSON:
         atomic rename: a temp file elsewhere (e.g. /tmp, used after 7fdc80a
         saw hangs on an SMB drive) is on another filesystem from /mnt drives
         and Docker bind mounts, and copying it over the target is not
-        atomic. If the target already holds exactly these bytes it is left
+        atomic. The replacement keeps the target's permission bits (not
+        its owner: the file is recreated by whoever saves). If the target already holds exactly these bytes it is left
         untouched (no mtime change, no file-sync churn); pass *current*
         (its bytes, or None if absent) when the caller has already read it.
         A target that exists but can't be read is overwritten. Raises
@@ -173,6 +174,10 @@ class SafeJSON:
                 f".{os.path.basename(filepath)}.{uuid.uuid4().hex[:8]}.tmp")
             with open(tmp_name, "xb") as f:
                 f.write(content)
+            try:
+                shutil.copymode(filepath, tmp_name)
+            except FileNotFoundError:
+                pass  # a new file gets the default mode
             try:
                 os.replace(tmp_name, filepath)
             except PermissionError:

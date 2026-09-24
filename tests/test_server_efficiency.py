@@ -126,6 +126,21 @@ def test_saved_file_gets_normal_permissions(tmp_path):
     assert stat.S_IMODE(os.stat(target).st_mode) == 0o666 & ~_umask()
 
 
+@pytest.mark.parametrize("mode", [0o660, 0o664, 0o600, 0o640], ids=oct)
+def test_save_keeps_the_existing_files_permissions(wd, mode):
+    """Regression: the atomic rename replaces the file with a new one, which
+    got the default mode, so e.g. a group-writable setlists.json stopped
+    being writable by the group after the first save."""
+    target = wd / "setlists.json"
+    target.write_text('{"old": 1}')
+    os.chmod(target, mode)
+    SafeJSON.save(str(target), {"new": 1})
+    SafeJSON.save(str(target), {"new": 2})
+    assert stat.S_IMODE(os.stat(target).st_mode) == mode
+    assert json.loads(target.read_text()) == {"new": 2}
+    assert os.listdir(wd) == ["setlists.json"]
+
+
 def test_unchanged_save_does_not_write(tmp_path, replaces):
     """Regression: unchanged saves (e.g. the hash index and scan cache on every
     library open) rewrote the file, bumping its mtime and waking file sync."""
