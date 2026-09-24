@@ -24,10 +24,12 @@ export const NOTE_GLYPHS = new Set([
   "\u266D", "\u266F", "\u266E",
 ]);
 
+// Escape text for HTML content and attribute values (quotes included, so
+// it is safe inside title="...").
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
 export function esc(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
+  return String(s ?? "").replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]);
 }
 
 // Forward transform: normalized page coords -> display coords

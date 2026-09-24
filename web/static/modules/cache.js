@@ -250,25 +250,40 @@ function updateCacheButtons(tbody = libraryBody) {
   }
 }
 
-function applyCacheButtonState(btn, filepath) {
-  const cached = _cachedPaths.has(filepath);
+// A score's cache button: icon and tooltip, and which state class it has
+// ("cached" when pinned, "auto-cached" when cached but not pinned).
+function cacheButtonState(filepath) {
   const pinned = _pinnedPaths.has(filepath);
-  if (pinned) {
-    btn.innerHTML = ICON_PINNED;
-    btn.title = "Pinned for offline use (click to remove)";
-  } else if (cached) {
-    btn.innerHTML = ICON_AUTO_CACHED;
-    btn.title = "Auto-cached (click to pin)";
-  } else {
-    btn.innerHTML = ICON_NOT_CACHED;
-    btn.title = "Download for offline use";
-  }
-  btn.classList.toggle("cached", pinned);
-  btn.classList.toggle("auto-cached", cached && !pinned);
+  const auto = !pinned && _cachedPaths.has(filepath);
+  if (pinned) return { icon: ICON_PINNED, title: "Pinned for offline use (click to remove)", pinned, auto };
+  if (auto) return { icon: ICON_AUTO_CACHED, title: "Auto-cached (click to pin)", pinned, auto };
+  return { icon: ICON_NOT_CACHED, title: "Download for offline use", pinned, auto };
 }
 
-export function isCached(filepath) {
-  return _cachedPaths.has(filepath);
+function applyCacheButtonState(btn, filepath) {
+  const { icon, title, pinned, auto } = cacheButtonState(filepath);
+  btn.innerHTML = icon;
+  btn.title = title;
+  btn.classList.toggle("cached", pinned);
+  btn.classList.toggle("auto-cached", auto);
+}
+
+// The cache button's HTML for a list row, in the state refreshCacheStatus
+// would give it. Clicks on it are handled by onCacheButtonClick.
+export function cacheButtonHtml(filepath) {
+  const { icon, title, pinned, auto } = cacheButtonState(filepath);
+  const cls = pinned ? " cached" : auto ? " auto-cached" : "";
+  return `<button class="cache-btn small-btn${cls}" title="${title}">${icon}</button>`;
+}
+
+// A table's click listener for the cache buttons in its rows (each row
+// carries data-filepath). Returns true if the click was on one.
+export function onCacheButtonClick(e) {
+  const btn = e.target.closest(".cache-btn");
+  const tr = btn?.closest("tr[data-filepath]");
+  if (!tr) return false;
+  toggleCache(tr.dataset.filepath, btn);
+  return true;
 }
 
 export async function toggleCache(filepath, btn) {

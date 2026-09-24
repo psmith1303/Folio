@@ -189,6 +189,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `views.js` | View switching; `navigate(view)` for the nav bar and its shortcuts (leave the viewer, show the list view, reload it) |
 | `library.js` | Library loading and rendering |
 | `library-filter.js` | Pure filtering, sorting and search over the loaded library (library view and setlist song picker) |
+| `score-table.js` | Shared row rendering for the Library, Recent and Newest tables: one click listener per table (open, or toggle the cache button) |
 | `viewer.js` | PDF rendering, page navigation, display modes, fullscreen |
 | `annotations.js` | Drawing, tools, pointer events, save/load with etag concurrency |
 | `setlists.js` | Setlist CRUD, drag-and-drop reorder, playback |

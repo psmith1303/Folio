@@ -13,33 +13,34 @@
 const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 // Element-wise, shorter-is-smaller — matches how Python orders tuples/lists.
+// Elements are strings or (nested) arrays of strings.
 function cmpArr(a, b) {
   const n = Math.min(a.length, b.length);
   for (let i = 0; i < n; i++) {
-    const c = cmpStr(a[i], b[i]);
+    const c = Array.isArray(a[i]) ? cmpArr(a[i], b[i]) : cmpStr(a[i], b[i]);
     if (c !== 0) return c;
   }
   return a.length - b.length;
 }
 
-const SORTERS = {
-  composer: (a, b) => cmpArr(
-    [a.composer.toLowerCase(), a.title.toLowerCase()],
-    [b.composer.toLowerCase(), b.title.toLowerCase()],
-  ),
-  title: (a, b) => cmpArr(
-    [a.title.toLowerCase(), a.composer.toLowerCase()],
-    [b.title.toLowerCase(), b.composer.toLowerCase()],
-  ),
+// Each sort's key for a score, computed once per score rather than on
+// every comparison.
+const SORT_KEYS = {
+  composer: (sc) => [sc.composer.toLowerCase(), sc.title.toLowerCase()],
+  title: (sc) => [sc.title.toLowerCase(), sc.composer.toLowerCase()],
   // Title is a third key the old endpoint did not have. Sorting by tags
   // leaves same-composer/same-tag scores tied, and their order would then
   // depend on how the fetched list happened to be ordered. Breaking on title
   // makes the ordering total and independent of that.
-  tags: (a, b) =>
-    cmpArr([...a.tags].sort(cmpStr), [...b.tags].sort(cmpStr)) ||
-    cmpStr(a.composer.toLowerCase(), b.composer.toLowerCase()) ||
-    cmpStr(a.title.toLowerCase(), b.title.toLowerCase()),
+  tags: (sc) => [[...sc.tags].sort(cmpStr), sc.composer.toLowerCase(), sc.title.toLowerCase()],
 };
+
+// Stable sort of `scores` by `keyOf`, descending if `desc`.
+function sortByKey(scores, keyOf, desc) {
+  const keyed = scores.map((sc) => [keyOf(sc), sc]);
+  keyed.sort(desc ? (a, b) => cmpArr(b[0], a[0]) : (a, b) => cmpArr(a[0], b[0]));
+  return keyed.map(([, sc]) => sc);
+}
 
 // Filter, sort and facet `allScores`. `q` is raw search text; `composer` is
 // an exact match ("" for any); every tag in `tags` must be present; `sort` is
@@ -57,11 +58,10 @@ export function filterLibrary(allScores, {
   const compMatch = (sc) => !composer || sc.composer === composer;
   const tagMatch = (sc) => tags.every((t) => sc.tags.includes(t));
 
-  const scores = allScores.filter(
+  let scores = allScores.filter(
     (sc) => textMatch(sc) && compMatch(sc) && tagMatch(sc),
   );
-  const sorter = SORTERS[sort];
-  if (sorter) scores.sort(desc ? (a, b) => sorter(b, a) : sorter);
+  if (Object.hasOwn(SORT_KEYS, sort)) scores = sortByKey(scores, SORT_KEYS[sort], desc);
 
   const composers = new Set();
   const tagSet = new Set();

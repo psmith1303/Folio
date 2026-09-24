@@ -4,12 +4,8 @@
 
 import { recentBody, recentStatus } from "./dom.js";
 import { api } from "./api.js";
-import { esc } from "./utils.js";
-import { openScore } from "./viewer.js";
-import {
-  CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
-  ICON_PINNED, ICON_NOT_CACHED,
-} from "./cache.js";
+import { renderScoreRows } from "./score-table.js";
+import { CACHE_AVAILABLE, refreshCacheStatus } from "./cache.js";
 
 
 // ---------------------------------------------------------------------------
@@ -63,41 +59,16 @@ function formatRelativeTime(ts) {
 
 export async function renderRecent() {
   const list = await fetchRecent();
-  recentBody.innerHTML = "";
+  // Rendered even when empty, to clear the previous rows. A recent entry
+  // opens as a partial record: its stored tags may be stale.
+  renderScoreRows(recentBody, list, {
+    extra: (entry) => formatRelativeTime(entry.timestamp),
+    toOpen: ({ filepath, composer, title }) => ({ filepath, composer, title }),
+  });
 
   if (list.length === 0) {
     recentStatus.textContent = "No recently viewed scores.";
     return;
-  }
-
-  for (const entry of list) {
-    const tags = entry.tags || [];
-    const tr = document.createElement("tr");
-    tr.dataset.filepath = entry.filepath;
-    const cached = isCached(entry.filepath);
-    tr.innerHTML = `
-      <td title="${esc(entry.composer)}">${esc(entry.composer)}</td>
-      <td title="${esc(entry.title)}">${esc(entry.title)}</td>
-      <td title="${esc(tags.join(", "))}">${esc(tags.join(", "))}</td>
-      <td>${formatRelativeTime(entry.timestamp)}</td>
-      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button></td>` : ""}
-    `;
-    tr.addEventListener("click", (e) => {
-      if (e.target.closest(".cache-btn")) return;
-      openScore({
-        filepath: entry.filepath,
-        composer: entry.composer,
-        title: entry.title,
-      });
-    });
-    const cacheBtn = tr.querySelector(".cache-btn");
-    if (cacheBtn) {
-      cacheBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleCache(entry.filepath, cacheBtn);
-      });
-    }
-    recentBody.appendChild(tr);
   }
   recentStatus.textContent = `${list.length} recent scores`;
   if (CACHE_AVAILABLE) refreshCacheStatus(recentBody);

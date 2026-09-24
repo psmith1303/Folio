@@ -4,12 +4,8 @@
 
 import { newestBody, newestStatus } from "./dom.js";
 import { api } from "./api.js";
-import { esc } from "./utils.js";
-import { openScore } from "./viewer.js";
-import {
-  CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
-  ICON_PINNED, ICON_NOT_CACHED,
-} from "./cache.js";
+import { renderScoreRows } from "./score-table.js";
+import { CACHE_AVAILABLE, refreshCacheStatus } from "./cache.js";
 
 
 const NEWEST_LIMIT = 20;
@@ -45,36 +41,12 @@ function formatAdded(mtimeSec) {
 
 export async function renderNewest() {
   const list = await fetchNewest();
-  newestBody.innerHTML = "";
+  // Rendered even when empty, to clear the previous rows.
+  renderScoreRows(newestBody, list, { extra: (sc) => formatAdded(sc.mtime) });
 
   if (list.length === 0) {
     newestStatus.textContent = "No scores in library.";
     return;
-  }
-
-  for (const sc of list) {
-    const tr = document.createElement("tr");
-    tr.dataset.filepath = sc.filepath;
-    const cached = isCached(sc.filepath);
-    tr.innerHTML = `
-      <td title="${esc(sc.composer)}">${esc(sc.composer)}</td>
-      <td title="${esc(sc.title)}">${esc(sc.title)}</td>
-      <td title="${esc(sc.tags.join(", "))}">${esc(sc.tags.join(", "))}</td>
-      <td>${formatAdded(sc.mtime)}</td>
-      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button></td>` : ""}
-    `;
-    tr.addEventListener("click", (e) => {
-      if (e.target.closest(".cache-btn")) return;
-      openScore(sc);
-    });
-    const cacheBtn = tr.querySelector(".cache-btn");
-    if (cacheBtn) {
-      cacheBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleCache(sc.filepath, cacheBtn);
-      });
-    }
-    newestBody.appendChild(tr);
   }
   newestStatus.textContent = `${list.length} newest scores`;
   if (CACHE_AVAILABLE) refreshCacheStatus(newestBody);

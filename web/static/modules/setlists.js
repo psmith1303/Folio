@@ -20,7 +20,7 @@ import { showView } from "./views.js";
 import { openSetlistSong, openScore } from "./viewer.js";
 import { searchScores } from "./library-filter.js";
 import {
-  CACHE_AVAILABLE, pinPdf, getCacheStatus, isCached, toggleCache,
+  CACHE_AVAILABLE, pinPdf, getCacheStatus, cacheButtonHtml, onCacheButtonClick,
   refreshCacheStatus, ICON_NOT_CACHED, ICON_PINNED,
 } from "./cache.js";
 
@@ -156,7 +156,6 @@ function renderSetlistDetail() {
       `;
     } else {
       const startPage = item.start_page || 1;
-      const cached = isCached(item.path);
       tr.dataset.filepath = item.path;
       tr.innerHTML = `
         <td>${i + 1}</td>
@@ -164,7 +163,7 @@ function renderSetlistDetail() {
         <td>${esc(item.title || "")}</td>
         <td><input type="number" class="page-input start-pg" min="1" value="${startPage}"></td>
         <td><input type="number" class="page-input end-pg" min="0" value="${item.end_page || 0}"></td>
-        <td class="cache-col">${CACHE_AVAILABLE ? `<button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button>` : ""}</td>
+        <td class="cache-col">${CACHE_AVAILABLE ? cacheButtonHtml(item.path) : ""}</td>
         <td class="song-actions">
           <button class="small-btn open-btn" title="Open at page ${startPage}">&#9655;</button>
           <button class="small-btn up-btn" title="Move up" ${i === 0 ? "disabled" : ""}>&#8593;</button>
@@ -172,14 +171,6 @@ function renderSetlistDetail() {
           <button class="small-btn del-btn" title="Remove">&#10005;</button>
         </td>
       `;
-
-      const cacheBtn = tr.querySelector(".cache-btn");
-      if (cacheBtn) {
-        cacheBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          toggleCache(item.path, cacheBtn);
-        });
-      }
 
       tr.querySelector(".start-pg").addEventListener("change", (e) => {
         item.start_page = parseInt(e.target.value, 10) || 1;
@@ -369,6 +360,7 @@ export function initSetlistEvents() {
   } else {
     btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
   }
+  setlistSongsBody.addEventListener("click", onCacheButtonClick);
 
   // New setlist
   btnNewSetlist.addEventListener("click", () => {

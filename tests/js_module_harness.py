@@ -96,11 +96,13 @@ def _stub(name: str, src: str) -> str:
 
 
 def run_module(entry: Path, stub: list[str], body: str, *,
-               state: dict | None = None, modules_dir: Path = MODULES) -> Any:
+               state: dict | None = None, setup: str = "",
+               modules_dir: Path = MODULES) -> Any:
     """Import *entry* (a module inside *modules_dir*) with the sibling
     modules named in *stub* replaced, run *body*, and return what it
-    prints as JSON. The real exports of each stubbed sibling are read from
-    MODULES, so an old copy of *entry* elsewhere can be run as well."""
+    prints as JSON. *setup* runs before the import, for globals the modules
+    read while loading. The real exports of each stubbed sibling are read
+    from MODULES, so an old copy of *entry* elsewhere can be run as well."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
         imports = {}
@@ -113,6 +115,7 @@ def run_module(entry: Path, stub: list[str], body: str, *,
         import_map.write_text(json.dumps({"imports": imports}), encoding="utf-8")
         script = (PRELUDE
                   + f"globalThis.__state = {json.dumps(state or {})};\n"
+                  + setup + "\n"
                   + f'const M = await import("{entry.as_uri()}");\n'
                   + body)
         proc = subprocess.run(

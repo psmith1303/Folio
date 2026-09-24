@@ -8,12 +8,10 @@ import {
   btnReset,
 } from "./dom.js";
 import { api } from "./api.js";
-import { esc } from "./utils.js";
 import { filterLibrary } from "./library-filter.js";
-import { openScore } from "./viewer.js";
+import { renderScoreRows } from "./score-table.js";
 import {
-  CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
-  ICON_PINNED, ICON_NOT_CACHED, refreshCachedConfig,
+  CACHE_AVAILABLE, refreshCacheStatus, refreshCachedConfig,
 } from "./cache.js";
 
 // ---------------------------------------------------------------------------
@@ -77,31 +75,7 @@ function applyFilters() {
 }
 
 function renderLibrary() {
-  const s = getState();
-  libraryBody.innerHTML = "";
-  for (const sc of s.scores) {
-    const tr = document.createElement("tr");
-    tr.dataset.filepath = sc.filepath;
-    const cached = isCached(sc.filepath);
-    tr.innerHTML = `
-      <td title="${esc(sc.composer)}">${esc(sc.composer)}</td>
-      <td title="${esc(sc.title)}">${esc(sc.title)}</td>
-      <td title="${esc(sc.tags.join(", "))}">${esc(sc.tags.join(", "))}</td>
-      ${CACHE_AVAILABLE ? `<td class="cache-col"><button class="cache-btn small-btn${cached ? " cached" : ""}" title="${cached ? "Remove from offline cache" : "Download for offline use"}">${cached ? ICON_PINNED : ICON_NOT_CACHED}</button></td>` : ""}
-    `;
-    tr.addEventListener("click", (e) => {
-      if (e.target.closest(".cache-btn")) return;
-      openScore(sc);
-    });
-    const cacheBtn = tr.querySelector(".cache-btn");
-    if (cacheBtn) {
-      cacheBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleCache(sc.filepath, cacheBtn);
-      });
-    }
-    libraryBody.appendChild(tr);
-  }
+  renderScoreRows(libraryBody, getState().scores);
 }
 
 function renderComposerFilter() {
