@@ -537,12 +537,27 @@ function onPointerUp(e, annotCanvas, layoutIndex) {
   s.currentStroke = [];
 }
 
+// The browser took the pointer away mid-gesture (e.g. iOS palm rejection or
+// a system gesture) instead of it lifting. A half-drawn pen stroke is
+// dropped rather than committed, and its preview wiped; a moved mark stays
+// where it was dropped and marks the eraser already removed are saved, as
+// at pointerup.
+function onPointerCancel() {
+  const s = getState();
+  if (s.currentStroke.length > 0) {
+    s.currentStroke = [];
+    drawAnnotations();
+  }
+  if (s.activeTool === "move" && s.draggingAnnot) endMove();
+  else if (s.activeTool === "eraser") flushEraserSave();
+}
+
 // ---------------------------------------------------------------------------
 // Eraser
 // ---------------------------------------------------------------------------
 
-// An eraser drag can remove many marks; save them in one go at pointerup or
-// pointercancel (e.g. iOS palm rejection) rather than once per mark.
+// An eraser drag can remove many marks; save them in one go when the
+// gesture ends (pointerup or pointercancel) rather than once per mark.
 let _eraserUnsaved = false;
 
 function flushEraserSave() {
@@ -827,7 +842,7 @@ function setupAnnotCanvas(annotCanvas, layoutIndex) {
   annotCanvas.addEventListener("pointerdown", (e) => onPointerDown(e, annotCanvas, layoutIndex));
   annotCanvas.addEventListener("pointermove", (e) => onPointerMove(e, annotCanvas, layoutIndex));
   annotCanvas.addEventListener("pointerup", (e) => onPointerUp(e, annotCanvas, layoutIndex));
-  annotCanvas.addEventListener("pointercancel", flushEraserSave);
+  annotCanvas.addEventListener("pointercancel", onPointerCancel);
 }
 
 export function initAnnotationEvents() {

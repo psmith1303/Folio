@@ -180,7 +180,7 @@ def _gesture(tool: str, body: str) -> dict:
         GESTURE_PRELUDE % {"state": json.dumps(state)},
         _const(src, "PLACEMENT_TOOLS"),
         _optional(src, "let _drawScheduled", "scheduleDraw",
-                  "let _eraserUnsaved", "flushEraserSave"),
+                  "let _eraserUnsaved", "flushEraserSave", "onPointerCancel"),
         *(_fn(src, n) for n in GESTURE_FNS),
         "setupAnnotCanvas(canvas, 0);",
         body,
