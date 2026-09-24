@@ -5,13 +5,12 @@
 import { getState } from "./state.js";
 import {
   searchInput, composerFilter, tagBar, libraryBody, libraryStatus,
-  btnReset, btnLibrary, btnSetlists,
+  btnReset,
 } from "./dom.js";
 import { api } from "./api.js";
 import { esc } from "./utils.js";
 import { filterLibrary } from "./library-filter.js";
-import { showView } from "./views.js";
-import { openScore, cleanupScore } from "./viewer.js";
+import { openScore } from "./viewer.js";
 import {
   CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
   ICON_PINNED, ICON_NOT_CACHED, refreshCachedConfig,
@@ -160,10 +159,6 @@ function updateSortHeaders() {
 // Init event listeners
 // ---------------------------------------------------------------------------
 
-// Lazy import to break circular dependency (setlists imports viewer -> library)
-let _loadSetlists = null;
-export function setLoadSetlistsFn(fn) { _loadSetlists = fn; }
-
 export function initLibraryEvents() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     th.addEventListener("click", () => {
@@ -215,16 +210,5 @@ export function initLibraryEvents() {
     }
 
     document.getElementById("library-table-wrap").scrollTop = 0;
-  });
-
-  btnLibrary.addEventListener("click", () => {
-    if (getState().currentView === "viewer") cleanupScore();
-    showView("library");
-    loadLibrary();
-  });
-  btnSetlists.addEventListener("click", () => {
-    if (getState().currentView === "viewer") cleanupScore();
-    showView("setlists");
-    if (_loadSetlists) _loadSetlists();
   });
 }

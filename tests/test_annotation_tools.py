@@ -277,7 +277,7 @@ const crypto = { randomUUID: () => "u" + (++__n) };
 const stampToolCursor = () => "", startPageToolCursor = () => "";
 const handleTextClick = () => log.push("text");
 const eraseAt = () => {}, startMove = () => false;
-const _nextPage = () => {}, _prevPage = () => {};
+const nextPage = () => {}, prevPage = () => {};
 const canvas = { getBoundingClientRect: () => ({ left: 0, top: 0 }), setPointerCapture() {} };
 const tap = (x, y) => onPointerDown(
   { clientX: x, clientY: y, pointerType: "mouse", pointerId: 1, preventDefault() {} }, canvas, 0);

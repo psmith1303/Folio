@@ -99,9 +99,6 @@ export const textSizeSlider = $("#text-size-slider");
 export const textSizePt = $("#text-size-pt");
 export const textCancel = $("#text-cancel");
 
-// Dialogs — stamp palette
-export const stampDialog = $("#stamp-dialog");
-
 // Dialogs — setlist name
 export const setlistNameDialog = $("#setlist-name-dialog");
 export const setlistNameDialogTitle = $("#setlist-name-dialog-title");

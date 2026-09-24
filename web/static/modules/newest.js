@@ -2,23 +2,15 @@
 // Newest files — the most recently added/modified PDFs in the library
 // ---------------------------------------------------------------------------
 
-import { getState } from "./state.js";
-import { newestBody, newestStatus, btnNewest } from "./dom.js";
+import { newestBody, newestStatus } from "./dom.js";
 import { api } from "./api.js";
 import { esc } from "./utils.js";
-import { showView } from "./views.js";
+import { openScore } from "./viewer.js";
 import {
   CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
   ICON_PINNED, ICON_NOT_CACHED,
 } from "./cache.js";
 
-// Callbacks set by app.js to avoid circular deps (viewer <-> newest)
-let _openScore = null;
-let _cleanupScore = null;
-export function setNewestCallbacks(openFn, cleanupFn) {
-  _openScore = openFn;
-  _cleanupScore = cleanupFn;
-}
 
 const NEWEST_LIMIT = 20;
 
@@ -73,7 +65,7 @@ export async function renderNewest() {
     `;
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".cache-btn")) return;
-      if (_openScore) _openScore(sc);
+      openScore(sc);
     });
     const cacheBtn = tr.querySelector(".cache-btn");
     if (cacheBtn) {
@@ -86,16 +78,4 @@ export async function renderNewest() {
   }
   newestStatus.textContent = `${list.length} newest scores`;
   if (CACHE_AVAILABLE) refreshCacheStatus(newestBody);
-}
-
-// ---------------------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------------------
-
-export function initNewestEvents() {
-  btnNewest.addEventListener("click", () => {
-    if (getState().currentView === "viewer" && _cleanupScore) _cleanupScore();
-    showView("newest");
-    renderNewest();
-  });
 }

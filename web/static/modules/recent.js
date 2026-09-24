@@ -2,23 +2,15 @@
 // Recent files — server-persisted, shared across instances
 // ---------------------------------------------------------------------------
 
-import { getState } from "./state.js";
-import { recentBody, recentStatus, btnRecent } from "./dom.js";
+import { recentBody, recentStatus } from "./dom.js";
 import { api } from "./api.js";
 import { esc } from "./utils.js";
-import { showView } from "./views.js";
+import { openScore } from "./viewer.js";
 import {
   CACHE_AVAILABLE, isCached, toggleCache, refreshCacheStatus,
   ICON_PINNED, ICON_NOT_CACHED,
 } from "./cache.js";
 
-// Callbacks set by app.js to avoid circular deps (viewer <-> recent)
-let _openScore = null;
-let _cleanupScore = null;
-export function setRecentCallbacks(openFn, cleanupFn) {
-  _openScore = openFn;
-  _cleanupScore = cleanupFn;
-}
 
 // ---------------------------------------------------------------------------
 // API
@@ -92,13 +84,11 @@ export async function renderRecent() {
     `;
     tr.addEventListener("click", (e) => {
       if (e.target.closest(".cache-btn")) return;
-      if (_openScore) {
-        _openScore({
-          filepath: entry.filepath,
-          composer: entry.composer,
-          title: entry.title,
-        });
-      }
+      openScore({
+        filepath: entry.filepath,
+        composer: entry.composer,
+        title: entry.title,
+      });
     });
     const cacheBtn = tr.querySelector(".cache-btn");
     if (cacheBtn) {
@@ -111,16 +101,4 @@ export async function renderRecent() {
   }
   recentStatus.textContent = `${list.length} recent scores`;
   if (CACHE_AVAILABLE) refreshCacheStatus(recentBody);
-}
-
-// ---------------------------------------------------------------------------
-// Init
-// ---------------------------------------------------------------------------
-
-export function initRecentEvents() {
-  btnRecent.addEventListener("click", () => {
-    if (getState().currentView === "viewer" && _cleanupScore) _cleanupScore();
-    showView("recent");
-    renderRecent();
-  });
 }

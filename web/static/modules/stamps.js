@@ -4,12 +4,12 @@
 // Assets live in /stamps/ as currentColor SVGs plus a stamps.json manifest.
 // This module owns the asset cache, the colour/size helpers used to render a
 // stamp on the canvas and as a desktop cursor, and the paginated palette.
-// It deliberately does NOT import annotations.js — selecting a stamp calls a
-// handler registered by app.js, keeping the dependency one-directional.
+// Selecting a stamp arms the stamp tool in annotations.js.
 // ---------------------------------------------------------------------------
 
 import { getState } from "./state.js";
 import { sizeToPt } from "./utils.js";
+import { enterStampMode, drawAnnotations } from "./annotations.js";
 
 const STAMPS_BASE = "/stamps";
 const PER_PAGE = 36;
@@ -20,12 +20,6 @@ const _svgText = new Map();       // id -> raw SVG template (uses currentColor)
 const _meta = new Map();          // id -> { w, h } in staff spaces
 const _imgCache = new Map();      // "id|color" -> HTMLImageElement
 let _page = 0;
-
-let _selectHandler = null;
-export function setStampSelectHandler(fn) { _selectHandler = fn; }
-
-let _readyHandler = null;
-export function setStampsReadyHandler(fn) { _readyHandler = fn; }
 
 // Per-stamp width/height in staff spaces (drives true SMuFL proportions).
 export function getStampMeta(id) { return _meta.get(id) || null; }
@@ -47,7 +41,8 @@ export async function loadStampAssets() {
         if (r.ok) _svgText.set(st.id, await r.text());
       } catch { /* leave missing; getStampImage returns null */ }
     }));
-    if (_readyHandler) _readyHandler();
+    // Redraw so stamps already on the open score appear.
+    if (getState().pdfDoc) drawAnnotations();
   } catch (err) {
     console.warn("Failed to load stamps:", err);
   }
@@ -153,7 +148,7 @@ function renderPalette(grid, pageInfo, prevBtn, nextBtn) {
     tile.addEventListener("click", () => {
       const dialog = document.getElementById("stamp-dialog");
       if (dialog) dialog.close();
-      if (_selectHandler) _selectHandler(st.id);
+      enterStampMode(st.id);
     });
     grid.appendChild(tile);
   }

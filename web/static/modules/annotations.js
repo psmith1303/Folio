@@ -13,13 +13,8 @@ import {
   NOTE_GLYPHS, UNDO_DEPTH, transformPt, inverseTransformPt, sizeToPt,
 } from "./utils.js";
 import { getStampImage, stampCursorPng, getStampMeta } from "./stamps.js";
-
-// Callbacks registered by dialog-handlers to avoid circular deps
-let _conflictHandler = null;
-let _textDialogHandler = null;
-
-export function setConflictHandler(fn) { _conflictHandler = fn; }
-export function setTextDialogHandler(fn) { _textDialogHandler = fn; }
+import { showConflictDialog, showTextDialog } from "./dialog-handlers.js";
+import { renderPage, invalidatePrerender, nextPage, prevPage } from "./viewer.js";
 
 // ---------------------------------------------------------------------------
 // Drawing
@@ -326,12 +321,6 @@ function loadPencilOnlyPref() {
 // Page rotation
 // ---------------------------------------------------------------------------
 
-let _renderPage = null;
-export function setRenderPageFn(fn) { _renderPage = fn; }
-
-let _invalidatePrerender = null;
-export function setInvalidatePrerenderFn(fn) { _invalidatePrerender = fn; }
-
 export function rotatePage(delta) {
   const s = getState();
   if (!s.pdfDoc) return;
@@ -340,8 +329,8 @@ export function rotatePage(delta) {
   const next = (current + delta + 360) % 360;
   s.rotations[pg] = next;
   saveAnnotations();
-  if (_invalidatePrerender) _invalidatePrerender(s.currentPage);
-  if (_renderPage) _renderPage();
+  invalidatePrerender(s.currentPage);
+  renderPage();
 }
 
 // ---------------------------------------------------------------------------
@@ -394,7 +383,7 @@ async function _doSaveAnnotations(s, force) {
     }
   } catch (err) {
     if (err.message && err.message.includes("409")) {
-      if (_conflictHandler) _conflictHandler();
+      showConflictDialog();
       return;
     }
     console.error("Failed to save annotations:", err);
@@ -410,28 +399,20 @@ function canvasCoords(e, annotCanvas) {
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-// Navigation callbacks — set by viewer module to avoid circular dep
-let _nextPage = null;
-let _prevPage = null;
-export function setNavCallbacks(next, prev) {
-  _nextPage = next;
-  _prevPage = prev;
-}
-
 function onPointerDown(e, annotCanvas, layoutIndex) {
   const s = getState();
 
   if (s.activeTool === "nav") {
     if (s.displayMode === "wide") return; // wide mode scrolls; use buttons to navigate
     if (s.displayMode === "2up" && s.pageLayouts.length === 2) {
-      if (layoutIndex === 0) _prevPage();
-      else _nextPage();
+      if (layoutIndex === 0) prevPage();
+      else nextPage();
     } else {
       const { x } = canvasCoords(e, annotCanvas);
       const layout = s.pageLayouts[layoutIndex];
       if (layout) {
-        if (x > layout.cssW / 2) _nextPage();
-        else _prevPage();
+        if (x > layout.cssW / 2) nextPage();
+        else prevPage();
       }
     }
     return;
@@ -745,7 +726,7 @@ function handleTextClick(e, annotCanvas, layoutIndex) {
     s.pendingTextAnnot = { pg: p.pg, nx: p.nx, ny: p.ny, editUuid: null };
   }
 
-  if (_textDialogHandler) _textDialogHandler(editAnnot);
+  showTextDialog(editAnnot);
 }
 
 // Called by dialog-handlers when the text dialog closes with a result.

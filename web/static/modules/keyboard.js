@@ -3,16 +3,14 @@
 // ---------------------------------------------------------------------------
 
 import { getState } from "./state.js";
-import {
-  btnLibrary, btnSetlists, btnRecent, btnNewest, btnReset, searchInput,
-} from "./dom.js";
-import { setTool, doUndo, isPlacementTool } from "./annotations.js";
+import { btnReset, searchInput } from "./dom.js";
+import { setTool, doUndo, isPlacementTool, rotatePage } from "./annotations.js";
 import {
   nextPage, prevPage, goToPage, closeScore,
   toggleFullscreen, applyFullscreen,
 } from "./viewer.js";
 import { showSetlistPicker, showTagEditor } from "./dialog-handlers.js";
-import { rotatePage } from "./annotations.js";
+import { navigate, listScroller } from "./views.js";
 
 // ---------------------------------------------------------------------------
 // Keybinding matching
@@ -47,11 +45,9 @@ function matchesBinding(e, binding) {
 // Keybindings state — populated from server config
 // ---------------------------------------------------------------------------
 
-let _bindings = {};
 let _parsed = {};
 
 export function setKeybindings(bindings) {
-  _bindings = bindings;
   _parsed = {};
   for (const [action, str] of Object.entries(bindings)) {
     _parsed[action] = parseBinding(str);
@@ -73,58 +69,54 @@ function isDialogOpen() {
   return document.querySelector("dialog[open]") !== null;
 }
 
+// Alt+/Ctrl+ combos, which work from any view and even from input fields
+// (they don't conflict with typing). All suppress the browser default.
+const GLOBAL_ACTIONS = {
+  go_library: () => navigate("library"),
+  go_setlists: () => navigate("setlists"),
+  go_recent: () => navigate("recent"),
+  go_newest: () => navigate("newest"),
+  focus_search: () => { searchInput.focus(); searchInput.select(); },
+  reset_filters: () => btnReset.click(),
+};
+
 function handleGlobalShortcuts(e) {
-  // Global shortcuts work even from non-viewer views and input fields
-  // (Alt+ and Ctrl+ combos don't conflict with typing)
-  if (matches(e, "go_library")) {
-    e.preventDefault();
-    btnLibrary.click();
-    return true;
-  }
-  if (matches(e, "go_setlists")) {
-    e.preventDefault();
-    btnSetlists.click();
-    return true;
-  }
-  if (matches(e, "go_recent")) {
-    e.preventDefault();
-    btnRecent.click();
-    return true;
-  }
-  if (matches(e, "go_newest")) {
-    e.preventDefault();
-    btnNewest.click();
-    return true;
-  }
-  if (matches(e, "focus_search")) {
-    e.preventDefault();
-    searchInput.focus();
-    searchInput.select();
-    return true;
-  }
-  if (matches(e, "reset_filters")) {
-    e.preventDefault();
-    btnReset.click();
-    return true;
+  for (const [action, run] of Object.entries(GLOBAL_ACTIONS)) {
+    if (matches(e, action)) {
+      e.preventDefault();
+      run();
+      return true;
+    }
   }
   return false;
 }
 
+// Viewer actions, checked in order before page navigation. Only undo
+// suppresses the browser default (Ctrl+Z).
+const VIEWER_ACTIONS = [
+  ["tool_nav", () => setTool("nav")],
+  ["tool_pen", () => setTool("pen")],
+  ["tool_text", () => setTool("text")],
+  ["tool_eraser", () => setTool("eraser")],
+  ["tool_move", () => setTool("move")],
+  ["toggle_fullscreen", toggleFullscreen],
+  ["add_to_setlist", showSetlistPicker],
+  ["edit_tags", showTagEditor],
+  ["rotate_cw", () => rotatePage(90)],
+  ["rotate_ccw", () => rotatePage(-90)],
+  ["undo", doUndo, { preventDefault: true }],
+];
+
 function handleViewerShortcuts(e) {
   const s = getState();
 
-  // Tool shortcuts
-  if (matches(e, "tool_nav")) { setTool("nav"); return true; }
-  if (matches(e, "tool_pen")) { setTool("pen"); return true; }
-  if (matches(e, "tool_text")) { setTool("text"); return true; }
-  if (matches(e, "tool_eraser")) { setTool("eraser"); return true; }
-  if (matches(e, "tool_move")) { setTool("move"); return true; }
-  if (matches(e, "toggle_fullscreen")) { toggleFullscreen(); return true; }
-  if (matches(e, "add_to_setlist")) { showSetlistPicker(); return true; }
-  if (matches(e, "edit_tags")) { showTagEditor(); return true; }
-  if (matches(e, "rotate_cw")) { rotatePage(90); return true; }
-  if (matches(e, "rotate_ccw")) { rotatePage(-90); return true; }
-  if (matches(e, "undo")) { e.preventDefault(); doUndo(); return true; }
+  for (const [action, run, opts] of VIEWER_ACTIONS) {
+    if (matches(e, action)) {
+      if (opts?.preventDefault) e.preventDefault();
+      run();
+      return true;
+    }
+  }
 
   // In wide mode, let arrow up/down and space scroll natively
   if (s.displayMode === "wide" && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === " ")) {
@@ -181,13 +173,8 @@ export function initKeyboardShortcuts() {
     // Non-viewer views: Home/End scroll the list
     if (!s.pdfDoc) {
       if (e.key === "Home" || e.key === "End") {
-        const wrap = s.currentView === "library"
-          ? document.getElementById("library-table-wrap")
-          : s.currentView === "setlists"
-            ? document.getElementById("setlist-list-wrap")
-            : s.currentView === "recent"
-              ? document.getElementById("recent-table-wrap")
-              : null;
+        const id = listScroller(s.currentView);
+        const wrap = id ? document.getElementById(id) : null;
         if (wrap) {
           e.preventDefault();
           wrap.scrollTop = e.key === "Home" ? 0 : wrap.scrollHeight;

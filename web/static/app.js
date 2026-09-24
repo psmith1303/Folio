@@ -81,29 +81,16 @@ import { getState } from "./modules/state.js";
 import { api } from "./modules/api.js";
 import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
-import { initLibraryEvents, loadLibrary, setLoadSetlistsFn } from "./modules/library.js";
-import { initViewerEvents, setLoadLibraryFn, openScore, cleanupScore } from "./modules/viewer.js";
-import { initAnnotationEvents, enterStampMode, drawAnnotations } from "./modules/annotations.js";
-import {
-  initStampPalette, loadStampAssets, setStampSelectHandler, setStampsReadyHandler,
-} from "./modules/stamps.js";
-import { initSetlistEvents, loadSetlists } from "./modules/setlists.js";
-import {
-  initDialogHandlers, showDirDialog,
-  setLoadLibraryFn as setDialogLoadLibraryFn,
-} from "./modules/dialog-handlers.js";
+import { initLibraryEvents, loadLibrary } from "./modules/library.js";
+import { initViewerEvents } from "./modules/viewer.js";
+import { initAnnotationEvents } from "./modules/annotations.js";
+import { initStampPalette, loadStampAssets } from "./modules/stamps.js";
+import { initSetlistEvents } from "./modules/setlists.js";
+import { initDialogHandlers, showDirDialog } from "./modules/dialog-handlers.js";
 import { initKeyboardShortcuts, setKeybindings } from "./modules/keyboard.js";
 import { initTouchHandlers } from "./modules/touch.js";
 import { initCacheUI } from "./modules/cache.js";
-import { initRecentEvents, setRecentCallbacks } from "./modules/recent.js";
-import { initNewestEvents, setNewestCallbacks } from "./modules/newest.js";
-
-// Wire cross-module callbacks to break circular dependencies
-setLoadLibraryFn(loadLibrary);
-setDialogLoadLibraryFn(loadLibrary);
-setLoadSetlistsFn(loadSetlists);
-setRecentCallbacks(openScore, cleanupScore);
-setNewestCallbacks(openScore, cleanupScore);
+import { initNavButtons } from "./modules/views.js";
 
 // Surface any unhandled async failure as a viewer toast — keeps the user in
 // the viewer instead of letting silent errors corrupt later interactions.
@@ -169,14 +156,10 @@ initDialogHandlers();
 initKeyboardShortcuts();
 initTouchHandlers();
 initCacheUI();
-initRecentEvents();
-initNewestEvents();
+initNavButtons();
 
-// Stamps: palette UI + asset load. Selecting a stamp enters placement mode;
-// once assets finish loading, redraw so any already-rendered stamps appear.
+// Stamps: palette UI + asset load (selecting one arms the stamp tool).
 initStampPalette();
-setStampSelectHandler(enterStampMode);
-setStampsReadyHandler(() => { if (getState().pdfDoc) drawAnnotations(); });
 loadStampAssets();
 
 // Service worker

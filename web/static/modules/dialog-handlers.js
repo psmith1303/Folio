@@ -22,16 +22,12 @@ import { refreshCachedConfig } from "./cache.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
   saveAnnotations,
-  setConflictHandler, setTextDialogHandler,
   commitTextAnnotation, cancelTextAnnotation,
   clearCurrentPageAnnotations,
 } from "./annotations.js";
 import { renderPage } from "./viewer.js";
-
-// These are set lazily to avoid circular imports at module evaluation time
-let _loadLibrary = null;
-
-export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
+import { loadLibrary } from "./library.js";
+import { addCurrentScoreToSetlist } from "./setlists.js";
 
 // ---------------------------------------------------------------------------
 // Set-folder dialog
@@ -69,7 +65,7 @@ function initDirDialog() {
       s.selectedTags.clear();
       s.allScores = [];
       s.libraryLoaded = false;
-      if (_loadLibrary) await _loadLibrary();
+      await loadLibrary();
       refreshCachedConfig();
     } catch (err) {
       libraryStatus.textContent = `Error: ${err.message}`;
@@ -85,27 +81,26 @@ function updateTextSizePt() {
   textSizePt.textContent = `${sizeToPt(parseInt(textSizeSlider.value, 10))}pt`;
 }
 
-function initTextDialog() {
-  // Register callback so annotations module can open this dialog. The
-  // dialog's own size slider is independent of the shared pen/stamp
-  // toolbar slider (it has a wider range) and, for new annotations,
-  // remembers the last size used across dialog opens.
-  setTextDialogHandler((editAnnot) => {
-    if (editAnnot) {
-      textDialogTitle.textContent = "Edit Text";
-      textInput.value = editAnnot.text;
-      textFont.value = editAnnot.font || "sans-serif";
-      textSizeSlider.value = editAnnot.size || textSizeSlider.value;
-    } else {
-      textDialogTitle.textContent = "Add Text";
-      textInput.value = "";
-      textFont.value = "sans-serif";
-    }
-    updateTextSizePt();
-    textDialog.showModal();
-    textInput.focus();
-  });
+// Opened by the text tool. The dialog's own size slider is independent of
+// the shared pen/stamp toolbar slider (it has a wider range) and, for new
+// annotations, remembers the last size used across dialog opens.
+export function showTextDialog(editAnnot) {
+  if (editAnnot) {
+    textDialogTitle.textContent = "Edit Text";
+    textInput.value = editAnnot.text;
+    textFont.value = editAnnot.font || "sans-serif";
+    textSizeSlider.value = editAnnot.size || textSizeSlider.value;
+  } else {
+    textDialogTitle.textContent = "Add Text";
+    textInput.value = "";
+    textFont.value = "sans-serif";
+  }
+  updateTextSizePt();
+  textDialog.showModal();
+  textInput.focus();
+}
 
+function initTextDialog() {
   textSizeSlider.addEventListener("input", updateTextSizePt);
 
   // Ctrl/Cmd+Enter submits the textarea (plain Enter inserts a newline)
@@ -159,9 +154,12 @@ function initClearPageDialog() {
 // Conflict dialog
 // ---------------------------------------------------------------------------
 
-function initConflictDialog() {
-  setConflictHandler(() => conflictDialog.showModal());
+// Opened when an annotation save hits a newer version on the server.
+export function showConflictDialog() {
+  conflictDialog.showModal();
+}
 
+function initConflictDialog() {
   conflictReload.addEventListener("click", async () => {
     conflictDialog.close();
     const s = getState();
@@ -199,8 +197,6 @@ function initSetlistPickerDialog() {
     const endRaw = parseInt(setlistPickerEnd.value, 10) || 0;
     const endPage = endRaw === 0 ? null : endRaw;
 
-    // Lazy import to avoid circular dep
-    const { addCurrentScoreToSetlist } = await import("./setlists.js");
     await addCurrentScoreToSetlist(s._pickerSelectedSetlist, startPage, endPage);
   });
 }

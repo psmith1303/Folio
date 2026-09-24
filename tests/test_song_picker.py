@@ -101,7 +101,7 @@ const libraryStatus = {{ textContent: "" }};
 const api = async () => ({{}});
 const refreshCachedConfig = () => {{}};
 let seenAtReload = null;
-const _loadLibrary = async () => {{
+const loadLibrary = async () => {{
   seenAtReload = {{ allScores: __s.allScores.length, loaded: __s.libraryLoaded }};
   if ({json.dumps(reload_succeeds)}) {{
     __s.allScores = [{{ filepath: "/new/Mozart - Sonata.pdf" }}];

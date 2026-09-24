@@ -186,7 +186,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `state.js` | Centralized application state |
 | `api.js` | Fetch wrapper with retry, cache-busting |
 | `dom.js` | DOM element references |
-| `views.js` | View switching (library, setlists, recent, viewer) |
+| `views.js` | View switching; `navigate(view)` for the nav bar and its shortcuts (leave the viewer, show the list view, reload it) |
 | `library.js` | Library loading and rendering |
 | `library-filter.js` | Pure filtering, sorting and search over the loaded library (library view and setlist song picker) |
 | `viewer.js` | PDF rendering, page navigation, display modes, fullscreen |

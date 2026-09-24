@@ -143,7 +143,7 @@ const frame = () => { log.push("frame"); frames.splice(0).forEach((cb) => cb());
 const setTool = () => {}, handleTextClick = () => {};
 const stampToolCursor = () => "", startPageToolCursor = () => "";
 const placeStamp = () => false, placeStartPage = () => false;
-const _nextPage = () => {}, _prevPage = () => {};
+const nextPage = () => {}, prevPage = () => {};
 const sizeSlider = { value: "3" };
 const listeners = {};
 const canvas = {

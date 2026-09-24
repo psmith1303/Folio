@@ -22,20 +22,13 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import { showView } from "./views.js";
-import {
-  drawAnnotations, setTool, setNavCallbacks, setRenderPageFn,
-  setInvalidatePrerenderFn,
-} from "./annotations.js";
+import { drawAnnotations, setTool } from "./annotations.js";
 import { addToRecent } from "./recent.js";
+import { loadLibrary } from "./library.js";
 import { explicitStartPage, findStartPage, songStartPage } from "./utils.js";
 import {
   CACHE_AVAILABLE, PDF_CACHE, pdfCacheKey, refreshCacheStatus, refreshCachedConfig,
 } from "./cache.js";
-
-// Register callbacks so annotations module can trigger navigation
-setNavCallbacks(nextPage, prevPage);
-setRenderPageFn(renderPage);
-setInvalidatePrerenderFn(invalidatePrerender);
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
 const VIEWER_TAG = "[viewer]";
@@ -178,10 +171,6 @@ async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null 
 // Open / close
 // ---------------------------------------------------------------------------
 
-// Callback for library reload on missing file — set by library module
-let _loadLibrary = null;
-export function setLoadLibraryFn(fn) { _loadLibrary = fn; }
-
 export async function openScore(score, { startPage = null } = {}) {
   const s = getState();
   dbg("openScore", score.filepath, "startPage", startPage);
@@ -201,7 +190,7 @@ export async function openScore(score, { startPage = null } = {}) {
     console.warn(VIEWER_TAG, "openScore failed → bouncing to library:", err);
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
-      if (_loadLibrary) await _loadLibrary();
+      await loadLibrary();
       refreshCachedConfig();
       showView("library");
       libraryStatus.textContent = `"${score.title}" is no longer available — library refreshed`;
@@ -345,7 +334,7 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
     console.warn(VIEWER_TAG, "openSetlistSong failed → bouncing to library:", err);
     if (err.message && err.message.includes("404")) {
       try { await api("/api/library/rescan", { method: "POST" }); } catch { /* ignore */ }
-      if (_loadLibrary) await _loadLibrary();
+      await loadLibrary();
       refreshCachedConfig();
       showView("library");
       libraryStatus.textContent = `"${song.title}" is no longer available — library refreshed`;
