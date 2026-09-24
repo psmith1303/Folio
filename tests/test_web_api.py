@@ -956,7 +956,8 @@ class TestUpdateTags:
         assert resp.status_code == 200
         idx = load_hash_index(os.path.join(library_with_pdfs, "_hash_index.json"),
                               state.library_dir)
-        new_path = resp.json()["score"]["filepath"]
+        new_path = srv.portable_path(
+            os.path.join(library_with_pdfs, resp.json()["score"]["filepath"]))
         assert new_path in idx.values()
         assert srv.portable_path(old_path) not in idx.values()
 

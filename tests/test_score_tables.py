@@ -23,7 +23,7 @@ from js_module_harness import MODULES, run_module
 pytestmark = requires_deno
 
 # Secure-context globals cache.js reads when it loads, and in-memory
-# IndexedDB ("folio-lru" entries) and Cache Storage that record what's done.
+# IndexedDB ("folio-lru-v2" entries) and Cache Storage that record what's done.
 FAKE_STORAGE = r"""
 globalThis.window = globalThis;
 globalThis.isSecureContext = true;

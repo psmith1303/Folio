@@ -257,13 +257,13 @@ def test_backup_failure_raises_safejsonerror_and_leaves_file(legacy_lib, monkeyp
 
 
 # ---------------------------------------------------------------------------
-# Server: converts on open, absolute at the API, relative on disk
+# Server: converts on open, relative at the API and on disk
 # ---------------------------------------------------------------------------
 
 
-def test_opening_a_legacy_library_converts_it_and_api_stays_absolute(
+def test_opening_a_legacy_library_converts_it_and_api_is_relative(
         client, legacy_lib):
-    pdf_path = portable_path(str(legacy_lib / "jazz" / "Davis - Blue.pdf"))
+    pdf_path = "jazz/Davis - Blue.pdf"
     assert client.post("/api/library", json={"path": str(legacy_lib)}).status_code == 200
 
     assert _read(legacy_lib / "setlists.json")["Gig"]["items"][0]["path"] \
@@ -287,8 +287,9 @@ def test_read_only_library_still_opens(client, legacy_lib, monkeypatch):
 
     assert len(state.scores) == 1
     assert (legacy_lib / "setlists.json").read_bytes() == before
-    pdf_path = portable_path(str(legacy_lib / "jazz" / "Davis - Blue.pdf"))
-    assert client.get("/api/setlists/Gig").json()["items"][0]["path"] == pdf_path
+    # Stored absolute (unconverted), still relative at the API
+    assert client.get("/api/setlists/Gig").json()["items"][0]["path"] \
+        == "jazz/Davis - Blue.pdf"
 
 
 def test_corrupt_reference_file_does_not_stop_the_library_opening(legacy_lib):
@@ -299,7 +300,7 @@ def test_corrupt_reference_file_does_not_stop_the_library_opening(legacy_lib):
 
 def test_api_writes_are_stored_relative(client, legacy_lib):
     state.set_library(str(legacy_lib))
-    pdf_path = portable_path(str(legacy_lib / "jazz" / "Davis - Blue.pdf"))
+    pdf_path = "jazz/Davis - Blue.pdf"
 
     client.post("/api/setlists", json={"name": "New"})
     resp = client.put("/api/setlists/New", json={"items": [
@@ -321,7 +322,7 @@ def test_api_writes_are_stored_relative(client, legacy_lib):
 
 def test_library_mounted_elsewhere_keeps_its_references(client, legacy_lib, tmp_path):
     """The point of Phase A: after conversion, moving (re-mounting) the
-    library changes no stored data, and the API reports the new location."""
+    library changes no stored data, and the API reports the same paths."""
     state.set_library(str(legacy_lib))
     moved = tmp_path / "mounted" / "Music"
     moved.parent.mkdir()
@@ -329,7 +330,7 @@ def test_library_mounted_elsewhere_keeps_its_references(client, legacy_lib, tmp_
     before = {n: (moved / n).read_bytes() for n in STORES}
 
     assert client.post("/api/library", json={"path": str(moved)}).status_code == 200
-    pdf_path = portable_path(str(moved / "jazz" / "Davis - Blue.pdf"))
+    pdf_path = "jazz/Davis - Blue.pdf"
     assert client.get("/api/setlists/Gig").json()["items"][0]["path"] == pdf_path
     assert client.get("/api/recent").json()["recent"][0]["filepath"] == pdf_path
     # Not mistaken for a rename: nothing was healed or rewritten.
@@ -355,4 +356,4 @@ def test_remount_keeps_entries_the_hash_heal_cannot_fix(client, tmp_path):
     os.rename(lib, moved)
     state.set_library(str(moved))
     assert client.get("/api/setlists/Gig").json()["items"][0]["path"] \
-        == portable_path(str(moved / "Bach - Suite.pdf"))
+        == "Bach - Suite.pdf"

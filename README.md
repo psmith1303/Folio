@@ -50,14 +50,11 @@ The setting is remembered across restarts.
 
 A `Dockerfile` is included; run it like any other container, with two volumes:
 
-- **Music library** — bind-mount it read-write. Stored setlists, the recent
-  list and the hash index hold paths relative to the library root, and
-  annotation sidecars sit next to each PDF, so the stored data doesn't depend
-  on the mount path. *Keep the container-side path stable for now, though:
-  the web client still identifies PDFs — including those cached for offline
-  use on each device — by their absolute path, so changing it makes every
-  device re-download its offline copies. The deployed `docker-folio.yml` uses
-  `/mnt/z/PARA/Resources/Music` (the pre-2026-09-15 host path).*
+- **Music library** — bind-mount it read-write, e.g. at `/library`. Stored
+  setlists, the recent list and the hash index hold paths relative to the
+  library root, the API gives and takes paths in the same form, and
+  annotation sidecars sit next to each PDF — so neither the stored data nor
+  each device's offline copies depend on the mount path.
 - **Config** — the app keeps its settings in `~/.folio/web_config.json`. The
   image sets `HOME=/config`, so persist `/config` (e.g. `./folio-config:/config`)
   to keep your library selection across container recreations.

@@ -147,7 +147,7 @@ class TestCacheWriteFailureIsolation:
     def _run(self, *, fetch_throws: bool, put_throws: bool) -> dict:
         core = _extract_fetch_handler_core(SW_JS.read_text(encoding="utf-8"))
         script = FETCH_HANDLER_HARNESS % {
-            "consts": 'const API_CACHE = "folio-api-v1";',
+            "consts": 'const API_CACHE = "folio-api-v2";',
             "put_throws": "true" if put_throws else "false",
             "fetch_throws": "true" if fetch_throws else "false",
             "core": core,

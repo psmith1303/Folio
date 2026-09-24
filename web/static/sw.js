@@ -1,13 +1,17 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.13.10";
+const APP_VERSION = "2.14.0";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
 // the shell. Keying them by version meant every release silently discarded
 // the offline library and it only came back after being online again.
-const API_CACHE = "folio-api-v1";
+// v2: responses hold library-relative paths since 2.14.0; v1's absolute ones
+// are swept on activate along with the v1 PDF cache.
+const API_CACHE = "folio-api-v2";
+// The LRU database from before paths became relative (see offline-lru.js).
+const OLD_LRU_DB = "folio-lru";
 
 // The PDF cache name, its keys and the LRU store, shared with the page
 // (cache.js). Versioned URL: an unversioned one could come back stale from
@@ -84,6 +88,9 @@ self.addEventListener("activate", (e) => {
       )
     )
   );
+  // Not awaited: an old page still holding a connection blocks the delete
+  // until it closes, and activation mustn't wait on that.
+  indexedDB.deleteDatabase(OLD_LRU_DB);
   self.clients.claim();
 });
 

@@ -259,10 +259,11 @@ class Score:
         except Exception as exc:
             log.warning(f"Could not parse filename '{self.filename}': {exc}")
 
-    def to_dict(self) -> dict:
-        """Serialise to a JSON-friendly dict."""
+    def to_dict(self, root: str = "") -> dict:
+        """Serialise to a JSON-friendly dict, with the filepath relative to
+        *root* when it lies inside it (as the API gives it)."""
         return {
-            "filepath": portable_path(self.filepath),
+            "filepath": portable_path(to_stored_path(self.filepath, root)),
             "filename": self.filename,
             "composer": self.composer,
             "title": self.title,
@@ -572,9 +573,10 @@ def save_annotations(
 #
 # Files that store score paths (setlists, the recent list, the hash index and
 # the scan cache) hold them relative to the library root, so they stay valid
-# wherever the library is mounted (host vs container, WSL vs Windows). In
-# memory and over the API, paths stay absolute under the current root: the
-# conversion happens only in the loaders and savers below.
+# wherever the library is mounted (host vs container, WSL vs Windows). So
+# does the API (server.py converts responses with to_stored_path). In memory,
+# paths stay absolute under the current root: the loaders and savers below
+# convert on the way in and out.
 
 # The files in a library root that store score paths.
 SETLISTS_FILE = "setlists.json"
@@ -632,17 +634,21 @@ def to_stored_path(path: str, root: str) -> str:
 # Path walkers: apply *fn* to every stored path in a loaded file, in place,
 # skipping malformed entries. Each returns the number of paths *fn* changed.
 
-def map_setlist_paths(data: dict, fn: Callable[[str], str]) -> int:
+def map_song_paths(items: list, fn: Callable[[str], str]) -> int:
+    """Like the walkers below, for one list of setlist items."""
     count = 0
-    for sl in data.values():
-        for item in sl["items"]:
-            if not isinstance(item, dict) or item.get("type", "song") != "song":
-                continue
-            old = item.get("path")
-            if isinstance(old, str) and (new := fn(old)) != old:
-                item["path"] = new
-                count += 1
+    for item in items:
+        if not isinstance(item, dict) or item.get("type", "song") != "song":
+            continue
+        old = item.get("path")
+        if isinstance(old, str) and (new := fn(old)) != old:
+            item["path"] = new
+            count += 1
     return count
+
+
+def map_setlist_paths(data: dict, fn: Callable[[str], str]) -> int:
+    return sum(map_song_paths(sl["items"], fn) for sl in data.values())
 
 
 def map_recent_paths(data: list, fn: Callable[[str], str]) -> int:

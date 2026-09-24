@@ -31,11 +31,14 @@ from .core import (
     SafeJSONError,
     Score,
     annotation_sidecar_path,
+    is_library_relative,
     load_annotations,
     load_hash_index,
     load_recent,
     load_scan_cache,
     load_setlists,
+    map_recent_paths,
+    map_song_paths,
     migrate_to_relative,
     normalize_path,
     portable_path,
@@ -49,6 +52,7 @@ from .core import (
     save_scan_cache,
     save_setlists,
     scan_library,
+    to_stored_path,
 )
 
 # ---------------------------------------------------------------------------
@@ -392,7 +396,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.13.10",
+    title="Folio", version="2.14.0",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -454,14 +458,18 @@ async def security_middleware(request: Request, call_next):
 
 
 def _resolve_under_library(filepath: str) -> str:
-    """Resolve *filepath* and verify it is under the library root.
+    """Resolve *filepath* (relative to the library root, as the API returns
+    it) and verify it is under the library root.
 
     Returns the normalised absolute path.  Raises 400 if no library is set,
     403 on traversal attempts.  Does NOT check whether the file exists.
     """
     if not state.library_dir:
         raise HTTPException(status_code=400, detail="No library directory set")
-    resolved = os.path.realpath(normalize_path(filepath))
+    p = portable_path(filepath)
+    if is_library_relative(p):
+        p = os.path.join(state.library_dir, p)
+    resolved = os.path.realpath(normalize_path(p))
     root = os.path.realpath(state.library_dir)
     if not resolved.startswith(root + os.sep) and resolved != root:
         raise HTTPException(status_code=403, detail="Path outside library")
@@ -477,6 +485,18 @@ def _validate_library_path(filepath: str) -> str:
     if not os.path.isfile(resolved):
         raise HTTPException(status_code=404, detail="File not found")
     return resolved
+
+
+def _api_path(path: str) -> str:
+    """The form the API gives *path* in: relative to the library root, so
+    clients (and their offline caches) don't depend on where it's mounted."""
+    return to_stored_path(path, state.library_dir)
+
+
+def _api_songs(items: list[dict]) -> list[dict]:
+    """Setlist *items* with song paths in API form (modified in place)."""
+    map_song_paths(items, _api_path)
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -599,7 +619,7 @@ def get_score(path: str = Query(..., description="Score filepath")):
     The library list is filtered by the client's current search, so a caller
     holding only a filepath cannot rely on it to recover a score's tags.
     """
-    return _find_score(_validate_library_path(path)).to_dict()
+    return _find_score(_validate_library_path(path)).to_dict(state.library_dir)
 
 
 @app.put("/api/scores/tags")
@@ -643,7 +663,7 @@ def update_score_tags(req: UpdateTagsRequest):
         except SafeJSONError:
             pass
 
-    return {"ok": True, "score": new_score.to_dict()}
+    return {"ok": True, "score": new_score.to_dict(state.library_dir)}
 
 
 @app.get("/api/library")
@@ -655,7 +675,7 @@ def get_library():
     every view, online or offline.
     """
     return {
-        "scores": [s.to_dict() for s in state.scores],
+        "scores": [s.to_dict(state.library_dir) for s in state.scores],
         "total": len(state.scores),
     }
 
@@ -749,6 +769,7 @@ def get_recent():
         fp = entry.get("filepath")
         score = state.find_score(fp) if isinstance(fp, str) and fp else None
         entry["tags"] = sorted(score.tags) if score else []
+    map_recent_paths(recent, _api_path)
     return {"recent": recent}
 
 
@@ -764,7 +785,7 @@ def get_newest(limit: int = Query(20, ge=1, le=200)):
         state.scores, key=lambda s: s.mtime, reverse=True
     )[:limit]
     return {
-        "scores": [s.to_dict() for s in newest],
+        "scores": [s.to_dict(state.library_dir) for s in newest],
         "total": len(newest),
     }
 
@@ -934,7 +955,7 @@ def get_setlist(name: str):
             enriched.append(item)
     return {
         "name": name,
-        "items": enriched,
+        "items": _api_songs(enriched),
         "shuffle": bool(sl.get("shuffle", False)),
     }
 
@@ -946,7 +967,7 @@ def get_setlist_flat(name: str):
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
     songs = _expand_setlist(data, name)
-    return {"name": name, "songs": songs}
+    return {"name": name, "songs": _api_songs(songs)}
 
 
 @app.get("/api/setlists/{name}/playback")
@@ -960,7 +981,7 @@ def get_setlist_playback(name: str):
     if name not in data:
         raise HTTPException(status_code=404, detail="Setlist not found")
     songs = _expand_setlist(data, name, random.Random())
-    return {"name": name, "songs": songs}
+    return {"name": name, "songs": _api_songs(songs)}
 
 
 class CreateSetlistRequest(BaseModel):

@@ -1,7 +1,7 @@
 """Offline PDF cache bookkeeping, shared by the service worker and the page.
 
 web/static/modules/offline-lru.js (Step 10a) is the one copy of the cache
-name, the PDF cache keys and the "folio-lru" IndexedDB store: when each
+name, the PDF cache keys and the "folio-lru-v2" IndexedDB store: when each
 cached PDF was last used, its size, and whether the user pinned it. Only
 unpinned (auto-cached) PDFs are evicted, oldest first, beyond
 MAX_AUTO_CACHED. sw.js loads it with importScripts(); cache.js imports it.
@@ -25,7 +25,7 @@ STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 LRU_JS = MODULES / "offline-lru.js"
 SW_JS = STATIC / "sw.js"
 
-# In-memory IndexedDB ("folio-lru" entries) and Cache Storage. Cache keys are
+# In-memory IndexedDB ("folio-lru-v2" entries) and Cache Storage. Cache keys are
 # stored as the page and service worker give them (a URL string or Request).
 FAKES = r"""
 globalThis.__lru = new Map();
@@ -240,7 +240,7 @@ const status = await fetchPdf({json.dumps(path)});
 console.log(JSON.stringify({{ status, ...__state() }}));
 """)
     assert r["status"] == 200
-    assert r["stores"]["folio-pdfs-v1"] == [_key(path)]
+    assert r["stores"]["folio-pdfs-v2"] == [_key(path)]
     assert r["lru"] == {path: {"size": len("%PDF-1.4 https://folio.test" + _key(path)), "pinned": False,
                                "lastUsed": 1000}}
 
@@ -253,7 +253,7 @@ __setNow(5000);
 const status = await fetchPdf({json.dumps(path)});
 const e = __state().lru[{json.dumps(path)}];
 console.log(JSON.stringify({{ status, lastUsed: e.lastUsed, pinned: e.pinned,
-  cached: __state().stores["folio-pdfs-v1"] }}));
+  cached: __state().stores["folio-pdfs-v2"] }}));
 """)
     assert r["status"] == 200
     assert r["lastUsed"] == 5000
@@ -301,7 +301,7 @@ def test_page_downloads_and_pins_a_pdf():
 await M.cachePdf({json.dumps(path)});
 console.log(JSON.stringify({{ ...__state(), fetched: __fetched, button: M.cacheButtonHtml({json.dumps(path)}) }}));
 """)
-    assert r["stores"][r"folio-pdfs-v1"] == [_key(path)]
+    assert r["stores"][r"folio-pdfs-v2"] == [_key(path)]
     assert r["lru"][path]["pinned"] is True
     assert r["fetched"][0].startswith(_key(path) + "&_t=")
     assert "Pinned for offline use" in r["button"]
@@ -326,7 +326,7 @@ await M.cachePdf({json.dumps(path)});
 await M.evictPdf({json.dumps(path)});
 console.log(JSON.stringify({{ ...__state(), button: M.cacheButtonHtml({json.dumps(path)}) }}));
 """)
-    assert r["lru"] == {} and r["stores"]["folio-pdfs-v1"] == []
+    assert r["lru"] == {} and r["stores"]["folio-pdfs-v2"] == []
     assert "Download for offline use" in r["button"]
 
 
@@ -337,4 +337,4 @@ def test_page_uses_the_shared_cache_name_and_keys():
 console.log(JSON.stringify({ cache: M.PDF_CACHE, same: self.FolioLru.PDF_CACHE === M.PDF_CACHE,
   key: M.pdfCacheKey === self.FolioLru.pdfCacheKey }));
 """)
-    assert r == {"cache": "folio-pdfs-v1", "same": True, "key": True}
+    assert r == {"cache": "folio-pdfs-v2", "same": True, "key": True}

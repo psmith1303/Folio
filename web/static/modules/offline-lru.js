@@ -2,9 +2,13 @@
 // Offline PDF cache bookkeeping, shared by the service worker and the page.
 //
 // Cached PDFs live in Cache Storage under PDF_CACHE, keyed by pdfCacheKey;
-// the "folio-lru" IndexedDB store records, per path, when it was last used,
-// its size and whether the user pinned it. Only unpinned (auto-cached) PDFs
-// are evicted, oldest first, beyond MAX_AUTO_CACHED.
+// the LRU_DB IndexedDB store records, per path, when it was last used, its
+// size and whether the user pinned it. Only unpinned (auto-cached) PDFs are
+// evicted, oldest first, beyond MAX_AUTO_CACHED.
+//
+// Both names end in -v2 since paths became library-relative (2.14.0). The v1
+// cache and "folio-lru" database held absolute paths; the service worker
+// drops them on activate, so offline copies start fresh.
 //
 // This is a classic script, not an ES module, because the service worker is
 // a classic worker: sw.js loads it with importScripts() and cache.js with a
@@ -12,7 +16,8 @@
 // ---------------------------------------------------------------------------
 
 self.FolioLru = (() => {
-  const PDF_CACHE = "folio-pdfs-v1";
+  const PDF_CACHE = "folio-pdfs-v2";
+  const LRU_DB = "folio-lru-v2";
   const MAX_AUTO_CACHED = 100;
 
   // Cache Storage key for a PDF. The page and the service worker must build
@@ -23,7 +28,7 @@ self.FolioLru = (() => {
 
   function openLruDb() {
     return new Promise((resolve, reject) => {
-      const req = indexedDB.open("folio-lru", 2);
+      const req = indexedDB.open(LRU_DB, 1);
       req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains("entries")) {
