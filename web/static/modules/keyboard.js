@@ -4,9 +4,6 @@
 
 import { getState } from "./state.js";
 import {
-  textDialog, dirDialog, setlistNameDialog, songPickerDialog,
-  setlistPickerDialog, setlistRefPickerDialog,
-  conflictDialog, offlineDialog, stampDialog, tagEditorDialog,
   btnLibrary, btnSetlists, btnRecent, btnNewest, btnReset, searchInput,
 } from "./dom.js";
 import { setTool, doUndo, isPlacementTool } from "./annotations.js";
@@ -69,13 +66,11 @@ function matches(e, action) {
 // Actions
 // ---------------------------------------------------------------------------
 
+// While any dialog is open the page underneath takes no shortcuts. Asking
+// the page, rather than keeping a list, means a new dialog can't be missed
+// (the clear-page confirmation was, so keys turned pages behind it).
 function isDialogOpen() {
-  return (
-    textDialog.open || dirDialog.open || setlistNameDialog.open ||
-    songPickerDialog.open || setlistPickerDialog.open ||
-    setlistRefPickerDialog.open || conflictDialog.open ||
-    offlineDialog.open || stampDialog.open || tagEditorDialog.open
-  );
+  return document.querySelector("dialog[open]") !== null;
 }
 
 function handleGlobalShortcuts(e) {
