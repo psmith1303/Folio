@@ -126,24 +126,52 @@ def test_single_line_text_hits_over_the_drawn_text():
     assert not _hit(text, 300 - 21, 395)  # left of the anchor beyond the halo
 
 
-# The text is drawn with its first line's bottom at the anchor and each later
-# line lower down (drawText), but hitText's box grows *upwards* from the
-# anchor. So on multi-line text the lower lines can't be erased, moved or
-# tapped to edit, while blank space above the text counts as a hit. The
-# refactor didn't change this (old and new code agree); it's recorded here
-# so a fix is noticed: when it lands, this test starts passing and strict
-# xfail turns that into a failure that says to remove the marker.
-@pytest.mark.xfail(strict=True, reason="pre-existing: multi-line text hit box "
-                   "extends above the anchor, while the lines are drawn below it")
-def test_every_line_of_multiline_text_is_hittable():
-    text = {"type": "text", "x": 0.5, "y": 0.5, "text": "one\ntwo\nthree", "size": 5}
-    probes = _run(f"""
-const a = {json.dumps(text)};
-const {{ cx, cy, sz, lines, lineH }} = textLayout(a, {W}, {H}, 0, {PDF_W});
-console.log(JSON.stringify(lines.map((_, i) =>
-  ANNOT_TYPES.text.hit(a, cx + 5, cy + i * lineH - sz / 2, {W}, {H}, 0, 20, {PDF_W}))));
+MULTI = {"type": "text", "x": 0.5, "y": 0.5, "text": "one\ntwo\nthree", "size": 5}
+
+
+def _text_probe(annot: dict, expr: str, rot: int = 0):
+    """Evaluate *expr* with the text's layout (cx, cy, sz, lines, lineH) and
+    hit(px, py) (20 px halo) in scope, on a page rotated by *rot*."""
+    return _run(f"""
+const a = {json.dumps(annot)};
+const {{ cx, cy, sz, lines, lineH }} = textLayout(a, {W}, {H}, {rot}, {PDF_W});
+const hit = (px, py) => ANNOT_TYPES.text.hit(a, px, py, {W}, {H}, {rot}, 20, {PDF_W});
+console.log(JSON.stringify({expr}));
 """)
+
+
+ROTATIONS = pytest.mark.parametrize("rot", [0, 90, 180, 270])
+
+
+@ROTATIONS
+def test_every_line_of_multiline_text_is_hittable(rot):
+    """Regression: drawText puts each further line lower down, but the hit
+    box grew *upwards* from the anchor, so on 3-line text the last line
+    couldn't be erased, moved or tapped to edit at all. Text is drawn
+    upright whatever the page rotation, so this holds on rotated pages too."""
+    probes = _text_probe(MULTI, "lines.map((_, i) => hit(cx + 5, cy + i * lineH - sz / 2))", rot)
     assert probes == [True, True, True]
+
+
+@ROTATIONS
+def test_blank_space_above_multiline_text_is_not_a_hit(rot):
+    """Regression: the box extended lines.length line heights above the
+    anchor, where nothing is drawn."""
+    assert _text_probe(MULTI, "hit(cx + 5, cy - 2.5 * lineH)", rot) is False
+
+
+def test_multiline_text_box_ends_a_halo_below_the_last_line():
+    edges = _text_probe(MULTI, "[hit(cx + 5, cy + 2 * lineH + 19), hit(cx + 5, cy + 2 * lineH + 21)]")
+    assert edges == [True, False]
+
+
+def test_single_line_text_box_is_unchanged():
+    """One line height above the baseline to the baseline, plus the halo --
+    what the box has always been for single-line text."""
+    one = {"type": "text", "x": 0.5, "y": 0.5, "text": "cresc.", "size": 5}
+    edges = _text_probe(one, "[hit(cx + 5, cy - lineH - 19), hit(cx + 5, cy - lineH - 21),"
+                             " hit(cx + 5, cy + 19), hit(cx + 5, cy + 21)]")
+    assert edges == [True, False, True, False]
 
 
 def test_draw_and_hit_share_one_text_layout():
@@ -201,6 +229,20 @@ def test_type_filter_looks_past_other_types():
                 "[findTopHit(p(302, 395), layout, 10).uuid,"
                 " findTopHit(p(302, 395), layout, 10, 'text').uuid]")
     assert got == ["ink", "t"]
+
+
+@pytest.mark.parametrize("halo, only", [(10, "text"), (20, None)])
+def test_tapping_the_last_line_of_multiline_text_finds_it(halo, only):
+    """The user-visible symptom, through the paths the tools use: the text
+    tool (10 px, text only) and the eraser/move tool (20 px, any type)."""
+    src = ANNOTATIONS_JS.read_text(encoding="utf-8")
+    text = {**MULTI, "uuid": "t"}
+    found = _run(f"""
+const {{ cx, cy, sz, lineH }} = textLayout({json.dumps(text)}, 600, 800, 0, 612);
+const hit = findTopHit(p(cx + 5, cy + 2 * lineH - sz / 2), layout, {halo}, {json.dumps(only)});
+console.log(JSON.stringify(hit && hit.uuid));
+""", prelude=FIND % json.dumps({"0": [text]}) + _fn(src, "findTopHit"))
+    assert found == "t"
 
 
 @pytest.mark.parametrize("annots, point", [

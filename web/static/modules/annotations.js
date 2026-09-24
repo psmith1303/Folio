@@ -544,9 +544,13 @@ function hitText(annot, px, py, w, h, rot, halo, pdfW) {
   const { cx, cy, sz, lines, lineH } = textLayout(annot, w, h, rot, pdfW);
   const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
   const textW = Math.max(sz, longest * sz * 0.6);
-  const totalH = lines.length * lineH;
+  // drawText puts the first line's bottom at the anchor and each further
+  // line one lineH lower, so the box runs from a line height above the
+  // anchor down to the last line's bottom.
+  const top = cy - lineH;
+  const bottom = cy + (lines.length - 1) * lineH;
   return px >= cx - halo && px <= cx + textW + halo &&
-         py >= cy - totalH - halo && py <= cy + halo;
+         py >= top - halo && py <= bottom + halo;
 }
 
 function hitStamp(annot, px, py, w, h, rot, halo, pdfW) {
