@@ -34,6 +34,18 @@ export function drawAnnotations() {
   }
 }
 
+// For bursty callers (drags, image loads): redraw at most once per frame.
+let _drawScheduled = false;
+
+function scheduleDraw() {
+  if (_drawScheduled) return;
+  _drawScheduled = true;
+  requestAnimationFrame(() => {
+    _drawScheduled = false;
+    drawAnnotations();
+  });
+}
+
 function drawPageAnnotations(annotCanvas, layout) {
   const s = getState();
   const dpr = window.devicePixelRatio || 1;
@@ -63,7 +75,7 @@ function startStampImage() {
   if (!_startStampImg) {
     _startStampImg = new Image();
     _startStampImg.onload = () => {
-      drawAnnotations();
+      scheduleDraw();
       if (getState().activeTool === "startpage") setTool("startpage");
     };
     _startStampImg.src = START_STAMP_SRC;
@@ -103,7 +115,8 @@ function drawStamp(ctx, annot, w, h, rot, pdfW) {
   const color = annot.color || "black";
   // getStampImage returns null until the SVG raster is ready; the onReady
   // callback redraws once it loads (first paint of a freshly-loaded stamp).
-  const img = getStampImage(annot.id, color, () => drawAnnotations());
+  // Each redraw before then adds another callback, so coalesce them.
+  const img = getStampImage(annot.id, color, scheduleDraw);
   if (!img) return;
   ctx.drawImage(img, cx - wCss / 2, cy - hCss / 2, wCss, hCss);
 }
@@ -338,13 +351,24 @@ export function rotatePage(delta) {
 // Serialize saves so each one waits for the previous to complete,
 // preventing false etag conflicts from concurrent in-flight requests.
 let _saveChain = Promise.resolve();
+// The save waiting behind the one in flight, if any. Saves send the whole
+// current state, so further calls for the same score just ride along with
+// it instead of queuing another full upload each.
+let _queuedSave = null;
 
 export function saveAnnotations(force = false) {
   const filepath = getState().currentScore?.filepath;
+  if (_queuedSave && _queuedSave.filepath === filepath) {
+    _queuedSave.force ||= force;
+    return;
+  }
+  const job = { filepath, force };
+  _queuedSave = job;
   _saveChain = _saveChain.then(() => {
+    if (_queuedSave === job) _queuedSave = null;  // started: later edits need a new save
     const s = getState();
     if (!s.currentScore || s.currentScore.filepath !== filepath) return;
-    return _doSaveAnnotations(s, force);
+    return _doSaveAnnotations(s, job.force);
   }).catch((err) => {
     console.error("Save chain error:", err);
   });
@@ -507,6 +531,8 @@ function onPointerUp(e, annotCanvas, layoutIndex) {
     drawAnnotations();
   } else if (s.activeTool === "move" && s.draggingAnnot) {
     endMove();
+  } else if (s.activeTool === "eraser") {
+    flushEraserSave();
   }
   s.currentStroke = [];
 }
@@ -514,6 +540,16 @@ function onPointerUp(e, annotCanvas, layoutIndex) {
 // ---------------------------------------------------------------------------
 // Eraser
 // ---------------------------------------------------------------------------
+
+// An eraser drag can remove many marks; save them in one go at pointerup or
+// pointercancel (e.g. iOS palm rejection) rather than once per mark.
+let _eraserUnsaved = false;
+
+function flushEraserSave() {
+  if (!_eraserUnsaved) return;
+  _eraserUnsaved = false;
+  saveAnnotations();
+}
 
 function eraseAt(e, annotCanvas, layoutIndex) {
   const s = getState();
@@ -526,8 +562,8 @@ function eraseAt(e, annotCanvas, layoutIndex) {
   pushUndo(p.pg);
   const pageAnnots = s.annotations[p.pg];
   pageAnnots.splice(pageAnnots.indexOf(hit), 1);
-  saveAnnotations();
-  drawAnnotations();
+  _eraserUnsaved = true;  // saved once when the gesture ends
+  scheduleDraw();
 }
 
 // Hit tests: is CSS point (px, py) on the annotation, within `halo` px?
@@ -665,7 +701,7 @@ function moveTo(e, annotCanvas) {
     annot.x = d.orig.x + dx;
     annot.y = d.orig.y + dy;
   }
-  drawAnnotations();
+  scheduleDraw();
 }
 
 function endMove() {
@@ -791,6 +827,7 @@ function setupAnnotCanvas(annotCanvas, layoutIndex) {
   annotCanvas.addEventListener("pointerdown", (e) => onPointerDown(e, annotCanvas, layoutIndex));
   annotCanvas.addEventListener("pointermove", (e) => onPointerMove(e, annotCanvas, layoutIndex));
   annotCanvas.addEventListener("pointerup", (e) => onPointerUp(e, annotCanvas, layoutIndex));
+  annotCanvas.addEventListener("pointercancel", flushEraserSave);
 }
 
 export function initAnnotationEvents() {
