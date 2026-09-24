@@ -46,15 +46,8 @@ function drawPageAnnotations(annotCanvas, layout) {
   const rot = (s.rotations[pg] || 0) % 360;
 
   for (const annot of pageAnnots) {
-    if (annot.type === "ink") {
-      drawInk(ctx, annot, layout.cssW, layout.cssH, rot);
-    } else if (annot.type === "text") {
-      drawText(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
-    } else if (annot.type === "stamp") {
-      drawStamp(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
-    } else if (annot.type === "startpage") {
-      drawStartStamp(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
-    }
+    const type = ANNOT_TYPES[annot.type];
+    if (type) type.draw(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
   }
 }
 
@@ -141,16 +134,22 @@ function textCssSize(annot, w, pdfW) {
   return NOTE_GLYPHS.has(annot.text) ? Math.round(sz * 6) : sz;
 }
 
-function drawText(ctx, annot, w, h, rot, pdfW) {
+// Where a text annotation's lines go, in CSS px: the anchor (bottom-left of
+// the first line), font size, lines and line height. Shared by draw and
+// hit-test, like textCssSize, so the eraser/move target matches the drawing.
+function textLayout(annot, w, h, rot, pdfW) {
   const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
   const sz = textCssSize(annot, w, pdfW);
+  return { cx, cy, sz, lines: String(annot.text).split("\n"), lineH: sz * 1.2 };
+}
+
+function drawText(ctx, annot, w, h, rot, pdfW) {
+  const { cx, cy, sz, lines, lineH } = textLayout(annot, w, h, rot, pdfW);
   const font = annot.font || "sans-serif";
   ctx.font = `${sz}px ${font}`;
   ctx.fillStyle = annot.color || "black";
   ctx.textAlign = "left";
   ctx.textBaseline = "bottom";
-  const lines = String(annot.text).split("\n");
-  const lineH = sz * 1.2;
   for (let i = 0; i < lines.length; i++) {
     ctx.fillText(lines[i], cx, cy + i * lineH);
   }
@@ -171,34 +170,8 @@ export function setTool(tool) {
   };
   if (map[tool]) map[tool].classList.add("active");
 
-  // Desktop cursor for stamp mode: the stamp itself at its on-screen size,
-  // hotspot centred. A PNG (canvas-rendered) cursor is used because SVG-data-URI
-  // cursors render unreliably in some browsers (Firefox). Touch devices have no
-  // cursor, so the tool is just "armed" and the next tap places it. Browsers
-  // cap cursor size (~128px).
-  let stampCursor = "";
-  if (tool === "stamp" && s.selectedStamp) {
-    const layout = s.pageLayouts[0];
-    let { wCss, hCss } = stampCssSize(s.selectedStamp, parseInt(sizeSlider.value, 10),
-      layout ? layout.cssW : 0, layout ? layout.pdfW : 0);
-    if (!(wCss > 0) || !(hCss > 0)) { wCss = hCss = 24; }  // no page rendered yet
-    const m = Math.max(wCss, hCss);
-    if (m > 128) { const k = 128 / m; wCss *= k; hCss *= k; }  // browser cursor cap
-    // Re-apply the cursor once the stamp image finishes loading.
-    const url = stampCursorPng(s.selectedStamp, s.penColor, wCss, hCss, () => {
-      if (getState().activeTool === "stamp") setTool("stamp");
-    });
-    stampCursor = url
-      ? `url("${url}") ${Math.round(wCss / 2)} ${Math.round(hCss / 2)}, crosshair`
-      : "crosshair";
-  } else if (tool === "startpage") {
-    const layout = s.pageLayouts[0];
-    let sz = layout ? startStampCssSize(layout.cssW, layout.pdfW) : 0;
-    if (!(sz > 0)) sz = 24;
-    sz = Math.round(Math.min(sz, 128));  // browser cursor cap
-    const url = startStampCursorPng(sz);
-    stampCursor = url ? `url("${url}") ${sz >> 1} ${sz >> 1}, crosshair` : "crosshair";
-  }
+  const placement = PLACEMENT_TOOLS[tool];
+  const stampCursor = placement ? placement.cursor(s) : "";
 
   for (const ac of [annotCanvas1, annotCanvas2]) {
     ac.classList.remove("tool-pen", "tool-text", "tool-eraser", "tool-move", "tool-stamp",
@@ -221,9 +194,47 @@ function startStampCursorPng(sz) {
 }
 
 // Tools that place one mark on the next tap, then return to Nav. Escape and
-// off-page clicks cancel them.
+// off-page clicks cancel them. For each:
+//   cursor(state) -> CSS cursor for desktop: the mark itself at its on-screen
+//     size, hotspot centred ("" for none). A PNG (canvas-rendered) cursor is
+//     used because SVG-data-URI cursors render unreliably in some browsers
+//     (Firefox). Touch devices have no cursor, so the tool is just "armed"
+//     and the next tap places it. Browsers cap cursor size (~128px).
+//   place(state, point) -> add the mark at `point` (from pagePoint); returns
+//     false if there was nothing to place.
+const PLACEMENT_TOOLS = {
+  stamp: { cursor: stampToolCursor, place: placeStamp },
+  startpage: { cursor: startPageToolCursor, place: placeStartPage },
+};
+
 export function isPlacementTool(tool) {
-  return tool === "stamp" || tool === "startpage";
+  return Object.hasOwn(PLACEMENT_TOOLS, tool);
+}
+
+function stampToolCursor(s) {
+  if (!s.selectedStamp) return "";
+  const layout = s.pageLayouts[0];
+  let { wCss, hCss } = stampCssSize(s.selectedStamp, parseInt(sizeSlider.value, 10),
+    layout ? layout.cssW : 0, layout ? layout.pdfW : 0);
+  if (!(wCss > 0) || !(hCss > 0)) { wCss = hCss = 24; }  // no page rendered yet
+  const m = Math.max(wCss, hCss);
+  if (m > 128) { const k = 128 / m; wCss *= k; hCss *= k; }  // browser cursor cap
+  // Re-apply the cursor once the stamp image finishes loading.
+  const url = stampCursorPng(s.selectedStamp, s.penColor, wCss, hCss, () => {
+    if (getState().activeTool === "stamp") setTool("stamp");
+  });
+  return url
+    ? `url("${url}") ${Math.round(wCss / 2)} ${Math.round(hCss / 2)}, crosshair`
+    : "crosshair";
+}
+
+function startPageToolCursor(s) {
+  const layout = s.pageLayouts[0];
+  let sz = layout ? startStampCssSize(layout.cssW, layout.pdfW) : 0;
+  if (!(sz > 0)) sz = 24;
+  sz = Math.round(Math.min(sz, 128));  // browser cursor cap
+  const url = startStampCursorPng(sz);
+  return url ? `url("${url}") ${sz >> 1} ${sz >> 1}, crosshair` : "crosshair";
 }
 
 // Enter stamp-placement mode with the given stamp id (called from the palette).
@@ -430,10 +441,13 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
     }
   } else if (s.activeTool === "text") {
     handleTextClick(e, annotCanvas, layoutIndex);
-  } else if (s.activeTool === "stamp") {
-    handleStampClick(e, annotCanvas, layoutIndex);
-  } else if (s.activeTool === "startpage") {
-    handleStartPageClick(e, annotCanvas, layoutIndex);
+  } else if (isPlacementTool(s.activeTool)) {
+    // One mark per arming, then back to navigation.
+    if (PLACEMENT_TOOLS[s.activeTool].place(s, pagePoint(e, annotCanvas, layout))) {
+      saveAnnotations();
+      setTool("nav");
+      drawAnnotations();
+    }
   }
 }
 
@@ -506,54 +520,81 @@ function eraseAt(e, annotCanvas, layoutIndex) {
   const layout = s.pageLayouts[layoutIndex];
   if (!layout) return;
 
-  const { x, y } = canvasCoords(e, annotCanvas);
-  const pg = String(layout.page - 1);
-  const pageAnnots = s.annotations[pg];
-  if (!pageAnnots || pageAnnots.length === 0) return;
-
-  const rot = (s.rotations[pg] || 0) % 360;
-  const halo = 20;
-
-  for (let i = pageAnnots.length - 1; i >= 0; i--) {
-    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo, layout.pdfW)) {
-      pushUndo(pg);
-      pageAnnots.splice(i, 1);
-      saveAnnotations();
-      drawAnnotations();
-      return;
-    }
-  }
+  const p = pagePoint(e, annotCanvas, layout);
+  const hit = findTopHit(p, layout, 20);
+  if (!hit) return;
+  pushUndo(p.pg);
+  const pageAnnots = s.annotations[p.pg];
+  pageAnnots.splice(pageAnnots.indexOf(hit), 1);
+  saveAnnotations();
+  drawAnnotations();
 }
 
-function hitTest(annot, px, py, w, h, rot, halo, pdfW) {
-  if (annot.type === "ink") {
-    for (const pt of annot.points) {
-      const [cx, cy] = transformPt(pt[0], pt[1], w, h, rot);
-      if (Math.abs(cx - px) < halo && Math.abs(cy - py) < halo) return true;
-    }
-    return false;
-  } else if (annot.type === "text") {
-    const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    const sz = textCssSize(annot, w, pdfW);
-    const lines = String(annot.text).split("\n");
-    const lineH = sz * 1.2;
-    const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
-    const textW = Math.max(sz, longest * sz * 0.6);
-    const totalH = lines.length * lineH;
-    return px >= cx - halo && px <= cx + textW + halo &&
-           py >= cy - totalH - halo && py <= cy + halo;
-  } else if (annot.type === "stamp") {
-    const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    const { wCss, hCss } = stampCssSize(annot.id, annot.size, w, pdfW);
-    const halfW = Math.max(halo, wCss / 2);
-    const halfH = Math.max(halo, hCss / 2);
-    return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
-  } else if (annot.type === "startpage") {
-    const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
-    const half = Math.max(halo, startStampCssSize(w, pdfW) / 2);
-    return Math.abs(cx - px) < half && Math.abs(cy - py) < half;
+// Hit tests: is CSS point (px, py) on the annotation, within `halo` px?
+
+function hitInk(annot, px, py, w, h, rot, halo) {
+  for (const pt of annot.points) {
+    const [cx, cy] = transformPt(pt[0], pt[1], w, h, rot);
+    if (Math.abs(cx - px) < halo && Math.abs(cy - py) < halo) return true;
   }
   return false;
+}
+
+function hitText(annot, px, py, w, h, rot, halo, pdfW) {
+  const { cx, cy, sz, lines, lineH } = textLayout(annot, w, h, rot, pdfW);
+  const longest = lines.reduce((m, l) => Math.max(m, l.length), 1);
+  const textW = Math.max(sz, longest * sz * 0.6);
+  const totalH = lines.length * lineH;
+  return px >= cx - halo && px <= cx + textW + halo &&
+         py >= cy - totalH - halo && py <= cy + halo;
+}
+
+function hitStamp(annot, px, py, w, h, rot, halo, pdfW) {
+  const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+  const { wCss, hCss } = stampCssSize(annot.id, annot.size, w, pdfW);
+  const halfW = Math.max(halo, wCss / 2);
+  const halfH = Math.max(halo, hCss / 2);
+  return Math.abs(cx - px) < halfW && Math.abs(cy - py) < halfH;
+}
+
+function hitStartStamp(annot, px, py, w, h, rot, halo, pdfW) {
+  const [cx, cy] = transformPt(annot.x, annot.y, w, h, rot);
+  const half = Math.max(halo, startStampCssSize(w, pdfW) / 2);
+  return Math.abs(cx - px) < half && Math.abs(cy - py) < half;
+}
+
+// Per annotation type: draw(ctx, annot, w, h, rot, pdfW) and
+// hit(annot, px, py, w, h, rot, halo, pdfW). Unknown types are skipped.
+const ANNOT_TYPES = {
+  ink: { draw: drawInk, hit: hitInk },
+  text: { draw: drawText, hit: hitText },
+  stamp: { draw: drawStamp, hit: hitStamp },
+  startpage: { draw: drawStartStamp, hit: hitStartStamp },
+};
+
+// The pointer's position on `layout`'s page: CSS px on its canvas, the page
+// key and rotation, and (nx, ny) in stored (unrotated, normalised) space.
+function pagePoint(e, annotCanvas, layout) {
+  const { x, y } = canvasCoords(e, annotCanvas);
+  const pg = String(layout.page - 1);
+  const rot = (getState().rotations[pg] || 0) % 360;
+  const [nx, ny] = inverseTransformPt(x / layout.cssW, y / layout.cssH, rot);
+  return { x, y, pg, rot, nx, ny };
+}
+
+// The topmost annotation on the page under point `p` (from pagePoint),
+// optionally only of type `onlyType`, or null.
+function findTopHit(p, layout, halo, onlyType = null) {
+  const pageAnnots = getState().annotations[p.pg] || [];
+  for (let i = pageAnnots.length - 1; i >= 0; i--) {
+    const a = pageAnnots[i];
+    const type = ANNOT_TYPES[a.type];
+    if (type && (!onlyType || a.type === onlyType) &&
+        type.hit(a, p.x, p.y, layout.cssW, layout.cssH, p.rot, halo, layout.pdfW)) {
+      return a;
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -567,28 +608,13 @@ function startMove(e, annotCanvas, layoutIndex) {
   const layout = s.pageLayouts[layoutIndex];
   if (!layout) return false;
 
-  const pg = String(layout.page - 1);
-  const pageAnnots = s.annotations[pg];
-  if (!pageAnnots || pageAnnots.length === 0) return false;
-
-  const { x, y } = canvasCoords(e, annotCanvas);
-  const rot = (s.rotations[pg] || 0) % 360;
-  const halo = 20;
-
-  let target = null;
-  for (let i = pageAnnots.length - 1; i >= 0; i--) {
-    if (hitTest(pageAnnots[i], x, y, layout.cssW, layout.cssH, rot, halo, layout.pdfW)) {
-      target = pageAnnots[i];
-      break;
-    }
-  }
+  const p = pagePoint(e, annotCanvas, layout);
+  const target = findTopHit(p, layout, 20);
   if (!target) return false;
 
   // Grab point and the annotation's geometry, both in stored page space,
   // so deltas survive rotation (the rotation offsets cancel in subtraction).
-  const [grabX, grabY] = inverseTransformPt(
-    x / layout.cssW, y / layout.cssH, rot,
-  );
+  const { pg, rot, nx: grabX, ny: grabY } = p;
   const orig = target.type === "ink"
     ? target.points.map(([px, py]) => [px, py])
     : { x: target.x, y: target.y };
@@ -655,27 +681,13 @@ function handleTextClick(e, annotCanvas, layoutIndex) {
   const layout = s.pageLayouts[layoutIndex];
   if (!layout) return;
 
-  const { x, y } = canvasCoords(e, annotCanvas);
-  const pg = String(layout.page - 1);
-  const rot = (s.rotations[pg] || 0) % 360;
-
-  const pageAnnots = s.annotations[pg] || [];
-  let editAnnot = null;
-  for (let i = pageAnnots.length - 1; i >= 0; i--) {
-    const a = pageAnnots[i];
-    if (a.type === "text" && hitTest(a, x, y, layout.cssW, layout.cssH, rot, 10, layout.pdfW)) {
-      editAnnot = a;
-      break;
-    }
-  }
+  const p = pagePoint(e, annotCanvas, layout);
+  const editAnnot = findTopHit(p, layout, 10, "text");
 
   if (editAnnot) {
-    s.pendingTextAnnot = { pg, editUuid: editAnnot.uuid };
+    s.pendingTextAnnot = { pg: p.pg, editUuid: editAnnot.uuid };
   } else {
-    const nx = x / layout.cssW;
-    const ny = y / layout.cssH;
-    const [origX, origY] = inverseTransformPt(nx, ny, rot);
-    s.pendingTextAnnot = { pg, nx: origX, ny: origY, editUuid: null };
+    s.pendingTextAnnot = { pg: p.pg, nx: p.nx, ny: p.ny, editUuid: null };
   }
 
   if (_textDialogHandler) _textDialogHandler(editAnnot);
@@ -724,50 +736,30 @@ export function cancelTextAnnotation() {
 }
 
 // ---------------------------------------------------------------------------
-// Stamp tool
+// Placement: SMuFL stamp
 // ---------------------------------------------------------------------------
 
-function handleStampClick(e, annotCanvas, layoutIndex) {
-  const s = getState();
-  const layout = s.pageLayouts[layoutIndex];
-  if (!layout || !s.selectedStamp) return;
-
-  const { x, y } = canvasCoords(e, annotCanvas);
-  const pg = String(layout.page - 1);
-  const rot = (s.rotations[pg] || 0) % 360;
-  const [origX, origY] = inverseTransformPt(x / layout.cssW, y / layout.cssH, rot);
-
+function placeStamp(s, { pg, nx, ny }) {
+  if (!s.selectedStamp) return false;
   pushUndo(pg);
   if (!s.annotations[pg]) s.annotations[pg] = [];
   s.annotations[pg].push({
     uuid: crypto.randomUUID(),
     type: "stamp",
     id: s.selectedStamp,
-    x: origX,
-    y: origY,
+    x: nx,
+    y: ny,
     size: parseInt(sizeSlider.value, 10),
     color: s.penColor,
   });
-
-  saveAnnotations();
-  setTool("nav");  // one stamp per selection, then back to navigation
-  drawAnnotations();
+  return true;
 }
 
 // ---------------------------------------------------------------------------
-// Start-page tool — one per document; placing it again moves it
+// Placement: start-page stamp — one per document; placing it again moves it
 // ---------------------------------------------------------------------------
 
-function handleStartPageClick(e, annotCanvas, layoutIndex) {
-  const s = getState();
-  const layout = s.pageLayouts[layoutIndex];
-  if (!layout) return;
-
-  const { x, y } = canvasCoords(e, annotCanvas);
-  const pg = String(layout.page - 1);
-  const rot = (s.rotations[pg] || 0) % 360;
-  const [origX, origY] = inverseTransformPt(x / layout.cssW, y / layout.cssH, rot);
-
+function placeStartPage(s, { pg, nx, ny }) {
   // Remove the existing stamp wherever it is. Undo is per page, so a move
   // across pages is undone on each page separately.
   for (const [p, annots] of Object.entries(s.annotations)) {
@@ -781,13 +773,10 @@ function handleStartPageClick(e, annotCanvas, layoutIndex) {
   s.annotations[pg].push({
     uuid: crypto.randomUUID(),
     type: "startpage",
-    x: origX,
-    y: origY,
+    x: nx,
+    y: ny,
   });
-
-  saveAnnotations();
-  setTool("nav");
-  drawAnnotations();
+  return true;
 }
 
 // ---------------------------------------------------------------------------

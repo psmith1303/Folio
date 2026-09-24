@@ -392,7 +392,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.13.0",
+    title="Folio", version="2.13.1",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
