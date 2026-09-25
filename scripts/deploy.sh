@@ -12,11 +12,14 @@
 #      files would stop Syncthing), the library, and the public URL.
 #
 # Usage: scripts/deploy.sh [--check] [--build-only] [--host HOST]
-#                          [--timeout SECONDS] [--allow-dirty]
+#                          [--timeout SECONDS] [--verify-timeout SECONDS]
+#                          [--allow-dirty]
 #   --check        steps 1-2 and report what is live; change nothing
 #   --build-only   build the image on the host, leave the container alone
 #   --host HOST    ssh host to deploy to (default: $FOLIO_HOST or p3800)
 #   --timeout N    seconds to wait for the mirror (default 300)
+#   --verify-timeout N
+#                  seconds to wait for the new version to be served (default 60)
 #   --allow-dirty  deploy uncommitted changes to the build inputs
 
 set -euo pipefail
@@ -28,6 +31,7 @@ REMOTE_DOCKER="${FOLIO_REMOTE_DOCKER:-/mnt/z/psDATA/Src/Docker}"
 CADDY_ENV="${FOLIO_CADDY_ENV:-/etc/docker-stack/caddy.env}"
 PUBLIC_URL="${FOLIO_PUBLIC_URL:-https://folio.66uqs.org}"
 TIMEOUT=300
+VERIFY_TIMEOUT=60
 MODE=deploy
 ALLOW_DIRTY=0
 
@@ -37,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --build-only) MODE=build ;;
     --host) HOST="$2"; shift ;;
     --timeout) TIMEOUT="$2"; shift ;;
+    --verify-timeout) VERIFY_TIMEOUT="$2"; shift ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     -h|--help) sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -118,9 +123,9 @@ remote "$COMPOSE up -d --build folio"
 
 # 4. Verify.
 say "verifying"
-deadline=$((SECONDS + 60))
+deadline=$((SECONDS + VERIFY_TIMEOUT))
 until [[ "$(live_version)" == "$VERSION" ]]; do
-  (( SECONDS < deadline )) || die "$HOST serves $(live_version) after 60s, not $VERSION"
+  (( SECONDS < deadline )) || die "$HOST serves $(live_version) after ${VERIFY_TIMEOUT}s, not $VERSION"
   sleep 2
 done
 uid="$(remote "docker exec folio id -u")"

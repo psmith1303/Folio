@@ -39,7 +39,7 @@ FAKE_CURL = r"""#!/bin/bash
 case "$*" in
   *folio.test*) [[ -n "$FAKE_PUBLIC_DOWN" ]] && exit 7
                 echo "{\"info\":{\"version\":\"$FAKE_NEW\"}}" ;;
-  *openapi.json*) if [[ -f "$FAKE/deployed" ]]; then v=$FAKE_NEW; else v=1.0.0; fi
+  *openapi.json*) if [[ -f "$FAKE/deployed" && -z "$FAKE_STUCK" ]]; then v=$FAKE_NEW; else v=1.0.0; fi
                   echo "{\"info\":{\"version\":\"$v\"}}" ;;
   *api/config*) [[ -n "$FAKE_CONFIG_FAIL" ]] && exit 22
                 echo "{\"score_count\": ${FAKE_SCORES:-433}}" ;;
@@ -158,6 +158,17 @@ def test_no_score_count_fails_with_a_hint_not_a_traceback(env):
     assert r.returncode == 1
     assert "/api/config gave no score count" in r.out
     assert "Traceback" not in r.out
+
+
+def test_a_container_still_serving_the_old_version_fails_the_deploy(env):
+    """The new container never comes up serving the new version (e.g. the
+    old one wasn't replaced): the deploy fails, naming what is served, and
+    goes no further (no uid or library checks)."""
+    r = run(env, "--verify-timeout", "2", FAKE_STUCK="1")
+    assert r.returncode == 1
+    assert f"testhost serves 1.0.0 after 2s, not {VERSION}" in r.out
+    assert [c.split(" | ")[0] for c in docker_calls(env)] == ["docker compose up -d --build folio"]
+    assert r.elapsed < 10
 
 
 def test_an_unreachable_public_url_only_warns(env):
