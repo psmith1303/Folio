@@ -124,8 +124,8 @@ In memory and over the HTTP API, paths are absolute under the current library
 root; `load_setlists()` / `save_setlists()` in `web/core.py` convert at the
 file boundary (`to_library_relative()` / `from_library_relative()`).
 
-**Older files** stored absolute portable paths (`/mnt/z/PARA/Scores/foo.pdf`
-or Windows `Z:/PARA/Scores/foo.pdf`, which are treated as the same place).
+**Older files** stored absolute portable paths (`/mnt/z/psDATA/Scores/foo.pdf`
+or Windows `Z:/psDATA/Scores/foo.pdf`, which are treated as the same place).
 They are still read correctly, and are converted in place the first time the
 library is opened; each converted file is first backed up as
 `<name>.pre-relative.bak`. Absolute paths outside the library can't be

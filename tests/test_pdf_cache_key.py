@@ -22,7 +22,7 @@ SW_JS = STATIC / "sw.js"
 LRU_JS = MODULES / "offline-lru.js"
 
 PATHS = [
-    "/mnt/z/PARA/Resources/Music/Bach - Suite -- a b.pdf",
+    "/mnt/z/psDATA/Resources/Music/Bach - Suite -- a b.pdf",
     "/m/Dvořák & Sons #1?.pdf",          # non-ASCII and URL metacharacters
     "/m/100% ok+.pdf",                   # characters that decode differently
     "/m/jazz/Davis - Blue.pdf",

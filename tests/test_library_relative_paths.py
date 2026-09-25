@@ -98,10 +98,10 @@ def legacy_lib(tmp_path):
     ("a\\b.pdf", "/lib", "a/b.pdf"),                # Windows separators
     ("./a/../b.pdf", "/lib", "b.pdf"),
     # Windows drive form and WSL mount form are the same place
-    ("Z:/PARA/Music/a.pdf", "/mnt/z/PARA/Music", "a.pdf"),
-    ("Z:\\PARA\\Music\\a.pdf", "/mnt/z/PARA/Music", "a.pdf"),
-    ("z:/PARA/Music/a.pdf", "/mnt/z/PARA/Music", "a.pdf"),
-    ("/mnt/z/PARA/Music/a.pdf", "Z:/PARA/Music", "a.pdf"),
+    ("Z:/psDATA/Music/a.pdf", "/mnt/z/psDATA/Music", "a.pdf"),
+    ("Z:\\psDATA\\Music\\a.pdf", "/mnt/z/psDATA/Music", "a.pdf"),
+    ("z:/psDATA/Music/a.pdf", "/mnt/z/psDATA/Music", "a.pdf"),
+    ("/mnt/z/psDATA/Music/a.pdf", "Z:/psDATA/Music", "a.pdf"),
     # Not inside the library
     ("/library2/x.pdf", "/lib", None),              # lookalike prefix
     ("/lib", "/lib", None),                         # the root itself
@@ -128,8 +128,8 @@ def test_from_library_relative(path, expected):
 
 
 def test_windows_form_is_normalised_to_the_root_form():
-    assert (from_library_relative("Z:/PARA/Music/a.pdf", "/mnt/z/PARA/Music")
-            == "/mnt/z/PARA/Music/a.pdf")
+    assert (from_library_relative("Z:/psDATA/Music/a.pdf", "/mnt/z/psDATA/Music")
+            == "/mnt/z/psDATA/Music/a.pdf")
 
 
 @pytest.mark.parametrize("path, root, expected", [
