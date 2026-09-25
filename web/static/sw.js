@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.15.0";
+const APP_VERSION = "2.15.1";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
@@ -48,6 +48,10 @@ const SHELL_URLS = [
   "/stamps/start-page.png",
   "/lib/pdfjs/build/pdf.min.mjs",
   "/lib/pdfjs/build/pdf.worker.min.mjs",
+  // Decoders pdf.js loads on demand: JPEG 2000 images (common in scans) and
+  // ICC colour profiles. Without them offline, such pages lose their images.
+  "/lib/pdfjs/wasm/openjpeg.wasm",
+  "/lib/pdfjs/wasm/qcms_bg.wasm",
   "/manifest.json",
   "/favicon.ico",
   "/apple-touch-icon.png",
@@ -182,8 +186,13 @@ async function handlePdfFetch(request) {
   const cacheKey = pdfCacheKey(pdfPath);
   const cache = await caches.open(PDF_CACHE);
 
-  // Stale-while-revalidate: serve cached immediately, refresh in background
-  const cached = await cache.match(cacheKey);
+  // Stale-while-revalidate: serve cached immediately, refresh in background.
+  // A `reload=1` request (the viewer replacing a copy it couldn't load)
+  // skips the cache: it's downloaded and stored as a miss would be, or,
+  // offline, answered 503 with the cached copy left in place. Marked in the
+  // URL rather than by request.cache, which a browser needn't pass on.
+  const reload = new URL(request.url).searchParams.has("reload");
+  const cached = reload ? undefined : await cache.match(cacheKey);
   if (cached) {
     if (pdfPath) {
       touchLruEntry(pdfPath, 0, false).catch(() => {});
@@ -192,8 +201,8 @@ async function handlePdfFetch(request) {
     return cached;
   }
 
-  // Cache miss — fetch from network. Retries happen at the viewer layer,
-  // which can also purge the cache between attempts to self-heal corruption.
+  // Cache miss (or a reload) — fetch from network. Retries happen at the
+  // viewer layer, which replaces a copy it couldn't load with a reload.
   // Stored before answering, so the page's "Download for offline" (cachePdf)
   // finds it cached when its fetch returns, and needn't store it again.
   try {

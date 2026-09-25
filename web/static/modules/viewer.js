@@ -30,7 +30,7 @@ import { addToRecent } from "./recent.js";
 import { loadLibrary } from "./library.js";
 import { explicitStartPage, findStartPage, songStartPage } from "./utils.js";
 import {
-  CACHE_AVAILABLE, PDF_CACHE, pdfCacheKey, refreshCacheStatus, refreshCachedConfig,
+  CACHE_AVAILABLE, pdfCacheKey, refreshCacheStatus, refreshCachedConfig,
 } from "./cache.js";
 
 // Verbose viewer logging — enable in DevTools with: localStorage.folioDebug = "1"
@@ -87,37 +87,32 @@ export function hideToast() {
 // avoids the proxy-streaming failure mode at the cost of a slower first
 // open for large PDFs — which the SW cache then makes instant next time.
 //
-// Self-heal: before retrying, purge the PDF_CACHE entry for this path.
-// A prior truncated write can poison the cache; dropping it forces the
-// next attempt to go back to the network instead of replaying corruption.
+// Self-heal: a prior truncated write can poison the cache, so the retry
+// loads a fresh download (marked `reload=1`, which the service worker
+// fetches and stores instead of answering from its cache). It retries only
+// if that download arrived. Offline it doesn't, and the cached copy is
+// kept: deleting it first, as this once did, lost a pinned PDF for good on
+// any failed offline open, while its row still showed it as cached.
 async function _fetchPdfDoc(filepath, { showRetryToast = true } = {}) {
-  let lastErr = null;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const loadingTask = pdfjsLib.getDocument({
-        url: `${pdfCacheKey(filepath)}&_t=${Date.now()}`,
-        wasmUrl: PDFJS_BASE + "/wasm/",
-        disableRange: true,
-        disableStream: true,
-      });
-      return await loadingTask.promise;
-    } catch (err) {
-      lastErr = err;
-      console.warn(VIEWER_TAG, `PDF load attempt ${attempt + 1} failed:`, err);
-      if (attempt + 1 < 2) {
-        try {
-          const cache = await caches.open(PDF_CACHE);
-          const purged = await cache.delete(pdfCacheKey(filepath));
-          if (purged) console.warn(VIEWER_TAG, "purged corrupt cache entry for", filepath);
-        } catch (e) {
-          console.warn(VIEWER_TAG, "cache purge failed:", e);
-        }
-        if (showRetryToast) showToast(`Load failed — retrying…`, { duration: 0 });
-        await new Promise((r) => setTimeout(r, 800));
-      }
-    }
+  const load = (src) => pdfjsLib.getDocument({
+    ...src,
+    wasmUrl: PDFJS_BASE + "/wasm/",
+    disableRange: true,
+    disableStream: true,
+  }).promise;
+  try {
+    return await load({ url: `${pdfCacheKey(filepath)}&_t=${Date.now()}` });
+  } catch (err) {
+    console.warn(VIEWER_TAG, "PDF load failed:", err);
+    if (showRetryToast) showToast(`Load failed — retrying…`, { duration: 0 });
+    const fresh = await fetch(`${pdfCacheKey(filepath)}&reload=1`, { cache: "reload" })
+      .catch(() => null);
+    if (!fresh?.ok) throw err;
+    console.warn(VIEWER_TAG, "downloaded a fresh copy of", filepath);
+    // Retry from these bytes, not the cache: storing them can fail (storage
+    // full, a truncated download), which would leave the bad copy there.
+    return await load({ data: new Uint8Array(await fresh.arrayBuffer()) });
   }
-  throw lastErr;
 }
 
 async function _fetchAnnotations(filepath) {
