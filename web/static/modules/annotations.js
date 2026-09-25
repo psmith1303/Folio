@@ -14,7 +14,10 @@ import {
 } from "./utils.js";
 import { getStampImage, stampCursorPng, getStampMeta } from "./stamps.js";
 import { showConflictDialog, showTextDialog } from "./dialog-handlers.js";
-import { renderPage, invalidatePrerender, nextPage, prevPage } from "./viewer.js";
+import { renderPage, invalidatePrerender, nextPage, prevPage, showToast } from "./viewer.js";
+import {
+  allPending, deletePending, getPending, isOffline, mergeAnnotations, putPending, syncEntry,
+} from "./annot-outbox.js";
 
 // ---------------------------------------------------------------------------
 // Drawing
@@ -363,13 +366,36 @@ export function saveAnnotations(force = false) {
   });
 }
 
+// The score's annotation state as a save sends it (a copy).
+function currentState(s) {
+  return structuredClone({ pages: s.annotations, rotations: s.rotations });
+}
+
+// An outbox entry for the open score: `state`, and the server state it's
+// based on.
+function outboxEntry(s, state) {
+  return { path: s.currentScore.filepath, base: s.annotationBase,
+           baseEtag: s.annotationEtag, ...state };
+}
+
+// After a successful save or sync: `saved` ({pages, rotations}) is now the
+// server's state, with `etag`. Edits made meanwhile are kept.
+function markSaved(s, etag, saved) {
+  s.annotationEtag = etag;
+  s.annotationBase = saved;
+}
+
 async function _doSaveAnnotations(s, force) {
+  const path = s.currentScore.filepath;
+  // Offline edits not yet on the server, or a base we never saw (opened
+  // offline with nothing cached): save through the outbox, which merges
+  // with the server's annotations instead of overwriting them.
+  if (await getPending(path) || (s.annotationEtag === null && !force)) {
+    return syncOpenScore(s);
+  }
+  const sent = currentState(s);
   try {
-    const payload = {
-      path: s.currentScore.filepath,
-      pages: s.annotations,
-      rotations: s.rotations,
-    };
+    const payload = { path, ...sent };
     if (!force && s.annotationEtag !== null) {
       payload.expected_etag = s.annotationEtag;
     }
@@ -378,16 +404,126 @@ async function _doSaveAnnotations(s, force) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (result.etag) {
-      s.annotationEtag = result.etag;
-    }
+    if (result.etag) markSaved(s, result.etag, sent);
   } catch (err) {
+    if (isOffline(err)) {                     // keep it for later
+      await putPending(outboxEntry(s, sent));
+      noteOffline(s);
+      return;
+    }
     if (err.message && err.message.includes("409")) {
       showConflictDialog();
       return;
     }
     console.error("Failed to save annotations:", err);
   }
+}
+
+function noteOffline(s) {
+  if (s.annotationsOffline) return;
+  s.annotationsOffline = true;
+  showToast("Offline — annotations are kept on this device and saved when back online",
+            { duration: 6000 });
+}
+
+// Save the open score's annotations through the outbox: store them, then
+// sync, merging with the server's copy if it changed. Strokes drawn while
+// the sync was in flight are merged back on top of the result.
+async function syncOpenScore(s) {
+  const path = s.currentScore.filepath;
+  const sent = currentState(s);
+  const entry = outboxEntry(s, sent);
+  await putPending(entry);
+  let result;
+  try {
+    result = await syncEntry(entry);
+  } catch (err) {
+    console.error("Failed to sync offline annotations:", err);
+    return;
+  }
+  if (!result) {
+    noteOffline(s);
+    return;
+  }
+  if (s.currentScore?.filepath === path) applySynced(s, sent, result);
+}
+
+// `sent` (the open score's annotations as synced) reached the server as
+// `result` ({etag, pages, rotations}, merged with changes made elsewhere):
+// adopt it, keeping strokes drawn since `sent`.
+function applySynced(s, sent, result) {
+  const server = { pages: result.pages, rotations: result.rotations };
+  const local = currentState(s);
+  const now = mergeAnnotations(sent, local, server);
+  markSaved(s, result.etag, server);
+  if (JSON.stringify(now) !== JSON.stringify(local)) {
+    s.annotations = now.pages;
+    s.rotations = now.rotations;
+    s.undoStacks = {};     // undo snapshots predate the merge
+    renderPage();
+  }
+  if (JSON.stringify(now) !== JSON.stringify(server)) saveAnnotations();
+  if (s.annotationsOffline) {
+    s.annotationsOffline = false;
+    showToast("Offline annotations saved");
+  }
+}
+
+// Sync every score's offline annotations (on launch and on reconnecting).
+// The open score's go through its save queue, so they can't race its saves.
+export async function syncPendingAnnotations() {
+  let entries;
+  try {
+    entries = await allPending();
+  } catch (err) {
+    console.error("Can't read offline annotations:", err);
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.path === getState().currentScore?.filepath) {
+      saveAnnotations();
+      continue;
+    }
+    _saveChain = _saveChain.then(async () => {
+      const result = await syncEntry(entry);
+      // Opened while this was queued: the score shows `entry`, so bring it
+      // up to date, or its next save would conflict with this one.
+      const s = getState();
+      if (result && s.currentScore?.filepath === entry.path) {
+        applySynced(s, { pages: entry.pages, rotations: entry.rotations }, result);
+      }
+    }).catch((err) => {
+      console.error(`Failed to sync offline annotations for ${entry.path}:`, err);
+    });
+  }
+}
+
+// Offline edits to `path` not yet saved, if any (read while the score loads).
+export function pendingAnnotations(path) {
+  return getPending(path).catch(() => undefined);
+}
+
+// The annotation state to show, from what the server (or its cached copy)
+// returned and `pending` (pendingAnnotations): offline edits win.
+export function annotationState(annotData, pending) {
+  if (pending) {
+    return { pages: pending.pages, rotations: pending.rotations, etag: pending.baseEtag,
+             base: pending.base, pending: true };
+  }
+  const base = { pages: annotData.pages || {}, rotations: annotData.rotations || {} };
+  // "" is the server's etag for "no annotations yet"; null means unknown
+  // (loaded offline with nothing cached).
+  return { ...base, etag: annotData.etag ?? null, base: structuredClone(base), pending: false };
+}
+
+// The server's annotations replaced the open score's (conflict "Reload"):
+// they're the new base, and any offline edits are dropped.
+export function annotationsReloaded(s, data) {
+  s.annotations = data.pages || {};
+  s.rotations = data.rotations || {};
+  markSaved(s, data.etag ?? null, currentState(s));
+  s.annotationsOffline = false;
+  return deletePending(s.currentScore.filepath);
 }
 
 // ---------------------------------------------------------------------------

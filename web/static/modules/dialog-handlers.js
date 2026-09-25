@@ -21,10 +21,11 @@ import { api } from "./api.js";
 import { refreshCachedConfig } from "./cache.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
-  saveAnnotations,
+  saveAnnotations, annotationsReloaded,
   commitTextAnnotation, cancelTextAnnotation,
   clearCurrentPageAnnotations,
 } from "./annotations.js";
+import { annotUrl } from "./annot-outbox.js";
 import { renderPage } from "./viewer.js";
 import { loadLibrary } from "./library.js";
 import { addCurrentScoreToSetlist } from "./setlists.js";
@@ -165,10 +166,8 @@ function initConflictDialog() {
     const s = getState();
     if (!s.currentScore) return;
     try {
-      const data = await api(`/api/annotations?path=${encodeURIComponent(s.currentScore.filepath)}`);
-      s.annotations = data.pages || {};
-      s.rotations = data.rotations || {};
-      s.annotationEtag = data.etag || null;
+      const data = await api(annotUrl(s.currentScore.filepath));
+      await annotationsReloaded(s, data);
       s.undoStacks = {};
       renderPage();
     } catch (err) {

@@ -189,6 +189,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `score-table.js` | Shared row rendering for the Library, Recent and Newest tables: one click listener per table (open, or toggle the cache button) |
 | `viewer.js` | PDF rendering, page navigation, display modes, fullscreen |
 | `annotations.js` | Drawing, tools, pointer events, save/load with etag concurrency |
+| `annot-outbox.js` | Annotations saved while offline: kept per score in IndexedDB, shown on reopening, synced with a three-way merge (both sides' additions kept, deletions win) when back online |
 | `setlists.js` | Setlist CRUD, drag-and-drop reorder, playback |
 | `keyboard.js` | Configurable keyboard shortcuts (data-driven from server config) |
 | `touch.js` | Touch gestures — swipe navigation, double-tap, scroll-boundary page turns |

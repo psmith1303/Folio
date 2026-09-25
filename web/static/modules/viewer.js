@@ -22,7 +22,10 @@ import {
 } from "./dom.js";
 import { api } from "./api.js";
 import { showView } from "./views.js";
-import { drawAnnotations, setTool } from "./annotations.js";
+import {
+  drawAnnotations, setTool, saveAnnotations, pendingAnnotations, annotationState,
+} from "./annotations.js";
+import { annotUrl } from "./annot-outbox.js";
 import { addToRecent } from "./recent.js";
 import { loadLibrary } from "./library.js";
 import { explicitStartPage, findStartPage, songStartPage } from "./utils.js";
@@ -119,17 +122,20 @@ async function _fetchPdfDoc(filepath, { showRetryToast = true } = {}) {
 
 async function _fetchAnnotations(filepath) {
   try {
-    return await api(`/api/annotations?path=${encodeURIComponent(filepath)}`);
+    return await api(annotUrl(filepath));
   } catch {
     return { pages: {}, rotations: {}, etag: null };
   }
 }
 
 // startPage null means "not specified": open on the start-page stamp, or
-// page 1 if the score has none.
+// page 1 if the score has none. Returns true if it showed offline edits not
+// yet saved: the caller then syncs them (saveAnnotations), once it has set
+// currentScore.
 async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null } = {}) {
   const s = getState();
 
+  const pendingRead = pendingAnnotations(filepath);  // alongside the loads below
   let annotData, newDoc;
   if (prefetched && prefetched.path === filepath && prefetched.pdfDoc) {
     dbg("loadAndRenderPdf: using prefetched bundle for", filepath);
@@ -147,11 +153,13 @@ async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null 
   if (s.pdfDoc && s.pdfDoc !== newDoc) {
     try { s.pdfDoc.destroy(); } catch { /* ignore */ }
   }
+  const annots = annotationState(annotData, await pendingRead);
   resetAnnotationState();
   s.pdfDoc = newDoc;
-  s.annotations = annotData.pages || {};
-  s.rotations = annotData.rotations || {};
-  s.annotationEtag = annotData.etag || null;
+  s.annotations = annots.pages;
+  s.rotations = annots.rotations;
+  s.annotationEtag = annots.etag;
+  s.annotationBase = annots.base;
   s.totalPages = s.pdfDoc.numPages;
   pageTotal.textContent = s.totalPages;
   pageInput.max = s.totalPages;
@@ -165,6 +173,7 @@ async function loadAndRenderPdf(filepath, { startPage = null, prefetched = null 
   await autoSideBySide();
   await renderPage();
   pdfContainer.focus();
+  return annots.pending;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,7 +193,7 @@ export async function openScore(score, { startPage = null } = {}) {
   showToast(`Loading "${score.title}"…`, { duration: 0 });
 
   try {
-    await loadAndRenderPdf(score.filepath, { startPage });
+    if (await loadAndRenderPdf(score.filepath, { startPage })) saveAnnotations();
     addToRecent(score);
   } catch (err) {
     console.warn(VIEWER_TAG, "openScore failed → bouncing to library:", err);
@@ -313,10 +322,11 @@ export async function openSetlistSong(index, goToEnd = false, { autoAdvance = fa
   }
 
   try {
-    await loadAndRenderPdf(song.path, { startPage: targetPage, prefetched });
+    const hasOfflineEdits = await loadAndRenderPdf(song.path, { startPage: targetPage, prefetched });
     // Commit setlist position and title only after load succeeds
     s.setlistPlayback.index = index;
     s.currentScore = { filepath: song.path, composer: song.composer, title: song.title };
+    if (hasOfflineEdits) saveAnnotations();
     titleDisplay.textContent = `${song.composer} — ${song.title} (${index + 1}/${total})`;
     // A stamp placed after the song's end_page would open outside its range.
     const range = getPageRange();

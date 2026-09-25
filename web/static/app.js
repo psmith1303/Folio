@@ -83,7 +83,7 @@ import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary } from "./modules/library.js";
 import { initViewerEvents } from "./modules/viewer.js";
-import { initAnnotationEvents } from "./modules/annotations.js";
+import { initAnnotationEvents, syncPendingAnnotations } from "./modules/annotations.js";
 import { initStampPalette, loadStampAssets } from "./modules/stamps.js";
 import { initSetlistEvents } from "./modules/setlists.js";
 import { initDialogHandlers, showDirDialog } from "./modules/dialog-handlers.js";
@@ -270,6 +270,7 @@ async function initApp() {
     if (cfg.library_dir && cfg.score_count > 0) {
       dirInput.value = cfg.library_dir;
       await loadLibrary();
+      syncPendingAnnotations();      // annotations drawn offline last time
     } else {
       showDirDialog(cfg.library_dir || "");
     }
@@ -279,3 +280,5 @@ async function initApp() {
 }
 
 initApp();
+// Annotations saved offline go to the server as soon as it's reachable.
+window.addEventListener("online", syncPendingAnnotations);

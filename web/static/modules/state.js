@@ -44,6 +44,11 @@ const state = {
   currentStroke: [],
   undoStacks: {},
   annotationEtag: null,
+  // The annotations as the server last had them ({pages, rotations}): the
+  // base offline edits are merged from (annot-outbox.js).
+  annotationBase: null,
+  // A save failed offline and was kept for later (shown once until synced).
+  annotationsOffline: false,
   pendingTextAnnot: null,
   draggingAnnot: null,
 
@@ -82,6 +87,7 @@ export function resetViewerState() {
   state.undoStacks = {};
   state.pageLayouts = [];
   state.annotationEtag = null;
+  state.annotationBase = null;
   state.setlistPlayback = null;
   state.currentStroke = [];
   state.pendingTextAnnot = null;
@@ -95,6 +101,7 @@ export function resetAnnotationState() {
   state.annotations = {};
   state.rotations = {};
   state.annotationEtag = null;
+  state.annotationBase = null;
   state.undoStacks = {};
   state.cachedPages.clear();
   state.prerenderedPages.clear();
