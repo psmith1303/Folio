@@ -233,6 +233,7 @@ Each PDF gets a fast content hash (SHA-256 of first/last 4 KB + file size). A pe
 
 ### One-off scripts
 
+- **`scripts/deploy.sh`** — deploys to the Docker host (p3800): checks the build inputs are committed and the versions agree, waits for the host's Syncthing copy of them to match this one byte for byte, rebuilds and recreates only the `folio` container, then verifies the served version, uid 1000, the library and the public URL. `--check` changes nothing; `--build-only` leaves the container alone.
 - **`scripts/sort_tags.py`** — puts PDF filename tags into canonical form (lowercase, de-duplicated, sorted); updates the hash index, setlists and recent list in lockstep.
 - **`scripts/migrate_rotations.py`** — one-shot migration after the rotation-handling fix.  Subtracts each PDF's intrinsic `/Rotate` from the user-stored rotation in annotation sidecars, so previously-compensated pages stay visually identical after the fix.  Dry-run by default; `--apply` writes.  Only needs to be run once per library, and only matters if you'd previously rotated pages to compensate for upside-down PDFs.
 
