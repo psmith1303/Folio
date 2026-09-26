@@ -64,6 +64,7 @@ export const btnClearPage = $("#btn-clear-page");
 export const btnPencilOnly = $("#btn-pencil-only");
 export const btnUndo = $("#btn-undo");
 export const sizeSlider = $("#size-slider");
+export const btnPenStyle = $("#btn-pen-style");
 export const btnRotCCW = $("#btn-rot-ccw");
 export const btnRotCW = $("#btn-rot-cw");
 export const btnAddToSetlist = $("#btn-add-to-setlist");
@@ -89,6 +90,11 @@ export const btnToggleShuffle = $("#btn-toggle-shuffle");
 export const dirDialog = $("#dir-dialog");
 export const dirInput = $("#dir-input");
 export const dirCancel = $("#dir-cancel");
+
+// Dialogs — pen style grid
+export const penDialog = $("#pen-dialog");
+export const penGrid = $("#pen-grid");
+export const penCancel = $("#pen-cancel");
 
 // Dialogs — text annotation
 export const textDialog = $("#text-dialog");

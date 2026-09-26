@@ -37,11 +37,15 @@ const state = {
   // Annotations
   activeTool: "nav",
   penColor: "purple",
+  // Cell of the pen style grid (row = width, col = transparency); see
+  // penStyleAt in annotations.js. Restored from localStorage on init.
+  penStyle: { row: 1, col: 0 },
   pencilOnly: false,
   selectedStamp: null,
   annotations: {},
   rotations: {},
   currentStroke: [],
+  strokeLayoutIndex: null,  // page layout the stroke in progress is on
   undoStacks: {},
   annotationEtag: null,
   // The annotations as the server last had them ({pages, rotations}): the

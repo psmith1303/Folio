@@ -5,6 +5,7 @@
 import { getState } from "./state.js";
 import {
   annotCanvas1, annotCanvas2, sizeSlider, pdfContainer,
+  btnPenStyle, penDialog, penGrid, penCancel,
   btnNav, btnPen, btnText, btnEraser, btnMove, btnStamp, btnStartPage, btnPencilOnly, btnUndo,
   btnRotCCW, btnRotCW,
 } from "./dom.js";
@@ -28,7 +29,7 @@ export function drawAnnotations() {
   for (let i = 0; i < s.pageLayouts.length; i++) {
     const layout = s.pageLayouts[i];
     const ac = i === 0 ? annotCanvas1 : annotCanvas2;
-    drawPageAnnotations(ac, layout);
+    drawPageAnnotations(ac, layout, i);
   }
 }
 
@@ -44,7 +45,10 @@ function scheduleDraw() {
   });
 }
 
-function drawPageAnnotations(annotCanvas, layout) {
+// Also draws the pen stroke in progress, if it's on this page, on top: the
+// live stroke is the page redrawn with it (not segments added one by one),
+// so it looks exactly as it will once committed, even when translucent.
+function drawPageAnnotations(annotCanvas, layout, layoutIndex) {
   const s = getState();
   const dpr = window.devicePixelRatio || 1;
   const ctx = annotCanvas.getContext("2d");
@@ -58,6 +62,12 @@ function drawPageAnnotations(annotCanvas, layout) {
   for (const annot of pageAnnots) {
     const type = ANNOT_TYPES[annot.type];
     if (type) type.draw(ctx, annot, layout.cssW, layout.cssH, rot, layout.pdfW);
+  }
+
+  if (s.currentStroke.length > 1 && s.strokeLayoutIndex === layoutIndex) {
+    const { widthPt, opacity } = penStyleAt(s.penStyle.row, s.penStyle.col);
+    strokeLine(ctx, s.currentStroke.map(({ x, y }) => [x, y]), s.penColor,
+      inkCssWidth({ widthPt }, layout.cssW, layout.pdfW), opacity);
   }
 }
 
@@ -119,22 +129,35 @@ function drawStamp(ctx, annot, w, h, rot, pdfW) {
   ctx.drawImage(img, cx - wCss / 2, cy - hCss / 2, wCss, hCss);
 }
 
-function drawInk(ctx, annot, w, h, rot) {
-  const pts = annot.points;
-  if (!pts || pts.length < 2) return;
-
+// A polyline in CSS px, stroked as one path so a translucent line doesn't
+// darken where its segments overlap. Committed ink and the live pen stroke
+// both draw through here.
+function strokeLine(ctx, pts, color, lineWidth, opacity) {
+  ctx.save();
+  ctx.globalAlpha = opacity;
   ctx.beginPath();
-  const [x0, y0] = transformPt(pts[0][0], pts[0][1], w, h, rot);
-  ctx.moveTo(x0, y0);
-  for (let i = 1; i < pts.length; i++) {
-    const [x, y] = transformPt(pts[i][0], pts[i][1], w, h, rot);
-    ctx.lineTo(x, y);
-  }
-  ctx.strokeStyle = annot.color || "black";
-  ctx.lineWidth = annot.width || 2;
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.stroke();
+  ctx.restore();
+}
+
+// On-screen ink width in CSS px. Strokes with widthPt (PDF points) scale
+// with the page, like text and stamps; older strokes stored screen px in
+// `width` and draw exactly as they always have.
+function inkCssWidth(annot, w, pdfW) {
+  return annot.widthPt && pdfW ? annot.widthPt * w / pdfW : (annot.width || 2);
+}
+
+function drawInk(ctx, annot, w, h, rot, pdfW) {
+  const pts = annot.points;
+  if (!pts || pts.length < 2) return;
+  strokeLine(ctx, pts.map(([x, y]) => transformPt(x, y, w, h, rot)),
+    annot.color || "black", inkCssWidth(annot, w, pdfW), annot.opacity ?? 1);
 }
 
 // On-screen text size in CSS px: the slider's point size scaled by the page
@@ -318,6 +341,117 @@ function loadPencilOnlyPref() {
   } catch (_) {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pen style: a grid of widths (rows) x transparencies (columns)
+// ---------------------------------------------------------------------------
+
+// Widths in PDF points, so a stroke keeps its size relative to the music at
+// any zoom. The highlighter column is wider: a highlight has to cover notes,
+// and a thin translucent line would be all but invisible.
+const PEN_WIDTHS_PT = [0.75, 1.5, 3, 6];
+const PEN_OPACITIES = [1, 0.6, 0.3];
+const PEN_ROW_LABELS = ["Fine", "Medium", "Bold", "Heavy"];
+const PEN_COL_LABELS = ["Solid", "Semi", "Highlight"];
+const HIGHLIGHT_COL = 2;
+const HIGHLIGHT_WIDTH_FACTOR = 4;
+const DEFAULT_PEN_STYLE = { row: 1, col: 0 };
+const PEN_STYLE_STORAGE_KEY = "folio.penStyle";
+
+// Grid previews draw widths at their true on-page size, capped so the
+// heaviest highlighter still fits its cell; the toolbar chip is smaller.
+const PEN_CELL_MAX_PX = 28;
+const PEN_CHIP_MAX_PX = 10;
+
+function penStyleAt(row, col) {
+  const k = col === HIGHLIGHT_COL ? HIGHLIGHT_WIDTH_FACTOR : 1;
+  return { widthPt: PEN_WIDTHS_PT[row] * k, opacity: PEN_OPACITIES[col] };
+}
+
+// A committed pen stroke. `width` is the stroke's on-screen px when drawn,
+// kept so clients that predate widthPt still draw it about right; opacity
+// is left out when solid, as on every stroke before it existed.
+function inkAnnotation(points, color, penStyle, layout) {
+  const { widthPt, opacity } = penStyleAt(penStyle.row, penStyle.col);
+  const annot = {
+    uuid: crypto.randomUUID(),
+    type: "ink",
+    points,
+    color,
+    widthPt,
+    width: Math.max(1, Math.round(inkCssWidth({ widthPt }, layout.cssW, layout.pdfW))),
+  };
+  if (opacity < 1) annot.opacity = opacity;
+  return annot;
+}
+
+function isPenStyle(v) {
+  return !!v && Number.isInteger(v.row) && Number.isInteger(v.col)
+    && v.row >= 0 && v.row < PEN_WIDTHS_PT.length
+    && v.col >= 0 && v.col < PEN_OPACITIES.length;
+}
+
+function loadPenStylePref() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PEN_STYLE_STORAGE_KEY));
+    if (isPenStyle(v)) return { row: v.row, col: v.col };
+  } catch (_) {
+    // Unavailable storage or a garbled value: use the default.
+  }
+  return { ...DEFAULT_PEN_STYLE };
+}
+
+function setPenStyle(row, col) {
+  getState().penStyle = { row, col };
+  try {
+    localStorage.setItem(PEN_STYLE_STORAGE_KEY, JSON.stringify({ row, col }));
+  } catch (_) {
+    // localStorage may be unavailable (private mode); ignore.
+  }
+  updatePenChip();
+}
+
+// CSS px per PDF point on the page as currently shown (1 before any page).
+function pageCssPerPt(s) {
+  const layout = s.pageLayouts[0];
+  return layout && layout.pdfW ? layout.cssW / layout.pdfW : 1;
+}
+
+function penSampleSvg(color, widthPx, opacity, len, height) {
+  const pad = widthPx / 2 + 2;
+  return `<svg width="${len}" height="${height}" aria-hidden="true">`
+    + `<line x1="${pad}" y1="${height / 2}" x2="${len - pad}" y2="${height / 2}" `
+    + `stroke="${color}" stroke-width="${widthPx}" stroke-opacity="${opacity}" `
+    + `stroke-linecap="round"/></svg>`;
+}
+
+function penSample(s, row, col, maxPx, len, height) {
+  const { widthPt, opacity } = penStyleAt(row, col);
+  const px = Math.max(1, Math.min(maxPx, widthPt * pageCssPerPt(s)));
+  return penSampleSvg(s.penColor, px, opacity, len, height);
+}
+
+function updatePenChip() {
+  const s = getState();
+  const { row, col } = s.penStyle;
+  btnPenStyle.innerHTML = penSample(s, row, col, PEN_CHIP_MAX_PX, 36, 14);
+  btnPenStyle.title = `Pen: ${PEN_ROW_LABELS[row]}, ${PEN_COL_LABELS[col]}`;
+}
+
+function renderPenGrid() {
+  const s = getState();
+  const head = PEN_COL_LABELS.map((l) => `<th scope="col">${l}</th>`).join("");
+  const rows = PEN_ROW_LABELS.map((rowLabel, row) => {
+    const cells = PEN_COL_LABELS.map((colLabel, col) => {
+      const sel = row === s.penStyle.row && col === s.penStyle.col;
+      return `<td><button type="button" class="pen-cell${sel ? " selected" : ""}" `
+        + `data-row="${row}" data-col="${col}" title="${rowLabel}, ${colLabel}" `
+        + `aria-pressed="${sel}">${penSample(s, row, col, PEN_CELL_MAX_PX, 56, 32)}</button></td>`;
+    }).join("");
+    return `<tr><th scope="row">${rowLabel}</th>${cells}</tr>`;
+  }).join("");
+  penGrid.innerHTML = `<tr><th></th>${head}</tr>${rows}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -572,6 +706,7 @@ function onPointerDown(e, annotCanvas, layoutIndex) {
   if (s.activeTool === "pen") {
     const { x, y } = canvasCoords(e, annotCanvas);
     s.currentStroke = [{ x, y }];
+    s.strokeLayoutIndex = layoutIndex;
     annotCanvas.setPointerCapture(e.pointerId);
   } else if (s.activeTool === "eraser") {
     eraseAt(e, annotCanvas, layoutIndex);
@@ -598,19 +733,10 @@ function onPointerMove(e, annotCanvas, layoutIndex) {
     e.preventDefault();
     const { x, y } = canvasCoords(e, annotCanvas);
     s.currentStroke.push({ x, y });
-
-    const dpr = window.devicePixelRatio || 1;
-    const ctx = annotCanvas.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const prev = s.currentStroke[s.currentStroke.length - 2];
-    ctx.beginPath();
-    ctx.moveTo(prev.x, prev.y);
-    ctx.lineTo(x, y);
-    ctx.strokeStyle = s.penColor;
-    ctx.lineWidth = parseInt(sizeSlider.value, 10);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.stroke();
+    // Redraw now rather than next frame: browsers already deliver
+    // pointermove once per frame, and a frame's lag shows under a Pencil.
+    const layout = s.pageLayouts[layoutIndex];
+    if (layout) drawPageAnnotations(annotCanvas, layout, layoutIndex);
   } else if (s.activeTool === "eraser" && e.buttons > 0) {
     e.preventDefault();
     eraseAt(e, annotCanvas, layoutIndex);
@@ -637,13 +763,7 @@ function onPointerUp(e, annotCanvas, layoutIndex) {
 
     pushUndo(pg);
     if (!s.annotations[pg]) s.annotations[pg] = [];
-    s.annotations[pg].push({
-      uuid: crypto.randomUUID(),
-      type: "ink",
-      points: norm,
-      color: s.penColor,
-      width: parseInt(sizeSlider.value, 10),
-    });
+    s.annotations[pg].push(inkAnnotation(norm, s.penColor, s.penStyle, layout));
     saveAnnotations();
     drawAnnotations();
   } else if (s.activeTool === "move" && s.draggingAnnot) {
@@ -867,7 +987,7 @@ function handleTextClick(e, annotCanvas, layoutIndex) {
 
 // Called by dialog-handlers when the text dialog closes with a result.
 // `size` is a slider index from the text dialog's own size control, which
-// has a wider range than the shared pen/stamp toolbar slider.
+// has a wider range than the stamp size slider.
 export function commitTextAnnotation(text, font, size) {
   const s = getState();
   if (!s.pendingTextAnnot) return;
@@ -996,6 +1116,7 @@ export function initAnnotationEvents() {
       document.querySelectorAll(".swatch").forEach((s) => s.classList.remove("selected"));
       sw.classList.add("selected");
       getState().penColor = sw.dataset.color;
+      updatePenChip();
     });
   });
 
@@ -1003,6 +1124,23 @@ export function initAnnotationEvents() {
   // it can't drift from the markup. Sync state from it on init.
   const selectedSwatch = document.querySelector(".swatch.selected");
   if (selectedSwatch) getState().penColor = selectedSwatch.dataset.color;
+
+  // Pen style: the chip shows the current stroke and opens the grid; picking
+  // a cell sets width and transparency together and arms the pen.
+  getState().penStyle = loadPenStylePref();
+  updatePenChip();
+  btnPenStyle.addEventListener("click", () => {
+    renderPenGrid();
+    penDialog.showModal();
+  });
+  penGrid.addEventListener("click", (e) => {
+    const cell = e.target.closest(".pen-cell");
+    if (!cell) return;
+    setPenStyle(parseInt(cell.dataset.row, 10), parseInt(cell.dataset.col, 10));
+    penDialog.close();
+    setTool("pen");
+  });
+  penCancel.addEventListener("click", () => penDialog.close());
 
   btnUndo.addEventListener("click", () => doUndo());
   btnRotCW.addEventListener("click", () => rotatePage(90));

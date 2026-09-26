@@ -17,13 +17,9 @@ from test_annotation_save_coalescing import DOTS, _gesture
 
 pytestmark = requires_deno
 
-# The pen preview draws on the canvas directly; count its strokes.
+# The pen preview redraws the page with the stroke on it; the gesture
+# harness logs each redraw as "preview".
 CANVAS_2D = """
-const window = { devicePixelRatio: 1 };
-canvas.getContext = () => ({
-  setTransform() {}, beginPath() {}, moveTo() {}, lineTo() {},
-  stroke() { log.push("preview"); },
-});
 const inkCount = () => __s.annotations["0"].length;
 """
 

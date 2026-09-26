@@ -106,8 +106,9 @@ export function stampCursorPng(id, color, wPx, hPx, onReady) {
 // Palette
 // ---------------------------------------------------------------------------
 
-// CSS px per staff space at the current slider value and page render scale —
-// the same conversion the canvas uses, so palette previews match the page.
+// CSS px per staff space at the stamp dialog's size slider value and page
+// render scale — the same conversion the canvas uses, so palette previews
+// match the page.
 function palettePxPerStaffSpace() {
   const slider = parseInt(
     (document.getElementById("size-slider") || {}).value, 10,
@@ -179,4 +180,9 @@ export function initStampPalette() {
     _page++; renderPalette(grid, pageInfo, prevBtn, nextBtn);
   });
   closeBtn.addEventListener("click", () => dialog.close());
+  // Size sits in the dialog, so previews follow it as it moves.
+  const slider = document.getElementById("size-slider");
+  if (slider) {
+    slider.addEventListener("input", () => renderPalette(grid, pageInfo, prevBtn, nextBtn));
+  }
 }

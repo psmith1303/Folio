@@ -800,16 +800,57 @@ th.sortable:hover {
   align-items: center;
 }
 
-#size-label {
+/* Pen style chip: the current stroke, on paper white so it looks as it
+   will on the page in either theme. */
+#btn-pen-style {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  padding: 2px 4px;
+  background: #fff;
+}
+
+#btn-pen-style svg { display: block; }
+
+/* Pen style grid: widths (rows) x transparencies (columns). */
+#pen-grid {
+  border-collapse: separate;
+  border-spacing: 6px;
+  margin: 8px 0;
+}
+
+#pen-grid th {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--fg-dim);
+}
+
+#pen-grid th[scope="row"] { text-align: right; }
+
+.pen-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  min-height: 44px;
+  padding: 4px;
+  background: #fff;
+  border: 2px solid var(--border);
+}
+
+.pen-cell:hover { background: #fff; border-color: var(--fg-dim); }
+.pen-cell.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.pen-cell svg { display: block; }
+
+#stamp-size-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   color: var(--fg-dim);
 }
 
 #size-slider {
-  width: 80px;
+  width: 160px;
   accent-color: var(--accent);
 }
 
@@ -944,9 +985,6 @@ dialog p {
   .swatch {
     width: 14px;
     height: 14px;
-  }
-  #size-label {
-    display: none;
   }
   .toolbar-sep {
     display: none;

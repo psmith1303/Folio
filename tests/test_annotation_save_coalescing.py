@@ -136,6 +136,10 @@ const getState = () => __s;
 const log = [];
 const saveAnnotations = () => log.push("save");
 const drawAnnotations = () => log.push("draw");
+// The live pen stroke is the page redrawn with it; log each redraw.
+const drawPageAnnotations = () => log.push("preview");
+// A committed stroke's fields are covered by test_pen_style.py.
+const inkAnnotation = (points) => ({ uuid: crypto.randomUUID(), type: "ink", points });
 const pushUndo = (pg) => log.push("undo");
 const frames = [];
 const requestAnimationFrame = (cb) => frames.push(cb);
@@ -144,7 +148,6 @@ const setTool = () => {}, handleTextClick = () => {};
 const stampToolCursor = () => "", startPageToolCursor = () => "";
 const placeStamp = () => false, placeStartPage = () => false;
 const nextPage = () => {}, prevPage = () => {};
-const sizeSlider = { value: "3" };
 const listeners = {};
 const canvas = {
   getBoundingClientRect: () => ({ left: 0, top: 0 }),

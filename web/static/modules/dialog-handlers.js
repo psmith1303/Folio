@@ -83,7 +83,7 @@ function updateTextSizePt() {
 }
 
 // Opened by the text tool. The dialog's own size slider is independent of
-// the shared pen/stamp toolbar slider (it has a wider range) and, for new
+// the stamp dialog's size slider (it has a wider range) and, for new
 // annotations, remembers the last size used across dialog opens.
 export function showTextDialog(editAnnot) {
   if (editAnnot) {

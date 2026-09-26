@@ -197,12 +197,10 @@
         <span class="swatch" data-color="green" style="background:green" title="Green"></span>
         <span class="swatch" data-color="orange" style="background:orange" title="Orange"></span>
         <span class="swatch selected" data-color="purple" style="background:purple" title="Purple"></span>
-        <span class="swatch" data-color="magenta" style="background:magenta" title="Magenta"></span>
+        <span class="swatch" data-color="yellow" style="background:yellow" title="Yellow"></span>
       </span>
       <span class="toolbar-sep"></span>
-      <label id="size-label" title="Pen / text / stamp size">
-        Size <input type="range" id="size-slider" min="1" max="8" value="2">
-      </label>
+      <button id="btn-pen-style" title="Pen width &amp; transparency"></button>
       <span class="toolbar-sep"></span>
       <button id="btn-undo" title="Undo (Ctrl+Z)">Undo</button>
       <span class="toolbar-sep"></span>
@@ -282,6 +280,9 @@
   <!-- ================================================================== -->
   <dialog id="stamp-dialog">
     <h3>Stamps</h3>
+    <label id="stamp-size-label">
+      Size <input type="range" id="size-slider" min="1" max="8" value="2">
+    </label>
     <div id="stamp-grid"></div>
     <div id="stamp-pager">
       <button type="button" id="stamp-prev">&#8592; Prev</button>
@@ -290,6 +291,18 @@
     </div>
     <div class="dialog-buttons">
       <button type="button" id="stamp-close">Cancel</button>
+    </div>
+  </dialog>
+
+  <!-- ================================================================== -->
+  <!-- Pen style dialog: width x transparency grid (rendered by           -->
+  <!-- annotations.js renderPenGrid)                                      -->
+  <!-- ================================================================== -->
+  <dialog id="pen-dialog">
+    <h3>Pen</h3>
+    <table id="pen-grid"></table>
+    <div class="dialog-buttons">
+      <button type="button" id="pen-cancel">Cancel</button>
     </div>
   </dialog>
 
