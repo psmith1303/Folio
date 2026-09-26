@@ -19,11 +19,11 @@ pytestmark = requires_deno
 
 # The pen preview redraws the page with the stroke on it; the gesture
 # harness logs each redraw as "preview".
-CANVAS_2D = """
+INK_COUNT = """
 const inkCount = () => __s.annotations["0"].length;
 """
 
-HALF_STROKE = CANVAS_2D + """
+HALF_STROKE = INK_COUNT + """
 fire("pointerdown", 100, 100);
 fire("pointermove", 120, 110);
 fire("pointermove", 140, 120);
@@ -105,6 +105,6 @@ log.push("x:" + x0());
 
 def test_a_cancel_with_nothing_in_progress_does_nothing():
     for tool in ("pen", "move", "eraser"):
-        r = _gesture(tool, CANVAS_2D + 'fire("pointercancel", 10, 10);')
+        r = _gesture(tool, INK_COUNT + 'fire("pointercancel", 10, 10);')
         assert r["log"] == [], tool
         assert len(r["left"]) == len(DOTS)

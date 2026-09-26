@@ -26,6 +26,7 @@ import {
   drawAnnotations, setTool, saveAnnotations, pendingAnnotations, annotationState,
 } from "./annotations.js";
 import { annotUrl } from "./annot-outbox.js";
+import { updatePenChip } from "./pen-style.js";
 import { addToRecent } from "./recent.js";
 import { loadLibrary } from "./library.js";
 import { explicitStartPage, findStartPage, songStartPage } from "./utils.js";
@@ -380,6 +381,7 @@ export async function renderPage() {
     }
 
     drawAnnotations();
+    updatePenChip();  // its sample is drawn at the page's scale
     cleanupOldPages();
 
     if (s.scrollToBottomAfterRender) {

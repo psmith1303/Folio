@@ -4,14 +4,38 @@
 
 export const UNDO_DEPTH = 20;
 
-// The size slider maps to these PDF point sizes, shared by text and stamps
-// (the pen/stamp toolbar slider only goes up to index 8 / 22pt; the text
+// The size sliders map to these PDF point sizes, shared by text and stamps
+// (the stamp dialog's slider only goes up to index 8 / 22pt; the text
 // dialog's own slider uses the full range up to 44pt).
 const POINT_SIZES = [9, 10, 11, 12, 14, 16, 18, 22, 26, 30, 34, 38, 44];
 
 export function sizeToPt(size) {
   const i = Math.max(1, Math.min(POINT_SIZES.length, size || 1)) - 1;
   return POINT_SIZES[i];
+}
+
+// CSS px per PDF point for a page drawn `cssW` px wide from a `pdfW` pt one
+// (1 when the PDF width isn't known yet).
+export function cssPerPt(cssW, pdfW) {
+  return pdfW ? cssW / pdfW : 1;
+}
+
+// A saved preference string, or null. localStorage may be unavailable
+// (private mode); preferences then just aren't kept.
+export function readPref(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (_) {
+    return null;
+  }
+}
+
+export function writePref(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (_) {
+    // Not kept; see readPref.
+  }
 }
 
 // Glyphs that render tiny in fall-back fonts and need ~6x scaling to be

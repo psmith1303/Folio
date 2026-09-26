@@ -6,7 +6,8 @@ Runs on any device with a browser, including iPad.
 ## Features
 - PDF viewing with three display modes: Fit (single page), Wide (full width, scroll vertically), and 2-up (side-by-side)
 - Annotations: pen (freehand ink), text, eraser, per-page undo, Clear Page (one-click erase of all annotations on the current page, with confirmation and undo)
-- 7-colour palette, adjustable pen/text size, musical symbol shortcuts
+- 7-colour palette, adjustable text and stamp size, musical symbol shortcuts
+- Pen style grid: pick width (Fine to Heavy) and transparency (Solid, Semi, Highlight) with one tap from sample strokes; widths scale with the page
 - Touch and Apple Pencil support (Pointer Events API), with optional Pencil-only mode that ignores finger/mouse input on the pen tool for palm-rejection during writing
 - Metadata search by composer, title, and folder tags
 - Start-page stamp: mark the page a score should open on; Library, Recent, Newest and setlists (whose start page is left at 1) open there
@@ -189,6 +190,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `score-table.js` | Shared row rendering for the Library, Recent and Newest tables: one click listener per table (open, or toggle the cache button) |
 | `viewer.js` | PDF rendering, page navigation, display modes, fullscreen |
 | `annotations.js` | Drawing, tools, pointer events, save/load with etag concurrency |
+| `pen-style.js` | Pen style grid (width × transparency): the toolbar chip, the grid dialog and the saved choice |
 | `annot-outbox.js` | Annotations saved while offline: kept per score in IndexedDB, shown on reopening, synced with a three-way merge (both sides' additions kept, deletions win) when back online |
 | `setlists.js` | Setlist CRUD, drag-and-drop reorder, playback |
 | `keyboard.js` | Configurable keyboard shortcuts (data-driven from server config) |
@@ -198,7 +200,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store, eviction); a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
 | `dialog-handlers.js` | Per-dialog show/close logic |
 | `theme.js` | Dark/light theme toggle |
-| `utils.js` | Shared utilities (HTML escaping, coordinate transforms, constants) |
+| `utils.js` | Shared utilities (HTML escaping, coordinate transforms, page scale, saved preferences, constants) |
 
 Other static files:
 

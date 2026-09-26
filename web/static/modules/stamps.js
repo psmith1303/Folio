@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { getState } from "./state.js";
-import { sizeToPt } from "./utils.js";
+import { cssPerPt, sizeToPt } from "./utils.js";
 import { enterStampMode, drawAnnotations } from "./annotations.js";
 
 const STAMPS_BASE = "/stamps";
@@ -115,8 +115,7 @@ function palettePxPerStaffSpace() {
   ) || 1;
   const pt = sizeToPt(slider);
   const layout = getState().pageLayouts[0];
-  const cssPerPt = layout && layout.pdfW ? layout.cssW / layout.pdfW : 1;
-  return pt * cssPerPt;
+  return pt * cssPerPt(layout?.cssW, layout?.pdfW);
 }
 
 function renderPalette(grid, pageInfo, prevBtn, nextBtn) {

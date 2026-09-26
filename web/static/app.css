@@ -809,8 +809,6 @@ th.sortable:hover {
   background: #fff;
 }
 
-#btn-pen-style svg { display: block; }
-
 /* Pen style grid: widths (rows) x transparencies (columns). */
 #pen-grid {
   border-collapse: separate;
@@ -839,7 +837,7 @@ th.sortable:hover {
 
 .pen-cell:hover { background: #fff; border-color: var(--fg-dim); }
 .pen-cell.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.pen-cell svg { display: block; }
+#btn-pen-style svg, .pen-cell svg { display: block; }
 
 #stamp-size-label {
   display: flex;

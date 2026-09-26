@@ -44,7 +44,7 @@ def _geometry(src: str, real: tuple[str, ...] = ()) -> str:
     """The geometry functions plus ANNOT_TYPES. Draw functions are stubbed
     unless named in *real* (the caller then appends the real ones)."""
     return "\n".join([
-        f'import {{ transformPt, inverseTransformPt, sizeToPt, NOTE_GLYPHS }} '
+        f'import {{ transformPt, inverseTransformPt, sizeToPt, cssPerPt, NOTE_GLYPHS }} '
         f'from "{UTILS_JS.as_uri()}";',
         # Stamp metadata in staff spaces, as stamps.js would supply it.
         "const getStampMeta = (id) => ({ w: id === 'wide' ? 4 : 1, h: 2 });",
