@@ -681,6 +681,9 @@ function onPointerUp(e, annotCanvas, layoutIndex) {
     pushUndo(pg);
     if (!s.annotations[pg]) s.annotations[pg] = [];
     s.annotations[pg].push(inkAnnotation(norm, s.penColor, s.penStyle, layout));
+    // End the live stroke before redrawing, or the page would draw it twice
+    // (committed and live) and a translucent stroke would come out darker.
+    s.currentStroke = [];
     saveAnnotations();
     drawAnnotations();
   } else if (s.activeTool === "move" && s.draggingAnnot) {

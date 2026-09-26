@@ -472,3 +472,103 @@ def test_ink_colour_alpha_hex_is_two_digits_and_handles_already_normal_colours(
         color, opacity, expected):
     r = _run(_state(), f"console.log(JSON.stringify(inkColor({json.dumps(color)}, {opacity})));")
     assert r == expected
+
+
+# ---------------------------------------------------------------------------
+# Bug fix C: onPointerUp's pen branch pushes the committed stroke and calls
+# drawAnnotations() BEFORE s.currentStroke is cleared (that only happens at
+# the very end of the function). drawPageAnnotations draws committed ink
+# AND, on top, the live s.currentStroke when it's still set for this page --
+# so the redraw done at pen-up paints the just-finished stroke twice. A
+# solid stroke hides this; a translucent one (Semi/Highlight) darkens
+# visibly until the next unrelated redraw replaces it.
+#
+# This drives the REAL onPointerDown/onPointerMove/onPointerUp with a
+# recording canvas, like test_annotation_save_coalescing.py's _gesture, but
+# keeps drawAnnotations/drawPageAnnotations/drawInk REAL (that harness stubs
+# them to a log line) so the actual double paint shows up as two recorded
+# strokes instead of one.
+# ---------------------------------------------------------------------------
+
+PEN_GESTURE_FNS = ["canvasCoords", "onPointerDown", "onPointerMove", "onPointerUp",
+                   "drawAnnotations"]
+
+
+def _run_pen_gesture(state: dict, body: str):
+    pen = PEN_STYLE_JS.read_text(encoding="utf-8")
+    draw = ANNOTATIONS_JS.read_text(encoding="utf-8")
+    return run_deno("\n".join([
+        f'import {{ transformPt, inverseTransformPt, cssPerPt, readPref, writePref }} '
+        f'from "{UTILS_JS.as_uri()}";',
+        PRELUDE,
+        f"const __s = {json.dumps(state)};",
+        "const getState = () => __s;",
+        "const ANNOT_TYPES = { ink: { draw: drawInk } };",
+        "const saveAnnotations = () => {};",   # save queueing is covered elsewhere
+        "const pushUndo = () => {};",          # undo snapshots are covered elsewhere
+        slice_source(pen, "const PEN_WIDTHS_PT", "export function penStyleAt("),
+        slice_source(draw, "let _colorCtx", ";\n") + ";",
+        _fn(pen, "penStyleAt"),
+        *(_fn(draw, n) for n in DRAW_FNS),
+        *(_fn(draw, n) for n in PEN_GESTURE_FNS),
+        body,
+    ]))
+
+
+PEN_GESTURE_SETUP = """
+const liveCtx = recordingCtx();
+const canvas = {
+  getBoundingClientRect: () => ({ left: 0, top: 0 }),
+  setPointerCapture() {},
+  getContext: () => liveCtx,
+};
+const annotCanvas1 = canvas;
+const ptr = (x, y, buttons = 1) =>
+  ({ clientX: x, clientY: y, buttons, pointerType: "pen", pointerId: 1, preventDefault() {} });
+"""
+
+
+@pytest.mark.parametrize("style, alpha_suffix", [
+    ({"row": 1, "col": 0}, None),    # solid: doubling is invisible but still wrong
+    ({"row": 1, "col": 2}, "4d"),    # Highlight: doubling visibly darkens
+])
+def test_pen_up_redraw_strokes_the_finished_stroke_only_once(style, alpha_suffix):
+    """Regression: the redraw triggered by pen-up must paint the
+    just-committed stroke exactly once, not once as committed ink and again
+    as the still-live preview."""
+    state = _state(activeTool="pen", pencilOnly=False, annotations={"0": []}, penStyle=style)
+    r = _run_pen_gesture(state, PEN_GESTURE_SETUP + """
+onPointerDown(ptr(60, 80), canvas, 0);
+onPointerMove(ptr(120, 160), canvas, 0);
+onPointerMove(ptr(180, 200), canvas, 0);
+liveCtx.st.strokes = [];               // isolate exactly the pen-up redraw
+onPointerUp(ptr(180, 200), canvas, 0);
+console.log(JSON.stringify({
+  strokes: liveCtx.st.strokes,
+  annots: __s.annotations["0"].length,
+  currentStroke: __s.currentStroke,
+}));
+""")
+    assert r["annots"] == 1
+    assert r["currentStroke"] == []
+    assert len(r["strokes"]) == 1, r["strokes"]      # the bug records 2 (committed + live)
+    if alpha_suffix:
+        assert r["strokes"][0]["color"].endswith(alpha_suffix)
+
+
+def test_hovering_after_a_normal_pen_up_draws_no_live_stroke():
+    """After an ordinary pointerup (not a cancel -- see
+    test_annotation_pointer_cancel.py for that path), s.currentStroke ends up
+    empty, so a hovering pointermove (buttons=0, nothing pressed) must not
+    paint a live preview stroke."""
+    state = _state(activeTool="pen", pencilOnly=False, annotations={"0": []})
+    r = _run_pen_gesture(state, PEN_GESTURE_SETUP + """
+onPointerDown(ptr(60, 80), canvas, 0);
+onPointerMove(ptr(120, 160), canvas, 0);
+onPointerUp(ptr(120, 160), canvas, 0);
+liveCtx.st.strokes = [];
+onPointerMove(ptr(200, 220, 0), canvas, 0);    // hover: nothing pressed
+console.log(JSON.stringify({ strokes: liveCtx.st.strokes, currentStroke: __s.currentStroke }));
+""")
+    assert r["strokes"] == []
+    assert r["currentStroke"] == []
