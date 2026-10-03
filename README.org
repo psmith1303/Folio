@@ -1,0 +1,29 @@
+#+title: Folio
+
+A web application for viewing, navigating and annotating PDF music scores
+in a browser (designed with the iPad and Apple Pencil in mind). FastAPI
+backend, plain JS front end.
+
+Main features: Fit / Wide / 2-up display modes; pen, text and eraser
+annotations with undo; composer/title/tag search; start-page stamps;
+setlists (including nested setlists) with playback; content-hash identity
+so renamed or moved PDFs keep their annotations and setlist entries.
+
+The full feature list and run instructions are in [[file:README.md][README.md]].
+
+* Contents
+
+- [[file:web/][web/]] :: The FastAPI server (=web.server:app=) and front-end assets.
+- [[file:scripts/][scripts/]] :: Maintenance scripts (deploy, stamp building, tag sorting, migrations).
+- [[file:docs/][docs/]] :: Original plan, setlist file format, manual test checklist.
+- [[file:tests/][tests/]] :: pytest suite.
+- =folio.sh=, =Dockerfile= :: Ways to launch it.
+- [[file:setlist-editor.el][setlist-editor.el]] :: Emacs helper for editing setlists.
+- =config.json= :: Local settings (library path etc.).
+
+* Quick start
+
+#+begin_src sh
+pip install -r requirements.txt
+python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+#+end_src
