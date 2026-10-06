@@ -1,39 +1,35 @@
 #!/usr/bin/env bash
-# Deploy Folio to its Docker host (p3800).
+# Deploy Folio to its Docker host (p3800) by pushing, then check what it serves.
 #
-# The source reaches the host by Syncthing, not git: psDATA, including this
-# repo and the Docker directory, is a two-way mirror of okapi's copy. So this
-#   1. checks the build inputs are committed and the two version strings agree;
-#   2. waits until the host's copy of every build input (web/, Dockerfile,
-#      .dockerignore, requirements.txt) matches this one byte for byte --
-#      building before the mirror catches up would bake in a half-synced tree;
-#   3. rebuilds the image and recreates only the folio container;
-#   4. verifies: the served version, the container's uid (1000: root-owned
+# p3800's folio.git deploys on push (2026-10-07): its hook builds the image's
+# test stage from the pushed commit (a failure rejects the push), then
+# rebuilds and recreates only the folio container from that commit (bin's
+# deploy-stack; the image no longer builds from the Syncthing mirror). So this
+#   1. checks HEAD is main, the build inputs are committed, and the two
+#      version strings agree;
+#   2. pushes main to p3800 -- the deploy itself; the hook's output shows as
+#      "remote:" lines -- and only then to origin (GitHub), so GitHub never
+#      gets a commit p3800 rejected;
+#   3. verifies: the served version, the container's uid (1000: root-owned
 #      files would stop Syncthing), the library, and the public URL.
 #
-# Usage: scripts/deploy.sh [--check] [--build-only] [--host HOST]
-#                          [--timeout SECONDS] [--verify-timeout SECONDS]
+# Usage: scripts/deploy.sh [--check] [--host HOST] [--verify-timeout SECONDS]
 #                          [--allow-dirty]
-#   --check        steps 1-2 and report what is live; change nothing
-#   --build-only   build the image on the host, leave the container alone
-#   --host HOST    ssh host to deploy to (default: $FOLIO_HOST or p3800)
-#   --timeout N    seconds to wait for the mirror (default 300)
+#   --check        step 1 and report what is live; push nothing
+#   --host HOST    ssh host to verify on (default: $FOLIO_HOST or p3800)
 #   --verify-timeout N
 #                  seconds to wait for the new version to be served (default 60)
-#   --allow-dirty  deploy uncommitted changes to the build inputs
+#   --allow-dirty  deploy HEAD although the build inputs have uncommitted
+#                  changes (those changes are NOT deployed: only commits are)
 
 set -euo pipefail
 
 HOST="${FOLIO_HOST:-p3800}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REMOTE_REPO="${FOLIO_REMOTE_REPO:-$REPO}"                 # same path on both hosts
-# The stack's folder: by default, wherever the host's `docker` compose project
-# runs from (psDATA's Docker directory, or the deploy checkout once that is
-# live). An `up` from any other copy would take the whole stack over.
-REMOTE_DOCKER="${FOLIO_REMOTE_DOCKER:-}"
-CADDY_ENV="${FOLIO_CADDY_ENV:-/etc/docker-stack/caddy.env}"
+DEPLOY_REMOTE="${FOLIO_DEPLOY_REMOTE:-p3800}"     # the bare repo with the hook
+MIRROR_REMOTE="${FOLIO_MIRROR_REMOTE-origin}"     # GitHub; empty to skip
+BRANCH=main
 PUBLIC_URL="${FOLIO_PUBLIC_URL:-https://folio.66uqs.org}"
-TIMEOUT=300
 VERIFY_TIMEOUT=60
 MODE=deploy
 ALLOW_DIRTY=0
@@ -41,9 +37,7 @@ ALLOW_DIRTY=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --check) MODE=check ;;
-    --build-only) MODE=build ;;
     --host) HOST="$2"; shift ;;
-    --timeout) TIMEOUT="$2"; shift ;;
     --verify-timeout) VERIFY_TIMEOUT="$2"; shift ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
     -h|--help) sed -n '2,/^$/s/^# \{0,1\}//p' "$0"; exit 0 ;;
@@ -56,14 +50,6 @@ say() { printf '==> %s\n' "$*"; }
 die() { printf 'deploy: %s\n' "$*" >&2; exit 1; }
 remote() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$HOST" "$@"; }
 
-# Per-file hashes of the image's inputs (what the Dockerfile copies, less
-# .dockerignore's caches), run identically on both hosts. Syncthing's own
-# temporary files (.syncthing.*.tmp, ~syncthing~*.tmp) are left out: a
-# transfer in progress already shows as its real file differing, and an
-# abandoned one is noise (.dockerignore keeps them out of the image).
-INPUTS_CMD='find requirements.txt Dockerfile .dockerignore web -type f ! -path "*/__pycache__/*" ! -name "*.py[cod]" ! -name "*.log" ! -name ".syncthing.*" ! -name "~syncthing~*" -print0 | LC_ALL=C sort -z | xargs -0 sha256sum'
-STRAYS_CMD='find web -type f \( -name ".syncthing.*" -o -name "~syncthing~*" \)'
-
 # 1. What is being deployed.
 cd "$REPO"
 VERSION="$(sed -n 's/^const APP_VERSION = "\(.*\)";$/\1/p' web/static/sw.js)"
@@ -71,36 +57,15 @@ SERVER_VERSION="$(sed -n 's/.*title="Folio", version="\([^"]*\)".*/\1/p' web/ser
 [[ -n "$VERSION" ]] || die "can't read APP_VERSION from web/static/sw.js"
 [[ "$VERSION" == "$SERVER_VERSION" ]] \
   || die "version mismatch: sw.js $VERSION, server.py ${SERVER_VERSION:-?} (bump both)"
+[[ "$(git symbolic-ref -q --short HEAD)" == "$BRANCH" ]] \
+  || die "not on $BRANCH: only $BRANCH deploys (p3800's hook acts on its HEAD branch)"
 DIRTY="$(git status --porcelain -- web Dockerfile .dockerignore requirements.txt)"
 if [[ -n "$DIRTY" && $ALLOW_DIRTY -eq 0 ]]; then
-  die "uncommitted changes to the build inputs (--allow-dirty to deploy them anyway):
+  die "uncommitted changes to the build inputs (commit them; --allow-dirty deploys HEAD without them):
 $DIRTY"
 fi
-say "Folio $VERSION ($(git rev-parse --short HEAD)${DIRTY:+, with uncommitted changes}) → $HOST"
-
-# 2. Wait for the mirror. First make sure the host is reachable and has the
-# repo: in the loop below an ssh failure would look like a lagging mirror.
+say "Folio $VERSION ($(git rev-parse --short HEAD)${DIRTY:+; uncommitted changes NOT included}) → $HOST"
 remote true || die "can't reach $HOST over ssh (see the error above)"
-remote "test -d '$REMOTE_REPO'" || die "$REMOTE_REPO doesn't exist on $HOST"
-LOCAL_SUMS="$(eval "$INPUTS_CMD")"
-say "waiting for $HOST's copy to match (up to ${TIMEOUT}s)"
-deadline=$((SECONDS + TIMEOUT))
-while :; do
-  REMOTE_SUMS="$(remote "cd '$REMOTE_REPO' && $INPUTS_CMD" 2>/dev/null || true)"
-  [[ "$REMOTE_SUMS" == "$LOCAL_SUMS" ]] && break
-  if (( SECONDS >= deadline )); then
-    echo "Files that still differ (< here, > $HOST):" >&2
-    diff <(echo "$LOCAL_SUMS") <(echo "$REMOTE_SUMS") | grep '^[<>]' | head -20 >&2 || true
-    die "$HOST's copy hasn't caught up after ${TIMEOUT}s — is Syncthing running on both?"
-  fi
-  sleep 5
-done
-say "mirror is in sync ($(wc -l <<<"$LOCAL_SUMS") files)"
-STRAYS="$(remote "cd '$REMOTE_REPO' && $STRAYS_CMD" 2>/dev/null || true)"
-if [[ -n "$STRAYS" ]]; then
-  echo "note: Syncthing temp files on $HOST (ignored; safe to delete if old):" >&2
-  printf '  %s\n' "${STRAYS//$'\n'/$'\n'  }" >&2
-fi
 
 live_version() {
   remote "curl -sf localhost:8989/openapi.json" 2>/dev/null \
@@ -113,29 +78,16 @@ if [[ $MODE == check ]]; then
   exit 0
 fi
 
-# 3. Build, and recreate only folio (never the rest of the stack).
-if [[ -z "$REMOTE_DOCKER" ]]; then
-  REMOTE_DOCKER="$(remote "docker compose ls --all --format json" | python3 -c '
-import json, os, sys
-for p in json.load(sys.stdin):
-    if p["Name"] == "docker":
-        print(os.path.dirname(p["ConfigFiles"].split(",")[0]))
-' 2>/dev/null || true)"
-  [[ -n "$REMOTE_DOCKER" ]] \
-    || die "no 'docker' compose project on $HOST (docker compose ls); set FOLIO_REMOTE_DOCKER"
+# 2. Push: p3800 tests and deploys, or rejects.
+say "pushing $BRANCH to $DEPLOY_REMOTE (its hook tests, then deploys)"
+git push "$DEPLOY_REMOTE" "$BRANCH" \
+  || die "$DEPLOY_REMOTE rejected the push (or could not be reached) — see the remote: lines above"
+if [[ -n "$MIRROR_REMOTE" ]]; then
+  git push "$MIRROR_REMOTE" "$BRANCH" \
+    || echo "warning: the push to $MIRROR_REMOTE failed; p3800 is deployed regardless" >&2
 fi
-COMPOSE="cd '$REMOTE_DOCKER' && CADDY_ENV_FILE='$CADDY_ENV' docker compose"
-say "stack folder on $HOST: $REMOTE_DOCKER"
-if [[ $MODE == build ]]; then
-  say "building the image on $HOST"
-  remote "$COMPOSE build folio"
-  say "built; the running container is unchanged (live: $(live_version))"
-  exit 0
-fi
-say "building and recreating folio on $HOST"
-remote "$COMPOSE up -d --build folio"
 
-# 4. Verify.
+# 3. Verify.
 say "verifying"
 deadline=$((SECONDS + VERIFY_TIMEOUT))
 until [[ "$(live_version)" == "$VERSION" ]]; do

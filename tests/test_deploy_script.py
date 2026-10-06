@@ -1,9 +1,11 @@
-"""scripts/deploy.sh: deploy Folio to its Docker host.
+"""scripts/deploy.sh: deploy Folio by pushing to p3800, then verify.
 
 Runs the real script from a throwaway git repo holding just the build
-inputs, against a second directory standing in for the host's Syncthing
-copy. `ssh` runs its command locally; `docker` and `curl` are fakes that
-record what they were asked to do and answer as the host would.
+inputs. Its `p3800` remote is a local bare repo whose pre-receive hook
+stands in for p3800's (it can reject) and whose post-receive marks the
+deploy; `origin` pushes to a stand-in for GitHub and to that same bare repo,
+as the real origin does. `ssh` runs its command locally; `docker` and `curl`
+are fakes that answer as the host would.
 """
 
 import os
@@ -29,10 +31,8 @@ exec bash -c "$*"
 """
 
 FAKE_DOCKER = r"""#!/bin/bash
-echo "docker $* | CADDY_ENV_FILE=${CADDY_ENV_FILE:-} | cwd=$PWD" >> "$FAKE/docker.log"
-[[ "$*" == *"up -d --build folio"* ]] && touch "$FAKE/deployed"
+echo "docker $*" >> "$FAKE/docker.log"
 [[ "$*" == "exec folio id -u" ]] && echo "${FAKE_UID:-1000}"
-[[ "$*" == "compose ls --all --format json" ]] && echo "${FAKE_COMPOSE_LS:-[]}"
 exit 0
 """
 
@@ -48,32 +48,64 @@ case "$*" in
 esac
 """
 
+# p3800's hook, in miniature: the test step can fail the push; a deploy is a
+# marker the fake curl reads.
+PRE_RECEIVE = r"""#!/bin/bash
+cat >/dev/null
+echo "pre-receive" >> "$FAKE/hook.log"
+[[ -n "$FAKE_REJECT" ]] && { echo "deploy: folio: test FAILED (exit 1) — push rejected"; exit 1; }
+exit 0
+"""
+POST_RECEIVE = r"""#!/bin/bash
+cat >/dev/null
+echo "post-receive" >> "$FAKE/hook.log"
+touch "$FAKE/deployed"
+"""
+
 
 def _git(repo, *args):
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                          text=True).stdout.strip()
+
+
+def _commit(repo, msg):
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
+    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", msg)
 
 
 @pytest.fixture
 def env(tmp_path):
-    """A repo with the build inputs and a committed deploy.sh, an in-sync
-    host copy of it, and the fakes on PATH."""
+    """A repo on main with the build inputs, remotes p3800 (hooked) and
+    origin (GitHub + p3800), both holding an older commit, and the fakes on
+    PATH."""
     repo = tmp_path / "Folio"
     (repo / "scripts").mkdir(parents=True)
     (repo / "web" / "static").mkdir(parents=True)
     shutil.copy(SCRIPT, repo / "scripts" / "deploy.sh")
+    (repo / "web" / "static" / "sw.js").write_text('const APP_VERSION = "1.0.0";\n')
+    (repo / "web" / "server.py").write_text('app = FastAPI(\n    title="Folio", version="1.0.0",\n)\n')
+    (repo / "Dockerfile").write_text("FROM python:3.12-slim\n")
+    (repo / ".dockerignore").write_text("docs/\n")
+    (repo / "requirements.txt").write_text("fastapi\n")
+    _git(repo, "init", "-q", "-b", "main")
+    _commit(repo, "1.0.0")
+
+    p3800 = tmp_path / "p3800.git"
+    github = tmp_path / "github.git"
+    for bare in (p3800, github):
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+    _git(repo, "remote", "add", "p3800", str(p3800))
+    _git(repo, "remote", "add", "origin", str(github))
+    _git(repo, "remote", "set-url", "--add", "--push", "origin", str(github))
+    _git(repo, "remote", "set-url", "--add", "--push", "origin", str(p3800))
+    _git(repo, "push", "-q", "origin", "main")          # before the hooks: "live" is 1.0.0
+    for name, body in (("pre-receive", PRE_RECEIVE), ("post-receive", POST_RECEIVE)):
+        (p3800 / "hooks" / name).write_text(body)
+        (p3800 / "hooks" / name).chmod(0o755)
+
     (repo / "web" / "static" / "sw.js").write_text(f'const APP_VERSION = "{VERSION}";\n')
     (repo / "web" / "server.py").write_text(f'app = FastAPI(\n    title="Folio", version="{VERSION}",\n)\n')
-    (repo / "Dockerfile").write_text("FROM python:3.12-slim\n")
-    (repo / ".dockerignore").write_text("tests/\n")
-    (repo / "requirements.txt").write_text("fastapi\n")
-    _git(repo, "init", "-q")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "add", "-A")
-    _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
-
-    host = tmp_path / "host-copy"
-    shutil.copytree(repo, host, ignore=shutil.ignore_patterns(".git"))
-    docker_dir = tmp_path / "Docker"
-    docker_dir.mkdir()
+    _commit(repo, VERSION)
 
     fake = tmp_path / "fake"
     (fake / "bin").mkdir(parents=True)
@@ -86,12 +118,9 @@ def env(tmp_path):
         "PATH": f"{fake / 'bin'}:{os.environ['PATH']}",
         "FAKE": str(fake), "FAKE_NEW": VERSION,
         "FOLIO_HOST": "testhost",
-        "FOLIO_REMOTE_REPO": str(host),
-        "FOLIO_REMOTE_DOCKER": str(docker_dir),
-        "FOLIO_CADDY_ENV": "/etc/test/caddy.env",
         "FOLIO_PUBLIC_URL": "https://folio.test",
     }
-    return {"repo": repo, "host": host, "docker_dir": docker_dir, "fake": fake, "env": e}
+    return {"repo": repo, "p3800": p3800, "github": github, "fake": fake, "env": e}
 
 
 def run(env, *args, timeout=60, **extra):
@@ -104,6 +133,15 @@ def run(env, *args, timeout=60, **extra):
     return r
 
 
+def head(bare):
+    return _git(bare, "rev-parse", "main")
+
+
+def hook_runs(env):
+    log = env["fake"] / "hook.log"
+    return log.read_text().splitlines() if log.exists() else []
+
+
 def docker_calls(env):
     log = env["fake"] / "docker.log"
     return log.read_text().splitlines() if log.exists() else []
@@ -114,29 +152,50 @@ def docker_calls(env):
 # ---------------------------------------------------------------------------
 
 
-def test_deploy_recreates_only_folio_and_verifies(env):
+def test_deploy_pushes_to_p3800_then_github_and_verifies(env):
     r = run(env)
     assert r.returncode == 0, r.out
-    calls = docker_calls(env)
-    assert calls[0] == (f"docker compose up -d --build folio | "
-                        f"CADDY_ENV_FILE=/etc/test/caddy.env | cwd={env['docker_dir']}")
-    assert [c.split(" | ")[0] for c in calls[1:]] == ["docker exec folio id -u"]
-    assert not any("remove-orphans" in c or " down" in c for c in calls)
+    tip = _git(env["repo"], "rev-parse", "HEAD")
+    assert head(env["p3800"]) == tip and head(env["github"]) == tip
+    assert hook_runs(env) == ["pre-receive", "post-receive"]   # origin's p3800 push: a no-op
+    assert docker_calls(env) == ["docker exec folio id -u"]    # it never builds itself
     assert f"serves {VERSION} as uid 1000, 433 scores" in r.out
     assert f"https://folio.test serves {VERSION}" in r.out
 
 
-def test_build_only_leaves_the_container_alone(env):
-    r = run(env, "--build-only")
+def test_a_rejected_push_stops_before_github_and_verifying(env):
+    old = head(env["github"])
+    r = run(env, FAKE_REJECT="1")
+    assert r.returncode == 1
+    assert "p3800 rejected the push" in r.out
+    assert "test FAILED" in r.out                       # the hook's own words, as remote: lines
+    assert head(env["github"]) == old and head(env["p3800"]) == old
+    assert docker_calls(env) == []
+
+
+def test_a_failed_github_push_only_warns(env):
+    shutil.rmtree(env["github"])
+    r = run(env)
     assert r.returncode == 0, r.out
-    assert [c.split(" | ")[0] for c in docker_calls(env)] == ["docker compose build folio"]
-    assert "running container is unchanged (live: 1.0.0)" in r.out
+    assert "the push to origin failed; p3800 is deployed regardless" in r.out
+    assert f"serves {VERSION}" in r.out
 
 
-def test_check_changes_nothing(env):
+def test_already_deployed_pushes_nothing_new_and_still_verifies(env):
+    subprocess.run(["git", "-C", str(env["repo"]), "push", "-q", "p3800", "main"],
+                   env=env["env"], check=True, capture_output=True)
+    (env["fake"] / "hook.log").unlink()
+    r = run(env)
+    assert r.returncode == 0, r.out
+    assert hook_runs(env) == []
+    assert f"serves {VERSION} as uid 1000" in r.out
+
+
+def test_check_pushes_nothing(env):
+    old = head(env["p3800"])
     r = run(env, "--check")
     assert r.returncode == 0, r.out
-    assert docker_calls(env) == []
+    assert head(env["p3800"]) == old and hook_runs(env) == []
     assert f"live on testhost: 1.0.0; would deploy {VERSION}" in r.out
 
 
@@ -162,13 +221,12 @@ def test_no_score_count_fails_with_a_hint_not_a_traceback(env):
 
 
 def test_a_container_still_serving_the_old_version_fails_the_deploy(env):
-    """The new container never comes up serving the new version (e.g. the
-    old one wasn't replaced): the deploy fails, naming what is served, and
-    goes no further (no uid or library checks)."""
+    """The pushed version never comes up: the deploy fails, naming what is
+    served, and goes no further (no uid or library checks)."""
     r = run(env, "--verify-timeout", "2", FAKE_STUCK="1")
     assert r.returncode == 1
     assert f"testhost serves 1.0.0 after 2s, not {VERSION}" in r.out
-    assert [c.split(" | ")[0] for c in docker_calls(env)] == ["docker compose up -d --build folio"]
+    assert docker_calls(env) == []
     assert r.elapsed < 10
 
 
@@ -183,44 +241,15 @@ def test_an_unreachable_public_url_only_warns(env):
 # ---------------------------------------------------------------------------
 
 
-def test_the_mirror_must_match_before_building(env):
-    (env["host"] / "web" / "static" / "sw.js").write_text('const APP_VERSION = "old";\n')
-    r = run(env, "--timeout", "1")
-    assert r.returncode == 1
-    assert "hasn't caught up after 1s" in r.out
-    assert "web/static/sw.js" in r.out                  # names the differing file
-    assert docker_calls(env) == []
-
-
-def test_it_deploys_once_the_mirror_catches_up(env):
-    sw = env["host"] / "web" / "static" / "sw.js"
-    good = sw.read_text()
-    sw.write_text("stale\n")
-    proc = subprocess.Popen(["bash", str(env["repo"] / "scripts" / "deploy.sh"), "--check",
-                             "--timeout", "30"], env=env["env"],
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    time.sleep(2)
-    sw.write_text(good)                                  # Syncthing catches up
-    out, _ = proc.communicate(timeout=30)
-    assert proc.returncode == 0, out
-    assert "mirror is in sync" in out
-
-
-def test_syncthing_temp_files_are_ignored_and_reported(env):
-    stray = env["host"] / "web" / "static" / ".syncthing.sw.js.tmp"
-    stray.write_text("half a file")
-    r = run(env, "--check", "--timeout", "1")
-    assert r.returncode == 0, r.out
-    assert "web/static/.syncthing.sw.js.tmp" in r.out
-
-
 def test_uncommitted_build_inputs_are_refused(env):
     (env["repo"] / "Dockerfile").write_text("FROM python:3.13-slim\n")
-    r = run(env, "--check")
+    r = run(env)
     assert r.returncode == 1
     assert "uncommitted changes to the build inputs" in r.out and "Dockerfile" in r.out
-    shutil.copy(env["repo"] / "Dockerfile", env["host"] / "Dockerfile")
-    assert run(env, "--check", "--allow-dirty").returncode == 0
+    assert hook_runs(env) == []
+    r = run(env, "--allow-dirty")
+    assert r.returncode == 0, r.out
+    assert "uncommitted changes NOT included" in r.out
 
 
 def test_uncommitted_files_outside_the_build_inputs_are_fine(env):
@@ -235,43 +264,18 @@ def test_mismatched_versions_are_refused(env):
     assert f"sw.js {VERSION}, server.py 1.2.3" in r.out
 
 
+def test_another_branch_is_refused(env):
+    _git(env["repo"], "checkout", "-q", "-b", "feature")
+    r = run(env)
+    assert r.returncode == 1
+    assert "not on main" in r.out
+    assert hook_runs(env) == []
+
+
 def test_an_unreachable_host_fails_fast(env):
-    """Regression (review): an ssh failure looked like a lagging mirror, so it
-    waited out the whole timeout and then blamed Syncthing."""
-    r = run(env, "--check", "--timeout", "20", FAKE_SSH_FAIL="1")
+    r = run(env, FAKE_SSH_FAIL="1")
     assert r.returncode == 1
     assert "can't reach testhost over ssh" in r.out
     assert "No route to host" in r.out                  # ssh's own error shown
-    assert "Syncthing" not in r.out
+    assert hook_runs(env) == []
     assert r.elapsed < 10
-
-
-def test_a_missing_repo_on_the_host_fails_fast(env):
-    r = run(env, "--check", "--timeout", "20", FOLIO_REMOTE_REPO="/nonexistent/Folio")
-    assert r.returncode == 1
-    assert "/nonexistent/Folio doesn't exist on testhost" in r.out
-    assert r.elapsed < 10
-
-
-# ---------------------------------------------------------------------------
-# Finding the stack's folder
-# ---------------------------------------------------------------------------
-
-
-def test_stack_folder_is_where_the_docker_project_runs(env):
-    del env["env"]["FOLIO_REMOTE_DOCKER"]
-    ls = ('[{"Name":"other","Status":"running(1)","ConfigFiles":"/elsewhere/compose.yml"},'
-          f'{{"Name":"docker","Status":"running(9)","ConfigFiles":"{env["docker_dir"]}/docker-compose.yml"}}]')
-    r = run(env, FAKE_COMPOSE_LS=ls)
-    assert r.returncode == 0, r.out
-    assert f"stack folder on testhost: {env['docker_dir']}" in r.out
-    up = [c for c in docker_calls(env) if "up -d --build folio" in c]
-    assert up and up[0].endswith(f"cwd={env['docker_dir']}")
-
-
-def test_no_docker_project_stops_before_building(env):
-    del env["env"]["FOLIO_REMOTE_DOCKER"]
-    r = run(env, FAKE_COMPOSE_LS='[{"Name":"other","Status":"running(1)","ConfigFiles":"/x/c.yml"}]')
-    assert r.returncode == 1
-    assert "no 'docker' compose project on testhost" in r.out
-    assert [c.split(" | ")[0] for c in docker_calls(env)] == ["docker compose ls --all --format json"]
