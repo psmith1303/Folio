@@ -9,16 +9,14 @@ __pycache__/
 **/.syncthing.*
 **/~syncthing~*
 
-# Dev-only / not needed in the image
-tests/
-scripts/
+# Dev-only / not needed in the image. tests/, scripts/, requirements-dev.txt
+# and pytest.ini stay in the context: the `test` target copies them (the
+# runtime stage copies only web/).
 docs/
 *.el
 *.md
 *.pdf
 icon.png
-requirements-dev.txt
-pytest.ini
 folio.sh
 
 # Runtime config/data (never bake into the image)
