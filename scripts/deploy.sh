@@ -5,9 +5,9 @@
 # test stage from the pushed commit (a failure rejects the push), then
 # rebuilds and recreates only the folio container from that commit (bin's
 # deploy-stack; the image no longer builds from the Syncthing mirror). So this
-#   1. checks HEAD is main, the build inputs are committed, and the two
+#   1. checks HEAD is master, the build inputs are committed, and the two
 #      version strings agree;
-#   2. pushes main to p3800 -- the deploy itself; the hook's output shows as
+#   2. pushes master to p3800 -- the deploy itself; the hook's output shows as
 #      "remote:" lines -- and only then to origin (GitHub), so GitHub never
 #      gets a commit p3800 rejected;
 #   3. verifies: the served version, the container's uid (1000: root-owned
@@ -28,7 +28,7 @@ HOST="${FOLIO_HOST:-p3800}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_REMOTE="${FOLIO_DEPLOY_REMOTE:-p3800}"     # the bare repo with the hook
 MIRROR_REMOTE="${FOLIO_MIRROR_REMOTE-origin}"     # GitHub; empty to skip
-BRANCH=main
+BRANCH=master                                     # main until 2026-10-07
 PUBLIC_URL="${FOLIO_PUBLIC_URL:-https://folio.66uqs.org}"
 VERIFY_TIMEOUT=60
 MODE=deploy

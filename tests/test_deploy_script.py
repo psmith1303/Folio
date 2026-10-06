@@ -75,7 +75,7 @@ def _commit(repo, msg):
 
 @pytest.fixture
 def env(tmp_path):
-    """A repo on main with the build inputs, remotes p3800 (hooked) and
+    """A repo on master with the build inputs, remotes p3800 (hooked) and
     origin (GitHub + p3800), both holding an older commit, and the fakes on
     PATH."""
     repo = tmp_path / "Folio"
@@ -87,18 +87,18 @@ def env(tmp_path):
     (repo / "Dockerfile").write_text("FROM python:3.12-slim\n")
     (repo / ".dockerignore").write_text("docs/\n")
     (repo / "requirements.txt").write_text("fastapi\n")
-    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "init", "-q", "-b", "master")
     _commit(repo, "1.0.0")
 
     p3800 = tmp_path / "p3800.git"
     github = tmp_path / "github.git"
     for bare in (p3800, github):
-        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(bare)], check=True)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(bare)], check=True)
     _git(repo, "remote", "add", "p3800", str(p3800))
     _git(repo, "remote", "add", "origin", str(github))
     _git(repo, "remote", "set-url", "--add", "--push", "origin", str(github))
     _git(repo, "remote", "set-url", "--add", "--push", "origin", str(p3800))
-    _git(repo, "push", "-q", "origin", "main")          # before the hooks: "live" is 1.0.0
+    _git(repo, "push", "-q", "origin", "master")          # before the hooks: "live" is 1.0.0
     for name, body in (("pre-receive", PRE_RECEIVE), ("post-receive", POST_RECEIVE)):
         (p3800 / "hooks" / name).write_text(body)
         (p3800 / "hooks" / name).chmod(0o755)
@@ -134,7 +134,7 @@ def run(env, *args, timeout=60, **extra):
 
 
 def head(bare):
-    return _git(bare, "rev-parse", "main")
+    return _git(bare, "rev-parse", "master")
 
 
 def hook_runs(env):
@@ -182,7 +182,7 @@ def test_a_failed_github_push_only_warns(env):
 
 
 def test_already_deployed_pushes_nothing_new_and_still_verifies(env):
-    subprocess.run(["git", "-C", str(env["repo"]), "push", "-q", "p3800", "main"],
+    subprocess.run(["git", "-C", str(env["repo"]), "push", "-q", "p3800", "master"],
                    env=env["env"], check=True, capture_output=True)
     (env["fake"] / "hook.log").unlink()
     r = run(env)
@@ -268,7 +268,7 @@ def test_another_branch_is_refused(env):
     _git(env["repo"], "checkout", "-q", "-b", "feature")
     r = run(env)
     assert r.returncode == 1
-    assert "not on main" in r.out
+    assert "not on master" in r.out
     assert hook_runs(env) == []
 
 
