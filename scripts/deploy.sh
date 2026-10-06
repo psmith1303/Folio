@@ -27,7 +27,10 @@ set -euo pipefail
 HOST="${FOLIO_HOST:-p3800}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE_REPO="${FOLIO_REMOTE_REPO:-$REPO}"                 # same path on both hosts
-REMOTE_DOCKER="${FOLIO_REMOTE_DOCKER:-/mnt/z/psDATA/Src/Docker}"
+# The stack's folder: by default, wherever the host's `docker` compose project
+# runs from (psDATA's Docker directory, or the deploy checkout once that is
+# live). An `up` from any other copy would take the whole stack over.
+REMOTE_DOCKER="${FOLIO_REMOTE_DOCKER:-}"
 CADDY_ENV="${FOLIO_CADDY_ENV:-/etc/docker-stack/caddy.env}"
 PUBLIC_URL="${FOLIO_PUBLIC_URL:-https://folio.66uqs.org}"
 TIMEOUT=300
@@ -111,7 +114,18 @@ if [[ $MODE == check ]]; then
 fi
 
 # 3. Build, and recreate only folio (never the rest of the stack).
+if [[ -z "$REMOTE_DOCKER" ]]; then
+  REMOTE_DOCKER="$(remote "docker compose ls --all --format json" | python3 -c '
+import json, os, sys
+for p in json.load(sys.stdin):
+    if p["Name"] == "docker":
+        print(os.path.dirname(p["ConfigFiles"].split(",")[0]))
+' 2>/dev/null || true)"
+  [[ -n "$REMOTE_DOCKER" ]] \
+    || die "no 'docker' compose project on $HOST (docker compose ls); set FOLIO_REMOTE_DOCKER"
+fi
 COMPOSE="cd '$REMOTE_DOCKER' && CADDY_ENV_FILE='$CADDY_ENV' docker compose"
+say "stack folder on $HOST: $REMOTE_DOCKER"
 if [[ $MODE == build ]]; then
   say "building the image on $HOST"
   remote "$COMPOSE build folio"

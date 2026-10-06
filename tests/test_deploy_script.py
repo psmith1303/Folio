@@ -32,6 +32,7 @@ FAKE_DOCKER = r"""#!/bin/bash
 echo "docker $* | CADDY_ENV_FILE=${CADDY_ENV_FILE:-} | cwd=$PWD" >> "$FAKE/docker.log"
 [[ "$*" == *"up -d --build folio"* ]] && touch "$FAKE/deployed"
 [[ "$*" == "exec folio id -u" ]] && echo "${FAKE_UID:-1000}"
+[[ "$*" == "compose ls --all --format json" ]] && echo "${FAKE_COMPOSE_LS:-[]}"
 exit 0
 """
 
@@ -250,3 +251,27 @@ def test_a_missing_repo_on_the_host_fails_fast(env):
     assert r.returncode == 1
     assert "/nonexistent/Folio doesn't exist on testhost" in r.out
     assert r.elapsed < 10
+
+
+# ---------------------------------------------------------------------------
+# Finding the stack's folder
+# ---------------------------------------------------------------------------
+
+
+def test_stack_folder_is_where_the_docker_project_runs(env):
+    del env["env"]["FOLIO_REMOTE_DOCKER"]
+    ls = ('[{"Name":"other","Status":"running(1)","ConfigFiles":"/elsewhere/compose.yml"},'
+          f'{{"Name":"docker","Status":"running(9)","ConfigFiles":"{env["docker_dir"]}/docker-compose.yml"}}]')
+    r = run(env, FAKE_COMPOSE_LS=ls)
+    assert r.returncode == 0, r.out
+    assert f"stack folder on testhost: {env['docker_dir']}" in r.out
+    up = [c for c in docker_calls(env) if "up -d --build folio" in c]
+    assert up and up[0].endswith(f"cwd={env['docker_dir']}")
+
+
+def test_no_docker_project_stops_before_building(env):
+    del env["env"]["FOLIO_REMOTE_DOCKER"]
+    r = run(env, FAKE_COMPOSE_LS='[{"Name":"other","Status":"running(1)","ConfigFiles":"/x/c.yml"}]')
+    assert r.returncode == 1
+    assert "no 'docker' compose project on testhost" in r.out
+    assert [c.split(" | ")[0] for c in docker_calls(env)] == ["docker compose ls --all --format json"]
