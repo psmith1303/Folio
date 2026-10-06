@@ -24,11 +24,9 @@ EXPOSE 8989
 CMD ["python", "-m", "uvicorn", "web.server:app", "--host", "0.0.0.0", "--port", "8989"]
 
 # The suite, on top of the runtime image, so it tests what ships. deno runs
-# the JS module tests (they skip without it); git is for test_deploy_script.
+# the JS module tests (they skip without it).
 FROM runtime AS test
 COPY --from=denoland/deno:bin-2.9.5 /deno /usr/local/bin/deno
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
 COPY requirements-dev.txt pytest.ini ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY scripts ./scripts

@@ -233,9 +233,12 @@ Each PDF gets a fast content hash (SHA-256 of first/last 4 KB + file size). A pe
 - **`<score>.json`** — annotation sidecar written alongside each PDF; versioned JSON containing per-page annotation lists and rotation overrides.  Stored rotations are *additive on top of* the PDF's intrinsic `/Rotate` (i.e. relative to the canonical Acrobat orientation).
 - **`_hash_index.json`** — content-hash-to-path index, auto-generated in the library directory; used to detect renames between scans.
 
+### Deploying
+
+`git push p3800 master` deploys to the Docker host (p3800). Its hook builds the image's `test` stage from the pushed commit (a failure rejects the push), rebuilds and recreates only the `folio` container from it, then checks that it serves the new version as uid 1000 with a non-empty library, also at the public URL (bin's `deploy-stack`). `git push origin master` updates GitHub only.
+
 ### One-off scripts
 
-- **`scripts/deploy.sh`** — deploys to the Docker host (p3800) by pushing: checks `master` is checked out, the build inputs are committed and the versions agree, then pushes `master` to p3800, whose hook runs the test suite on the pushed commit (a failure rejects the push) and rebuilds and recreates only the `folio` container from it. Then it pushes to `origin` (GitHub) and verifies the served version, uid 1000, the library and the public URL. `--check` pushes nothing.
 - **`scripts/sort_tags.py`** — puts PDF filename tags into canonical form (lowercase, de-duplicated, sorted); updates the hash index, setlists and recent list in lockstep.
 - **`scripts/migrate_rotations.py`** — one-shot migration after the rotation-handling fix.  Subtracts each PDF's intrinsic `/Rotate` from the user-stored rotation in annotation sidecars, so previously-compensated pages stay visually identical after the fix.  Dry-run by default; `--apply` writes.  Only needs to be run once per library, and only matters if you'd previously rotated pages to compensate for upside-down PDFs.
 
