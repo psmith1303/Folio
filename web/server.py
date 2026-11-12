@@ -373,6 +373,23 @@ def _auto_load_library() -> None:
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
+_SW_VERSION_RE = re.compile(r'^const APP_VERSION = "(\d+\.\d+\.\d+)";$', re.M)
+
+
+def read_app_version(sw_path: str) -> str:
+    """The app version, from sw.js's APP_VERSION: the one place it is set.
+
+    The page compares this server's version with its service worker's to
+    detect a stale shell (reloadIfShellStale in app.js), so both must come
+    from one source. Raises if it is missing, so a bad edit fails the
+    deploy hook's build instead of serving a wrong version.
+    """
+    with open(sw_path, encoding="utf-8") as f:
+        match = _SW_VERSION_RE.search(f.read())
+    if not match:
+        raise RuntimeError(f'no `const APP_VERSION = "X.Y.Z";` line in {sw_path}')
+    return match.group(1)
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
@@ -396,7 +413,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.17.0",
+    title="Folio", version=read_app_version(os.path.join(STATIC_DIR, "sw.js")),
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 

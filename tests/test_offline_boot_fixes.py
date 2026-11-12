@@ -385,25 +385,69 @@ class TestServiceWorkerOfflineBoot:
         )
 
 
-SERVER_PY = STATIC.parent / "server.py"
-
-
-class TestVersionLockstep:
-    """web/server.py `version=` and sw.js APP_VERSION drive the stale-shell
-    self-heal (reloadIfShellStale in app.js): the client compares them to
-    detect an out-of-date shell. They live in two files with no shared
-    source and have drifted before — this is the guard against that.
+class TestVersionOneSource:
+    """The server's version (/api/config) and sw.js APP_VERSION drive the
+    stale-shell self-heal (reloadIfShellStale in app.js), which compares
+    them to detect an out-of-date shell. The server reads sw.js's, so they
+    can't differ.
     """
 
-    def test_versions_match(self):
-        server_src = SERVER_PY.read_text(encoding="utf-8")
-        sw_src = SW_JS.read_text(encoding="utf-8")
-        server_match = re.search(r'version="(\d+\.\d+\.\d+)"', server_src)
-        sw_match = re.search(r'APP_VERSION = "(\d+\.\d+\.\d+)"', sw_src)
-        assert server_match, "no version=\"X.Y.Z\" found in web/server.py"
-        assert sw_match, "no APP_VERSION = \"X.Y.Z\" found in web/static/sw.js"
-        assert server_match.group(1) == sw_match.group(1), (
-            f"web/server.py version={server_match.group(1)!r} but sw.js "
-            f"APP_VERSION={sw_match.group(1)!r} — bump them together or the "
-            "stale-shell self-heal in app.js compares against the wrong value"
+    def test_server_serves_the_sw_version(self):
+        from fastapi.testclient import TestClient
+        from web.server import app
+
+        # Its own regex, not read_app_version's: an independent check.
+        sw_version = re.search(
+            r'^const APP_VERSION = "(\d+\.\d+\.\d+)";$',
+            SW_JS.read_text(encoding="utf-8"), re.M,
+        ).group(1)
+        assert TestClient(app).get("/api/config").json()["version"] == sw_version
+
+    @pytest.mark.parametrize("text,expected", [
+        ('// v\nconst APP_VERSION = "3.4.5";\nconst X = 1;\n', "3.4.5"),
+        ("", None),
+        ('const SHELL_CACHE = "folio-v1";\n', None),
+        ('// const APP_VERSION = "1.2.3";\n', None),
+        ('const APP_VERSION = "1.2";\n', None),
+        # A commented-out old value before the real line is skipped.
+        ('// const APP_VERSION = "9.9.9";\nconst APP_VERSION = "1.2.3";\n', "1.2.3"),
+        # Windows line endings still match (text mode reads them as \n).
+        ('// v\r\nconst APP_VERSION = "4.5.6";\r\nconst X = 1;\r\n', "4.5.6"),
+    ])
+    def test_read_app_version(self, tmp_path, text, expected):
+        """Reads the version line; anything else raises, failing the build."""
+        from web.server import read_app_version
+
+        sw = tmp_path / "sw.js"
+        sw.write_text(text, encoding="utf-8")
+        if expected is None:
+            with pytest.raises(RuntimeError, match="APP_VERSION"):
+                read_app_version(str(sw))
+        else:
+            assert read_app_version(str(sw)) == expected
+
+    def test_missing_sw_js_raises(self, tmp_path):
+        """No sw.js beside the server (a bad image) fails at import too."""
+        from web.server import read_app_version
+
+        with pytest.raises(FileNotFoundError):
+            read_app_version(str(tmp_path / "sw.js"))
+
+    def test_no_other_shipped_file_holds_the_version(self):
+        """A second copy of the version (e.g. FastAPI(version="2.17.0")
+        again) would drift at the next bump. Only sw.js may hold it."""
+        version = re.search(
+            r'^const APP_VERSION = "(\d+\.\d+\.\d+)";$',
+            SW_JS.read_text(encoding="utf-8"), re.M,
+        ).group(1)
+        web = STATIC.parent
+        candidates = [web.parent / "Dockerfile"] + [
+            p for p in web.rglob("*")
+            if p.suffix in {".py", ".js", ".html", ".css"}
+            and STATIC / "lib" not in p.parents  # vendored pdf.js
+        ]
+        holders = sorted(
+            str(p.relative_to(web.parent)) for p in candidates
+            if p.is_file() and version in p.read_text(encoding="utf-8")
         )
+        assert holders == ["web/static/sw.js"]

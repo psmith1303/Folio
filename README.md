@@ -238,6 +238,8 @@ Each PDF gets a fast content hash (SHA-256 of first/last 4 KB + file size). A pe
 
 `git push p3800 master` deploys to the Docker host (p3800). Its hook builds the image's `test` stage from the pushed commit (a failure rejects the push), rebuilds and recreates only the `folio` container from it, then checks that it serves the new version as uid 1000 with a non-empty library, also at the public URL (bin's `deploy-stack`). `git push origin master` updates GitHub only.
 
+The version is set in one place, `APP_VERSION` in `web/static/sw.js`; the server reads it from there at startup (and fails to start without it). Bump it for every front-end change, so installed copies replace their cached shell.
+
 ### One-off scripts
 
 - **`scripts/sort_tags.py`** — puts PDF filename tags into canonical form (lowercase, de-duplicated, sorted); updates the hash index, setlists and recent list in lockstep.

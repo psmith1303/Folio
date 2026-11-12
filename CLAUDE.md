@@ -18,6 +18,8 @@ the full feature list and run instructions.
 - **Deploy = `git push p3800 master`.** The hook builds `folio-test` from
   the pushed commit (a failure rejects the push), then runs
   `up -d --build folio` from `/srv/apps/folio`.
+- Version: bump `APP_VERSION` in `web/static/sw.js` only; `server.py`
+  reads it from there.
 - After a front-end change, use `docs/manual-test-checklist.org` in a real
   browser. The pytest suite doesn't cover the page.
 - There's no node or browser here, only Deno. Test front-end logic by running
