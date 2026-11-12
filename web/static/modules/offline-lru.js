@@ -8,6 +8,11 @@
 // setlist holds them any more). Only PDFs that are neither (auto-cached) are
 // evicted, oldest first, beyond MAX_AUTO_CACHED.
 //
+// Every write to PDF_CACHE and to the store goes through here, so a cached
+// copy and its entry change together. An entry is created only with a
+// copy behind it (storePdf, pinIfCached); a use of an uncached PDF records
+// nothing. Eviction first reconciles the two, for a write cut off halfway.
+//
 // Both names end in -v2 since paths became library-relative (2.14.0). The v1
 // cache and "folio-lru" database held absolute paths; the service worker
 // drops them on activate, so offline copies start fresh.
@@ -31,6 +36,11 @@ self.FolioLru = (() => {
   // the same key, or neither can find what the other cached.
   function pdfCacheKey(path) {
     return "/api/pdf?path=" + encodeURIComponent(path);
+  }
+
+  // The path back out of a key or a PDF request URL (absolute or not).
+  function pdfPathFromKey(url) {
+    return new URL(url, "https://folio.invalid").searchParams.get("path");
   }
 
   function openLruDb() {
@@ -73,7 +83,8 @@ self.FolioLru = (() => {
     });
   }
 
-  function touchLruEntry(path, size, pinned) {
+  // Create or update *path*'s entry, for a copy now in PDF_CACHE.
+  function recordEntry(path, size, pinned) {
     return modifyLruEntry(path, (existing) => ({
       lastUsed: Date.now(),
       // size 0 keeps the recorded size (a pin of an already-cached PDF)
@@ -81,6 +92,14 @@ self.FolioLru = (() => {
       // Preserve pinned status: only upgrade to pinned, never downgrade
       pinned: pinned || (existing && existing.pinned) || false,
     }));
+  }
+
+  // Mark *path* as just used. A PDF with no entry is left without one: an
+  // entry with no copy behind it would count toward MAX_AUTO_CACHED and
+  // show the PDF as offline when it isn't (an eviction can land between
+  // the service worker's cache hit and this).
+  function noteUsed(path) {
+    return modifyLruEntry(path, (existing) => (existing ? { lastUsed: Date.now() } : null));
   }
 
   // Mark *paths* (oldest first) as just used, in that order, in one
@@ -122,8 +141,8 @@ self.FolioLru = (() => {
     });
   }
 
-  function removeLruEntry(path) {
-    return inStore("readwrite", (store) => { store.delete(path); });
+  function removeLruEntries(paths) {
+    return inStore("readwrite", (store) => { for (const path of paths) store.delete(path); });
   }
 
   function getAllLruEntries() {
@@ -133,8 +152,10 @@ self.FolioLru = (() => {
     });
   }
 
-  function clearAllLruEntries() {
-    return inStore("readwrite", (store) => { store.clear(); });
+  // Remove every cached PDF and its entry: pins, holds and all.
+  async function clearAllPdfs() {
+    await caches.delete(PDF_CACHE);
+    await inStore("readwrite", (store) => { store.clear(); });
   }
 
   async function isPdfCached(path) {
@@ -161,7 +182,7 @@ self.FolioLru = (() => {
       statusText: resp.statusText,
       headers: resp.headers,
     }));
-    await touchLruEntry(path, buf.byteLength, pinned);
+    await recordEntry(path, buf.byteLength, pinned);
     // Housekeeping: a failure here mustn't fail storing this PDF.
     evictIfNeeded().catch((err) => console.warn("[offline] eviction failed:", err));
     return true;
@@ -171,30 +192,59 @@ self.FolioLru = (() => {
   // without downloading it again. Returns whether it was.
   async function pinIfCached(path) {
     if (!(await isPdfCached(path))) return false;
-    await touchLruEntry(path, 0, true);  // size 0 keeps the recorded size
+    await recordEntry(path, 0, true);  // size 0 keeps the recorded size
     return true;
   }
 
-  // Evict the least recently used auto-cached PDFs (neither pinned nor
-  // held) beyond MAX_AUTO_CACHED.
-  async function evictIfNeeded() {
+  // Make the entries match the copies in *cache*, and resolve to the
+  // entries that have a copy. A write cut off halfway (an IndexedDB error,
+  // the worker stopped between storePdf's two writes) leaves a copy with no
+  // entry, which would never be counted or evicted; it gets an entry used
+  // now. An entry with no copy is removed.
+  //
+  // The entries are read before the copies, so a store in progress is
+  // never mistaken for an entry with no copy (its copy is written first).
+  // It can look like a copy with no entry, though, so that entry is "used
+  // now": no pass, this one or a concurrent one, evicts it before its
+  // recordEntry fills in the real values.
+  async function reconcile(cache) {
     const entries = await getAllLruEntries();
-    const unpinned = entries
+    const copies = new Set();
+    for (const req of await cache.keys()) {
+      const path = pdfPathFromKey(typeof req === "string" ? req : req.url);
+      if (path !== null) copies.add(path);  // a key with no path: not a PDF's
+    }
+    const known = new Set(entries.map((e) => e.path));
+    const gone = entries.filter((e) => !copies.has(e.path)).map((e) => e.path);
+    if (gone.length) await removeLruEntries(gone);
+    for (const path of copies) {
+      if (known.has(path)) continue;
+      const copy = await cache.match(pdfCacheKey(path));
+      const size = parseInt((copy && copy.headers.get("content-length")) || "0", 10);
+      await modifyLruEntry(path, (existing) => (
+        existing ? null : { lastUsed: Date.now(), size, pinned: false }));
+    }
+    return entries.filter((e) => copies.has(e.path));
+  }
+
+  // Evict the least recently used auto-cached PDFs (neither pinned nor
+  // held) beyond MAX_AUTO_CACHED. Copies reconcile() just gave an entry
+  // count from the next pass.
+  async function evictIfNeeded() {
+    const cache = await caches.open(PDF_CACHE);
+    const unpinned = (await reconcile(cache))
       .filter((e) => !e.pinned && !e.held)
       .sort((a, b) => a.lastUsed - b.lastUsed);
     if (unpinned.length <= MAX_AUTO_CACHED) return;
 
-    const cache = await caches.open(PDF_CACHE);
     const toEvict = unpinned.slice(0, unpinned.length - MAX_AUTO_CACHED);
-    for (const entry of toEvict) {
-      await cache.delete(pdfCacheKey(entry.path));
-      await removeLruEntry(entry.path);
-    }
+    for (const entry of toEvict) await cache.delete(pdfCacheKey(entry.path));
+    await removeLruEntries(toEvict.map((e) => e.path));
   }
 
   return {
-    PDF_CACHE, MAX_AUTO_CACHED, LRU_SCHEMA, pdfCacheKey,
-    touchLruEntry, touchInOrder, removeLruEntry, getAllLruEntries, clearAllLruEntries,
+    PDF_CACHE, MAX_AUTO_CACHED, LRU_SCHEMA, pdfCacheKey, pdfPathFromKey,
+    noteUsed, touchInOrder, getAllLruEntries, clearAllPdfs,
     evictIfNeeded, storePdf, isPdfCached, pinIfCached, unpinManual, setHeld,
   };
 })();

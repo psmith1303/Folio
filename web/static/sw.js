@@ -1,7 +1,7 @@
-// Single source of truth for the shell build. Keep this in lockstep with
-// the FastAPI `version=` in web/server.py — the client compares the two to
-// detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.17.0";
+// Single source of truth for the shell build. web/server.py reads it from
+// here and serves it; the client compares the two to detect (and self-heal)
+// a stale service-worker shell.
+const APP_VERSION = "2.17.1";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
@@ -17,7 +17,8 @@ const OLD_LRU_DB = "folio-lru";
 // (cache.js). Versioned URL: an unversioned one could come back stale from
 // the HTTP cache when a new service worker installs.
 importScripts("/modules/offline-lru.js?v=" + APP_VERSION);
-const { PDF_CACHE, LRU_SCHEMA, pdfCacheKey, touchLruEntry, storePdf } = self.FolioLru;
+const { PDF_CACHE, LRU_SCHEMA, pdfCacheKey, pdfPathFromKey, noteUsed, storePdf } =
+  self.FolioLru;
 
 const SHELL_URLS = [
   "/",
@@ -59,14 +60,6 @@ const SHELL_URLS = [
   "/icon-192.png",
   "/icon-512.png",
 ];
-
-// ---------------------------------------------------------------------------
-// URL helpers
-// ---------------------------------------------------------------------------
-
-function getPathFromPdfUrl(url) {
-  return new URL(url).searchParams.get("path");
-}
 
 // ---------------------------------------------------------------------------
 // Install / Activate
@@ -185,7 +178,7 @@ self.addEventListener("fetch", (e) => {
 });
 
 async function handlePdfFetch(request) {
-  const pdfPath = getPathFromPdfUrl(request.url);
+  const pdfPath = pdfPathFromKey(request.url);
   const cacheKey = pdfCacheKey(pdfPath);
   const cache = await caches.open(PDF_CACHE);
 
@@ -198,7 +191,7 @@ async function handlePdfFetch(request) {
   const cached = reload ? undefined : await cache.match(cacheKey);
   if (cached) {
     if (pdfPath) {
-      touchLruEntry(pdfPath, 0, false).catch(() => {});
+      noteUsed(pdfPath).catch(() => {});
       fetchAndStoreInBackground(pdfPath, cached.headers.get("etag"));
     }
     return cached;

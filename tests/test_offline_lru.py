@@ -80,9 +80,11 @@ globalThis.fetch = async (req) => {
   const body = "%PDF-1.4 " + url;
   return new Response(body, { status: 200, headers: { "content-length": String(body.length) } });
 };
+// A 200 response of *n* bytes, for storePdf.
+globalThis.__pdf = (n) => new Response("x".repeat(n), { status: 200, headers: { "content-length": String(n) } });
 const __tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 // A cached PDF and its LRU entry, seeded straight into the fakes (one
-// touchLruEntry per PDF would take seconds for MAX_AUTO_CACHED of them).
+// storePdf per PDF would take seconds for MAX_AUTO_CACHED of them).
 // Reads the cache name and key from self.FolioLru, so call it after loading.
 globalThis.__seedCached = async (path, lastUsed, fields = {}) => {
   __lru.set(path, { path, lastUsed, size: 1, pinned: false, ...fields });
@@ -112,34 +114,36 @@ def _key(path: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_touch_records_size_and_last_use():
+def test_store_records_size_and_a_use_updates_last_use():
     r = _lru("""
-await L.touchLruEntry("/a.pdf", 500, false);
-__setNow(2000); await L.touchLruEntry("/a.pdf", 0, false);    // size 0 keeps it
+await L.storePdf("/a.pdf", __pdf(500), false);
+__setNow(2000); await L.noteUsed("/a.pdf");
 console.log(JSON.stringify(__state().lru));
 """)
     assert r == {"/a.pdf": {"size": 500, "pinned": False, "lastUsed": 2000}}
 
 
 def test_a_pin_is_never_undone_by_a_later_auto_touch():
-    """Viewing a pinned score touches it unpinned; it must stay pinned."""
+    """Viewing a pinned score stores it again unpinned (a changed copy); it
+    must stay pinned."""
     r = _lru("""
-await L.touchLruEntry("/a.pdf", 500, true);
-await L.touchLruEntry("/a.pdf", 700, false);
+await L.storePdf("/a.pdf", __pdf(500), true);
+await L.storePdf("/a.pdf", __pdf(700), false);
 console.log(JSON.stringify(__state().lru));
 """)
     assert r == {"/a.pdf": {"size": 700, "pinned": True, "lastUsed": 1000}}
 
 
-def test_remove_and_clear():
+def test_clear_all_pdfs_removes_copies_and_entries():
     r = _lru("""
-for (const p of ["/a.pdf", "/b.pdf", "/c.pdf"]) await L.touchLruEntry(p, 1, false);
-await L.removeLruEntry("/b.pdf");
-const after = Object.keys(__state().lru);
-await L.clearAllLruEntries();
-console.log(JSON.stringify([after, (await L.getAllLruEntries()).length]));
+await __seedCached("/a.pdf", 1, { pinned: true });
+await __seedCached("/b.pdf", 2, { held: true });
+await __seedCached("/c.pdf", 3);
+await L.clearAllPdfs();
+console.log(JSON.stringify(__state()));
 """)
-    assert r == [["/a.pdf", "/c.pdf"], 0]
+    assert r["lru"] == {}
+    assert r["stores"].get("folio-pdfs-v2", []) == []
 
 
 MAX = 500  # MAX_AUTO_CACHED; test_eviction_... checks it
@@ -196,13 +200,69 @@ console.log(JSON.stringify(Object.keys(__state().lru)));
     assert "/u0.pdf" not in r and len(r) == MAX + 2
 
 
+def test_a_use_of_a_pdf_with_no_entry_records_nothing():
+    r = _lru("""
+await L.noteUsed("/gone.pdf");
+console.log(JSON.stringify(__state().lru));
+""")
+    assert r == {}
+
+
+def test_reconcile_removes_an_entry_with_no_copy_and_records_a_copy_with_no_entry():
+    """A write cut off halfway: storePdf's copy without its entry is given
+    one (used now, size from the copy), and an entry whose copy is
+    gone is removed."""
+    r = _lru("""
+await __seedCached("/both.pdf", 50);
+__lru.set("/phantom.pdf", { path: "/phantom.pdf", lastUsed: 60, size: 0, pinned: false });
+await (await caches.open(L.PDF_CACHE)).put(L.pdfCacheKey("/orphan & co.pdf"),
+  new Response("x".repeat(77), { headers: { "content-length": "77" } }));
+await L.evictIfNeeded();
+console.log(JSON.stringify(__state()));
+""")
+    assert r["lru"] == {
+        "/both.pdf": {"size": 1, "pinned": False, "lastUsed": 50},
+        "/orphan & co.pdf": {"size": 77, "pinned": False, "lastUsed": 1000},
+    }
+    assert r["stores"]["folio-pdfs-v2"] == sorted([_key("/both.pdf"), _key("/orphan & co.pdf")])
+
+
+def test_a_reconciled_copy_counts_as_just_used():
+    """A copy with no entry may be a storePdf in progress (its entry comes
+    next), so reconcile records it as used now: neither the pass that finds
+    it nor a later one evicts it ahead of older PDFs."""
+    r = _lru(_fill(MAX + 1, []) + """
+await (await caches.open(L.PDF_CACHE)).put(L.pdfCacheKey("/orphan.pdf"), __pdf(3));
+await L.evictIfNeeded();
+const first = __state();
+await L.evictIfNeeded();
+const second = __state();
+console.log(JSON.stringify({ first: Object.keys(first.lru), orphan: second.lru["/orphan.pdf"],
+  second: Object.keys(second.lru), cached: second.stores[L.PDF_CACHE] }));
+""")
+    assert "/orphan.pdf" in r["first"] and "/u0.pdf" not in r["first"]
+    assert r["orphan"] == {"size": 3, "pinned": False, "lastUsed": 1000}
+    assert "/u1.pdf" not in r["second"] and len(r["second"]) == MAX
+    assert _key("/orphan.pdf") in r["cached"] and _key("/u1.pdf") not in r["cached"]
+
+
+def test_a_key_with_no_path_does_not_stop_eviction():
+    r = _lru(_fill(MAX + 1, []) + """
+await (await caches.open(L.PDF_CACHE)).put("/api/pdf?other=1", __pdf(3));
+await L.evictIfNeeded();
+console.log(JSON.stringify(Object.keys(__state().lru)));
+""")
+    assert "/u0.pdf" not in r and len(r) == MAX
+
+
 def test_a_touch_keeps_held():
     """The service worker touches a PDF on every view and revalidation;
     that must not release a setlist's hold."""
     r = _lru("""
-await L.touchLruEntry("/a.pdf", 5, false);
+await L.storePdf("/a.pdf", __pdf(5), false);
 await L.setHeld(new Set(["/a.pdf"]));
-__setNow(2000); await L.touchLruEntry("/a.pdf", 7, false);
+__setNow(2000); await L.storePdf("/a.pdf", __pdf(7), false);
+await L.noteUsed("/a.pdf");
 console.log(JSON.stringify(__state().lru));
 """)
     assert r == {"/a.pdf": {"size": 7, "pinned": False, "lastUsed": 2000, "held": True}}
@@ -210,9 +270,9 @@ console.log(JSON.stringify(__state().lru));
 
 def test_set_held_marks_and_releases_without_touching_the_rest():
     r = _lru("""
-await L.touchLruEntry("/a.pdf", 1, true);
-__setNow(2000); await L.touchLruEntry("/b.pdf", 2, false);
-__setNow(3000); await L.touchLruEntry("/c.pdf", 3, false);
+await L.storePdf("/a.pdf", __pdf(1), true);
+__setNow(2000); await L.storePdf("/b.pdf", __pdf(2), false);
+__setNow(3000); await L.storePdf("/c.pdf", __pdf(3), false);
 await L.setHeld(new Set(["/a.pdf", "/b.pdf", "/not-cached.pdf"]));
 __setNow(9000);
 await L.setHeld(new Set(["/a.pdf", "/c.pdf"]));    // /b released, /c held
@@ -227,8 +287,8 @@ console.log(JSON.stringify(__state().lru));
 
 def test_unpin_manual_keeps_the_copy_and_the_hold():
     r = _lru("""
-await L.touchLruEntry("/a.pdf", 1, true);
-await L.touchLruEntry("/b.pdf", 1, true);
+await L.storePdf("/a.pdf", __pdf(1), true);
+await L.storePdf("/b.pdf", __pdf(1), true);
 await L.setHeld(new Set(["/b.pdf"]));
 await L.unpinManual("/a.pdf");
 await L.unpinManual("/b.pdf");
@@ -338,10 +398,26 @@ console.log(JSON.stringify({{ status, lastUsed: __state().lru[{json.dumps(path)}
     assert r == {"status": 200, "lastUsed": 7000}
 
 
+def test_a_cache_hit_on_a_pdf_with_no_entry_leaves_no_entry():
+    """An eviction can remove the entry between the service worker's cache
+    match and its record of the use; that record must not bring back an
+    entry with nothing behind it (counted toward the limit, shown as
+    offline). Offline, so no background refresh stores it again."""
+    path = "/m/Bach - Suite.pdf"
+    r = _sw(f"""
+await (await caches.open(self.FolioLru.PDF_CACHE)).put(self.FolioLru.pdfCacheKey({json.dumps(path)}),
+  new Response("%PDF-1.4"));
+globalThis.fetch = async () => {{ throw new TypeError("offline"); }};
+const status = await fetchPdf({json.dumps(path)});
+console.log(JSON.stringify({{ status, lru: __state().lru }}));
+""")
+    assert r == {"status": 200, "lru": {}}
+
+
 def test_service_worker_keeps_a_pinned_pdf_pinned_when_viewed():
     path = "/m/Bach - Suite.pdf"
     r = _sw(f"""
-await self.FolioLru.touchLruEntry({json.dumps(path)}, 9, true);
+await __seedCached({json.dumps(path)}, 1000, {{ size: 9, pinned: true }});
 await fetchPdf({json.dumps(path)});
 console.log(JSON.stringify(__state().lru[{json.dumps(path)}].pinned));
 """)
@@ -402,8 +478,7 @@ console.log(JSON.stringify({{ ...__state(), fetched: __fetched, button: M.cacheB
 def test_page_pins_an_auto_cached_pdf_without_downloading_it_again():
     path = "/m/Bach - Suite.pdf"
     r = _page(f"""
-await self.FolioLru.touchLruEntry({json.dumps(path)}, 42, false);
-(await caches.open(M.PDF_CACHE)).put(M.pdfCacheKey({json.dumps(path)}), new Response("x"));
+await __seedCached({json.dumps(path)}, 1000, {{ size: 42 }});
 await M.pinPdf({json.dumps(path)});
 console.log(JSON.stringify({{ ...__state(), fetched: __fetched }}));
 """)

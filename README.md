@@ -198,7 +198,7 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `touch.js` | Touch gestures — swipe navigation, double-tap, scroll-boundary page turns |
 | `recent.js` | Recent files list with content-hash based healing |
 | `cache.js` | Offline cache UI (pin/unpin PDFs) and the sync that keeps setlist and Recent PDFs offline |
-| `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store with manual pins and setlist holds, eviction); a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
+| `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store with manual pins and setlist holds, eviction); the only code that writes the PDF cache or the store, and eviction first reconciles the two; a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
 | `dialog-handlers.js` | Per-dialog show/close logic |
 | `theme.js` | Dark/light theme toggle |
 | `utils.js` | Shared utilities (HTML escaping, coordinate transforms, page scale, saved preferences, constants) |

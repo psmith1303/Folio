@@ -254,7 +254,7 @@ def test_200_on_revalidation_keeps_a_pinned_pdf_pinned():
     path = "/m/Bach - Suite.pdf"
     r = _sw(CONDITIONAL_FETCH + f"""
 await fetchPdf({json.dumps(path)});
-await self.FolioLru.touchLruEntry({json.dumps(path)}, 9, true);   // the user pinned it
+await self.FolioLru.pinIfCached({json.dumps(path)});             // the user pinned it
 __setVersion('"v2"', "%PDF-1.4 v2 CHANGED");
 await fetchPdf({json.dumps(path)});                     // background revalidation gets 200
 console.log(JSON.stringify({{ pinned: __state().lru[{json.dumps(path)}].pinned,
@@ -271,9 +271,7 @@ def test_a_cached_copy_with_no_etag_still_revalidates_unconditionally():
     skipped just because there's nothing to compare."""
     path = "/m/Bach - Suite.pdf"
     r = _sw(CONDITIONAL_FETCH + f"""
-const cache = await caches.open(self.FolioLru.PDF_CACHE);
-await cache.put(self.FolioLru.pdfCacheKey({json.dumps(path)}), new Response("%PDF-1.4 no-etag"));
-await self.FolioLru.touchLruEntry({json.dumps(path)}, 10, false);
+await __seedCached({json.dumps(path)}, 1000, {{ size: 10 }});    // a copy with no etag
 await fetchPdf({json.dumps(path)});
 console.log(JSON.stringify({{ reqs: __reqs }}));
 """)

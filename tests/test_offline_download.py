@@ -100,8 +100,7 @@ def test_pin_pdf_on_an_already_cached_pdf_makes_no_network_fetch():
     """pinPdf (the row toggle on an already auto-cached PDF) must not
     re-download it."""
     r = _page(f"""
-await self.FolioLru.touchLruEntry({json.dumps(PATH)}, 42, false);
-(await caches.open(M.PDF_CACHE)).put(M.pdfCacheKey({json.dumps(PATH)}), new Response("x"));
+await __seedCached({json.dumps(PATH)}, 1000, {{ size: 42 }});
 await M.pinPdf({json.dumps(PATH)});
 console.log(JSON.stringify({{ ...__state(), fetched: __fetched }}));
 """)

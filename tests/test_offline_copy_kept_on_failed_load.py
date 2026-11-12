@@ -210,7 +210,7 @@ def test_reload_request_downloads_even_with_a_cached_copy_and_keeps_a_pin():
     path = "/m/Bach - Suite.pdf"
     r = _sw(f"""
 await fetchPdf({json.dumps(path)});                              // stores the OLD cached bytes
-await self.FolioLru.touchLruEntry({json.dumps(path)}, 9, true);  // the user pinned it
+await self.FolioLru.pinIfCached({json.dumps(path)});            // the user pinned it
 globalThis.fetch = async () => new Response("CHANGED", {{ status: 200, headers: {{ "content-length": "7" }} }});
 let resp;
 listeners.fetch({{

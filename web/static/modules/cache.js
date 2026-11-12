@@ -10,7 +10,7 @@ import "./offline-lru.js";  // defines self.FolioLru, shared with sw.js
 // The side-effect import above has run by now (imports evaluate first).
 const {
   PDF_CACHE, MAX_AUTO_CACHED, LRU_SCHEMA, pdfCacheKey,
-  touchInOrder, getAllLruEntries, clearAllLruEntries, evictIfNeeded,
+  touchInOrder, getAllLruEntries, clearAllPdfs, evictIfNeeded,
   storePdf, isPdfCached, pinIfCached, unpinManual, setHeld,
 } = self.FolioLru;
 export { PDF_CACHE, pdfCacheKey };
@@ -111,11 +111,6 @@ export async function getCacheStatus() {
 }
 
 const isPinned = (status, path) => status.manual.has(path) || status.held.has(path);
-
-export async function clearPdfCache() {
-  await caches.delete(PDF_CACHE);
-  await clearAllLruEntries();
-}
 
 // Fire-and-forget re-fetch of /api/config, to keep the SW's cached copy from
 // going stale. Call after anything that can change library_dir/score_count
@@ -430,7 +425,7 @@ export function initCacheUI() {
     btnClearPdfs.disabled = true;
     btnClearPdfs.textContent = "Clearing\u2026";
     try {
-      await clearPdfCache();
+      await clearAllPdfs();
       _status = emptyStatus();
       updateCacheButtons();
       offlineStatus.textContent = "PDF cache cleared.";
