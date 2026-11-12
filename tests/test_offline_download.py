@@ -97,8 +97,8 @@ console.log(JSON.stringify({{ error, ...__state() }}));
 
 
 def test_pin_pdf_on_an_already_cached_pdf_makes_no_network_fetch():
-    """pinPdf (e.g. "Cache setlist" on an already auto-cached PDF) must not
-    re-download; a bug here would double every setlist download."""
+    """pinPdf (the row toggle on an already auto-cached PDF) must not
+    re-download it."""
     r = _page(f"""
 await self.FolioLru.touchLruEntry({json.dumps(PATH)}, 42, false);
 (await caches.open(M.PDF_CACHE)).put(M.pdfCacheKey({json.dumps(PATH)}), new Response("x"));
@@ -148,18 +148,16 @@ def test_store_pdf_eviction_failure_does_not_fail_the_store():
     quota) must not stop storePdf from having already stored the PDF and
     recorded it."""
     r = _lru("""
-// Fill past MAX_AUTO_CACHED so storePdf's un-awaited evictIfNeeded() will
-// actually try to evict (and so hit our broken cache.delete).
-for (let i = 0; i < 100; i++) {
-  __setNow(10 + i);
-  await L.touchLruEntry(`/u${i}.pdf`, 1, false);
-  (await caches.open(L.PDF_CACHE)).put(L.pdfCacheKey(`/u${i}.pdf`), new Response("x"));
-}
+// Fill to MAX_AUTO_CACHED so storing one more makes storePdf's un-awaited
+// evictIfNeeded() actually try to evict (and so hit our broken
+// cache.delete).
+let __evictTried = false;
+for (let i = 0; i < L.MAX_AUTO_CACHED; i++) await __seedCached(`/u${i}.pdf`, 10 + i);
 const realOpen = caches.open;
 Object.defineProperty(globalThis, "caches", { configurable: true, value: {
   open: async (name) => {
     const c = await realOpen(name);
-    return { ...c, delete: async () => { throw new Error("simulated eviction failure"); } };
+    return { ...c, delete: async () => { __evictTried = true; throw new Error("simulated eviction failure"); } };
   },
 } });
 __setNow(9999);
@@ -169,8 +167,9 @@ const ok = await L.storePdf("/new.pdf", resp, false);
 await __tick(50);   // let the un-awaited evictIfNeeded()/catch settle
 console.log(JSON.stringify({ ok, stored: (await realOpen(L.PDF_CACHE)).match !== undefined,
   cached: !!(await (await caches.open(L.PDF_CACHE)).match(L.pdfCacheKey("/new.pdf"))),
-  lru: !!__state().lru["/new.pdf"] }));
+  lru: !!__state().lru["/new.pdf"], evictTried: __evictTried }));
 """)
+    assert r["evictTried"] is True     # the fill reached the limit
     assert r["ok"] is True
     assert r["cached"] is True
     assert r["lru"] is True

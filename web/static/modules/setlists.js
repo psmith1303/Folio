@@ -6,7 +6,7 @@ import { getState } from "./state.js";
 import {
   setlistBody, setlistStatus, setlistDetailActions, setlistDetailName,
   setlistSongsBody, btnNewSetlist, btnRenameSetlist, btnDeleteSetlist,
-  btnAddSong, btnPlaySetlist, btnAddSetlistRef, btnCacheSetlist,
+  btnAddSong, btnPlaySetlist, btnAddSetlistRef,
   btnToggleShuffle,
   setlistNameDialog, setlistNameDialogTitle, setlistNameInput, setlistNameCancel,
   songPickerDialog, songSearch, songPickerList, songStart, songEnd,
@@ -20,8 +20,8 @@ import { showView } from "./views.js";
 import { openSetlistSong, openScore } from "./viewer.js";
 import { searchScores } from "./library-filter.js";
 import {
-  CACHE_AVAILABLE, pinPdf, getCacheStatus, cacheButtonHtml, onCacheButtonClick,
-  refreshCacheStatus, ICON_NOT_CACHED, ICON_PINNED,
+  CACHE_AVAILABLE, cacheButtonHtml, onCacheButtonClick, refreshCacheStatus,
+  syncOfflineSet,
 } from "./cache.js";
 
 // ---------------------------------------------------------------------------
@@ -84,6 +84,7 @@ async function deleteSetlist(name) {
     console.error("Failed to delete setlist:", err);
     return;
   }
+  syncOfflineSet();  // release the pins it held
   const s = getState();
   if (s.editingSetlistName === name) {
     s.editingSetlistName = null;
@@ -260,6 +261,7 @@ async function saveSetlistItems() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: s.editingSetlistItems }),
     });
+    syncOfflineSet();  // pin added songs, release removed ones
     // Refresh sidebar counts
     const data = await api("/api/setlists");
     renderSetlistList(data.setlists);
@@ -309,6 +311,7 @@ export async function addCurrentScoreToSetlist(setlistName, startPage, endPage) 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items }),
     });
+    syncOfflineSet();  // pin the song just added
     titleDisplay.textContent += ` \u2014 added to ${setlistName}`;
     setTimeout(() => {
       if (s.currentScore) {
@@ -355,11 +358,6 @@ function renderSongPicker(query) {
 export function initSetlistEvents() {
   const s = getState();
 
-  if (!CACHE_AVAILABLE) {
-    btnCacheSetlist.classList.add("hidden");
-  } else {
-    btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
-  }
   setlistSongsBody.addEventListener("click", onCacheButtonClick);
 
   // New setlist
@@ -486,42 +484,6 @@ export function initSetlistEvents() {
   btnPlaySetlist.addEventListener("click", () => {
     if (s.editingSetlistItems.length === 0) return;
     startSetlistPlayback(s.editingSetlistName);
-  });
-
-  // Cache all PDFs in setlist
-  btnCacheSetlist.addEventListener("click", async () => {
-    if (!s.editingSetlistName) return;
-    btnCacheSetlist.disabled = true;
-    btnCacheSetlist.textContent = "Caching\u2026";
-    try {
-      const data = await api(`/api/setlists/${encodeURIComponent(s.editingSetlistName)}/flat`);
-      const paths = [...new Set(data.songs.map((song) => song.path))];
-      const status = await getCacheStatus();
-      // Pin every member PDF that isn't pinned yet. Filtering by pinned (not
-      // cached) means PDFs that were merely auto-cached from viewing also get
-      // pinned; pinPdf skips re-downloading ones already in the cache.
-      const needed = paths.filter((p) => !status.pinned.has(p));
-      let done = 0;
-      for (const path of needed) {
-        btnCacheSetlist.textContent = `${++done}/${needed.length}\u2026`;
-        await pinPdf(path);
-      }
-      if (CACHE_AVAILABLE) refreshCacheStatus(setlistSongsBody);
-      btnCacheSetlist.innerHTML = ICON_PINNED + (needed.length > 0
-        ? ` ${paths.length} cached`
-        : " All cached");
-      setTimeout(() => {
-        btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
-        btnCacheSetlist.disabled = false;
-      }, 2000);
-    } catch (err) {
-      console.error("Setlist cache failed:", err);
-      btnCacheSetlist.textContent = "Failed";
-      setTimeout(() => {
-        btnCacheSetlist.innerHTML = ICON_NOT_CACHED + " Cache";
-        btnCacheSetlist.disabled = false;
-      }, 2000);
-    }
   });
 
   // Add setlist reference

@@ -130,7 +130,8 @@ await cache.refreshCacheStatus(__tbody("scratch"));
 const lib = __tbody("libraryBody");
 {body}
 await __tick();
-console.log(JSON.stringify({{ html: lib.innerHTML, log: __log, added: lib.added }}));
+console.log(JSON.stringify({{ html: lib.innerHTML, log: __log, added: lib.added,
+  lru: Object.fromEntries(__lru) }}));
 """, setup=FAKE_STORAGE)
 
 
@@ -175,7 +176,7 @@ def test_an_empty_list_clears_the_table():
 # (applyCacheButtonState) gives each.
 CACHE_STATES = [
     ({"path": "/m/Bach - Suite.pdf", "pinned": True}, ["cache-btn", "small-btn", "cached"],
-     "Pinned for offline use (click to remove)"),
+     "Pinned for offline use (click to unpin)"),
     ({"path": "/m/Bach - Suite.pdf", "pinned": False}, ["cache-btn", "small-btn", "auto-cached"],
      "Auto-cached (click to pin)"),
     (None, ["cache-btn", "small-btn"], "Download for offline use"),
@@ -233,13 +234,27 @@ __click(lib, {json.dumps(path)}, {{ onButton: true }});
     assert r["log"][0] == "cache.match:/api/pdf?path=" + _encode(path)
 
 
-def test_clicking_a_pinned_button_removes_the_offline_copy():
+def test_clicking_a_pinned_button_unpins_but_keeps_the_offline_copy():
+    """It used to delete the copy; a Recent PDF would only be downloaded
+    again by the next sync."""
     path = LIBRARY[0]["filepath"]
     r = _render(f"""
 M.renderScoreRows(lib, {json.dumps(LIBRARY)});
 __click(lib, {json.dumps(path)}, {{ onButton: true }});
 """, [{"path": path, "pinned": True}])
-    assert r["log"] == ["cache.delete:/api/pdf?path=" + _encode(path)]
+    assert r["log"] == []
+    assert r["lru"][path]["pinned"] is False
+
+
+def test_clicking_a_setlist_held_button_does_nothing():
+    path = LIBRARY[0]["filepath"]
+    r = _render(f"""
+M.renderScoreRows(lib, {json.dumps(LIBRARY)});
+__click(lib, {json.dumps(path)}, {{ onButton: true }});
+""", [{"path": path, "pinned": False, "held": True}])
+    assert r["log"] == []
+    assert r["lru"][path] == {"path": path, "pinned": False, "held": True}
+    assert _rows(r["html"])[0]["button"]["title"] == "Pinned by a setlist"
 
 
 def test_a_click_outside_any_row_does_nothing():

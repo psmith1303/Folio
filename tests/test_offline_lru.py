@@ -2,13 +2,14 @@
 
 web/static/modules/offline-lru.js (Step 10a) is the one copy of the cache
 name, the PDF cache keys and the "folio-lru-v2" IndexedDB store: when each
-cached PDF was last used, its size, and whether the user pinned it. Only
-unpinned (auto-cached) PDFs are evicted, oldest first, beyond
-MAX_AUTO_CACHED. sw.js loads it with importScripts(); cache.js imports it.
+cached PDF was last used, its size, whether the user pinned it and
+whether a setlist holds it. Only PDFs that are neither (auto-cached) are
+evicted, oldest first, beyond MAX_AUTO_CACHED. sw.js loads it with
+importScripts(); cache.js imports it.
 
 These run it the three ways it is used, under Deno with in-memory
 IndexedDB and Cache Storage: its functions directly; the REAL sw.js,
-installing and serving PDFs; and the page's cachePdf/pinPdf/evictPdf.
+installing and serving PDFs; and the page's cachePdf/pinPdf/unpinPdf.
 """
 
 import json
@@ -80,8 +81,17 @@ globalThis.fetch = async (req) => {
   return new Response(body, { status: 200, headers: { "content-length": String(body.length) } });
 };
 const __tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
+// A cached PDF and its LRU entry, seeded straight into the fakes (one
+// touchLruEntry per PDF would take seconds for MAX_AUTO_CACHED of them).
+// Reads the cache name and key from self.FolioLru, so call it after loading.
+globalThis.__seedCached = async (path, lastUsed, fields = {}) => {
+  __lru.set(path, { path, lastUsed, size: 1, pinned: false, ...fields });
+  await (await caches.open(self.FolioLru.PDF_CACHE)).put(self.FolioLru.pdfCacheKey(path), new Response("x"));
+};
 globalThis.__state = () => ({
-  lru: Object.fromEntries([...__lru].map(([p, e]) => [p, { size: e.size, pinned: e.pinned, lastUsed: e.lastUsed }])),
+  // held is shown only when set, so entries no setlist touched read as before.
+  lru: Object.fromEntries([...__lru].map(([p, e]) => [p, { size: e.size, pinned: e.pinned, lastUsed: e.lastUsed,
+    ...(e.held ? { held: true } : {}) }])),
   stores: Object.fromEntries([...__stores].map(([n, m]) => [n, [...m.keys()].sort()])),
 });
 """
@@ -132,50 +142,103 @@ console.log(JSON.stringify([after, (await L.getAllLruEntries()).length]));
     assert r == [["/a.pdf", "/c.pdf"], 0]
 
 
-def _fill(unpinned: int, pinned: list[int]) -> str:
+MAX = 500  # MAX_AUTO_CACHED; test_eviction_... checks it
+
+
+def _fill(unpinned: int, pinned: list[int], held: list[int] = ()) -> str:
     """Cache `unpinned` auto-cached PDFs /u<i>.pdf used at time i, plus pinned
-    PDFs /p<i>.pdf used at the given (old) times."""
+    PDFs /p<i>.pdf and setlist-held PDFs /h<i>.pdf used at the given (old)
+    times."""
     return f"""
-const cache = await caches.open(L.PDF_CACHE);
-for (let i = 0; i < {unpinned}; i++) {{
-  __setNow(10 + i); await L.touchLruEntry(`/u${{i}}.pdf`, 1, false);
-  await cache.put(L.pdfCacheKey(`/u${{i}}.pdf`), new Response("x"));
-}}
-for (const t of {json.dumps(pinned)}) {{
-  __setNow(t); await L.touchLruEntry(`/p${{t}}.pdf`, 1, true);
-  await cache.put(L.pdfCacheKey(`/p${{t}}.pdf`), new Response("x"));
-}}
+for (let i = 0; i < {unpinned}; i++) await __seedCached(`/u${{i}}.pdf`, 10 + i);
+for (const t of {json.dumps(list(pinned))}) await __seedCached(`/p${{t}}.pdf`, t, {{ pinned: true }});
+for (const t of {json.dumps(list(held))}) await __seedCached(`/h${{t}}.pdf`, t, {{ held: true }});
 """
 
 
 def test_eviction_removes_the_oldest_unpinned_beyond_the_limit():
-    r = _lru(_fill(103, [1, 2]) + """
+    r = _lru(_fill(MAX + 3, [1, 2]) + """
 await L.evictIfNeeded();
 const s = __state();
 console.log(JSON.stringify({ max: L.MAX_AUTO_CACHED, lru: Object.keys(s.lru), cached: s.stores[L.PDF_CACHE] }));
 """)
-    assert r["max"] == 100
-    kept = [f"/u{i}.pdf" for i in range(3, 103)] + ["/p1.pdf", "/p2.pdf"]
+    assert r["max"] == MAX
+    kept = [f"/u{i}.pdf" for i in range(3, MAX + 3)] + ["/p1.pdf", "/p2.pdf"]
     assert sorted(r["lru"]) == sorted(kept)
     assert r["cached"] == sorted(_key(p) for p in kept)     # evicted PDFs leave the cache too
 
 
 def test_at_the_limit_nothing_is_evicted():
-    r = _lru(_fill(100, []) + """
+    r = _lru(_fill(MAX, []) + """
 await L.evictIfNeeded();
 console.log(JSON.stringify(Object.keys(__state().lru).length));
 """)
-    assert r == 100
+    assert r == MAX
 
 
 def test_pinned_pdfs_never_count_or_go():
     """However many pinned PDFs, and however old, they are kept, and don't
     push auto-cached ones out."""
-    r = _lru(_fill(100, list(range(1, 51))) + """
+    r = _lru(_fill(MAX, list(range(1, 51))) + """
 await L.evictIfNeeded();
 console.log(JSON.stringify(Object.keys(__state().lru).length));
 """)
-    assert r == 150
+    assert r == MAX + 50
+
+
+def test_held_pdfs_never_count_or_go():
+    """A PDF a setlist holds is kept like a pinned one."""
+    r = _lru(_fill(MAX + 1, [], held=[1, 2]) + """
+await L.evictIfNeeded();
+console.log(JSON.stringify(Object.keys(__state().lru)));
+""")
+    assert "/h1.pdf" in r and "/h2.pdf" in r
+    assert "/u0.pdf" not in r and len(r) == MAX + 2
+
+
+def test_a_touch_keeps_held():
+    """The service worker touches a PDF on every view and revalidation;
+    that must not release a setlist's hold."""
+    r = _lru("""
+await L.touchLruEntry("/a.pdf", 5, false);
+await L.setHeld(new Set(["/a.pdf"]));
+__setNow(2000); await L.touchLruEntry("/a.pdf", 7, false);
+console.log(JSON.stringify(__state().lru));
+""")
+    assert r == {"/a.pdf": {"size": 7, "pinned": False, "lastUsed": 2000, "held": True}}
+
+
+def test_set_held_marks_and_releases_without_touching_the_rest():
+    r = _lru("""
+await L.touchLruEntry("/a.pdf", 1, true);
+__setNow(2000); await L.touchLruEntry("/b.pdf", 2, false);
+__setNow(3000); await L.touchLruEntry("/c.pdf", 3, false);
+await L.setHeld(new Set(["/a.pdf", "/b.pdf", "/not-cached.pdf"]));
+__setNow(9000);
+await L.setHeld(new Set(["/a.pdf", "/c.pdf"]));    // /b released, /c held
+console.log(JSON.stringify(__state().lru));
+""")
+    assert r == {
+        "/a.pdf": {"size": 1, "pinned": True, "lastUsed": 1000, "held": True},
+        "/b.pdf": {"size": 2, "pinned": False, "lastUsed": 2000},
+        "/c.pdf": {"size": 3, "pinned": False, "lastUsed": 3000, "held": True},
+    }
+
+
+def test_unpin_manual_keeps_the_copy_and_the_hold():
+    r = _lru("""
+await L.touchLruEntry("/a.pdf", 1, true);
+await L.touchLruEntry("/b.pdf", 1, true);
+await L.setHeld(new Set(["/b.pdf"]));
+await L.unpinManual("/a.pdf");
+await L.unpinManual("/b.pdf");
+await L.unpinManual("/none.pdf");
+console.log(JSON.stringify(__state().lru));
+""")
+    assert r == {
+        "/a.pdf": {"size": 1, "pinned": False, "lastUsed": 1000},
+        "/b.pdf": {"size": 1, "pinned": False, "lastUsed": 1000, "held": True},
+    }
 
 
 @pytest.mark.parametrize("path", ["/m/Bach - Suite.pdf", "/m/Dvořák & Sons #1?.pdf", "/m/100% ok+.pdf"])
@@ -285,6 +348,35 @@ console.log(JSON.stringify(__state().lru[{json.dumps(path)}].pinned));
     assert r is True
 
 
+def test_service_worker_reports_the_lru_schema_the_page_syncs_under():
+    """cache.js syncs only when the worker's reply carries the page's
+    LRU_SCHEMA: a reply without it would stop every device syncing."""
+    r = _sw("""
+let reply = null;
+listeners.message({ data: { type: "GET_VERSION" }, ports: [{ postMessage: (m) => { reply = m; } }] });
+console.log(JSON.stringify({ reply, schema: self.FolioLru.LRU_SCHEMA }))
+""")
+    assert r["reply"]["lruSchema"] == r["schema"] == 2
+    assert r["reply"]["version"]
+
+
+def test_service_worker_keeps_a_held_pdf_held_when_viewed_at_the_limit():
+    """Viewing a setlist PDF touches its entry (and refreshes it in the
+    background); the touch must keep `held`, or the next store evicts it.
+    The clock is set so the touched entry is still the oldest."""
+    r = _sw("""
+const L = self.FolioLru;
+await __seedCached("/held.pdf", 1, { held: true });
+for (let i = 0; i < L.MAX_AUTO_CACHED; i++) await __seedCached(`/u${i}.pdf`, 10 + i);
+__setNow(5);
+await fetchPdf("/held.pdf");
+await fetchPdf("/new.pdf");
+await __tick(100);
+console.log(JSON.stringify(__state().lru["/held.pdf"] || null));
+""")
+    assert r is not None and r.get("held") is True
+
+
 # ---------------------------------------------------------------------------
 # The page (cache.js)
 # ---------------------------------------------------------------------------
@@ -319,15 +411,18 @@ console.log(JSON.stringify({{ ...__state(), fetched: __fetched }}));
     assert r["lru"][path] == {"size": 42, "pinned": True, "lastUsed": 1000}
 
 
-def test_page_eviction_removes_the_pdf_and_its_entry():
+def test_page_unpin_keeps_the_pdf_as_auto_cached():
+    """Unpinning no longer deletes: a Recent PDF would only be downloaded
+    again by the next sync."""
     path = "/m/Bach - Suite.pdf"
     r = _page(f"""
 await M.cachePdf({json.dumps(path)});
-await M.evictPdf({json.dumps(path)});
+await M.unpinPdf({json.dumps(path)});
 console.log(JSON.stringify({{ ...__state(), button: M.cacheButtonHtml({json.dumps(path)}) }}));
 """)
-    assert r["lru"] == {} and r["stores"]["folio-pdfs-v2"] == []
-    assert "Download for offline use" in r["button"]
+    assert r["lru"][path]["pinned"] is False
+    assert r["stores"]["folio-pdfs-v2"] == [_key(path)]
+    assert "Auto-cached" in r["button"]
 
 
 def test_page_uses_the_shared_cache_name_and_keys():

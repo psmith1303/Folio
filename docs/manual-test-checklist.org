@@ -78,3 +78,7 @@
 - [ ] Theme toggle — click Light/Dark button, verify it persists on reload
 - [ ] PWA — on iPad, Add to Home Screen, verify standalone mode
 - [ ] Offline — after first load, kill the server; the app shell should still load from service worker cache
+- [ ] Offline sync — on the iPad, launch online and wait; the Offline dialog counts "pinned by setlists" and auto-cached PDFs (Recent), says "Storage: persistent", and the limit reads 500
+- [ ] Offline sync — airplane mode: open a setlist song never viewed on this device, and an old Recent item; both open
+- [ ] Setlist holds — a setlist song's row shows the check, tooltip "Pinned by a setlist"; clicking it does nothing. Remove the song from every setlist; its icon turns to the hollow circle
+- [ ] Manual pin — pin a non-setlist score from the Library, click the check again; it becomes a hollow circle (still cached), not the download arrow

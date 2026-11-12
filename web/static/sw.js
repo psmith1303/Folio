@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. Keep this in lockstep with
 // the FastAPI `version=` in web/server.py — the client compares the two to
 // detect (and self-heal) a stale service-worker shell.
-const APP_VERSION = "2.16.1";
+const APP_VERSION = "2.17.0";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of
@@ -17,7 +17,7 @@ const OLD_LRU_DB = "folio-lru";
 // (cache.js). Versioned URL: an unversioned one could come back stale from
 // the HTTP cache when a new service worker installs.
 importScripts("/modules/offline-lru.js?v=" + APP_VERSION);
-const { PDF_CACHE, pdfCacheKey, touchLruEntry, storePdf } = self.FolioLru;
+const { PDF_CACHE, LRU_SCHEMA, pdfCacheKey, touchLruEntry, storePdf } = self.FolioLru;
 
 const SHELL_URLS = [
   "/",
@@ -104,7 +104,9 @@ self.addEventListener("activate", (e) => {
 // stale client and force an update.
 self.addEventListener("message", (e) => {
   if (e.data && e.data.type === "GET_VERSION" && e.ports[0]) {
-    e.ports[0].postMessage({ version: APP_VERSION });
+    // lruSchema: the page syncs setlist holds only under a worker whose
+    // LRU store understands them (cache.js syncOfflineSet).
+    e.ports[0].postMessage({ version: APP_VERSION, lruSchema: LRU_SCHEMA });
   }
 });
 

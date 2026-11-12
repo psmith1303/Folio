@@ -18,6 +18,7 @@ Runs on any device with a browser, including iPad.
 - Content-hash based identity: renamed/moved PDFs are auto-detected on rescan, healing setlist references, annotation sidecars, and recent list entries
 - Setlist management: create, edit, reorder, rename, delete, playback with page constraints
 - Nested setlists: setlists can reference other setlists as sub-items, with automatic flattening for playback
+- Offline use (PWA): each device keeps every setlist's PDFs pinned automatically (released when no setlist holds them), keeps the Recent list's PDFs (the last 200 opened) cached, and auto-caches up to 500 more viewed PDFs, least recently used evicted first. It syncs at launch and after a setlist change on that device, and asks the browser for persistent storage
 - Dark/light theme toggle (remembered across sessions)
 - Fullscreen mode for distraction-free viewing (f key or toolbar button)
 - Directories with a `.exclude` file are hidden from the library
@@ -196,8 +197,8 @@ The frontend is split into ES modules under `web/static/modules/`:
 | `keyboard.js` | Configurable keyboard shortcuts (data-driven from server config) |
 | `touch.js` | Touch gestures — swipe navigation, double-tap, scroll-boundary page turns |
 | `recent.js` | Recent files list with content-hash based healing |
-| `cache.js` | Offline cache UI (pin/unpin PDFs) |
-| `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store, eviction); a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
+| `cache.js` | Offline cache UI (pin/unpin PDFs) and the sync that keeps setlist and Recent PDFs offline |
+| `offline-lru.js` | Offline PDF cache bookkeeping shared with the service worker (cache name and keys, LRU store with manual pins and setlist holds, eviction); a classic script, loaded by `sw.js` via `importScripts` and by `cache.js` via import |
 | `dialog-handlers.js` | Per-dialog show/close logic |
 | `theme.js` | Dark/light theme toggle |
 | `utils.js` | Shared utilities (HTML escaping, coordinate transforms, page scale, saved preferences, constants) |

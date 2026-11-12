@@ -396,7 +396,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Folio", version="2.16.1",
+    title="Folio", version="2.17.0",
     docs_url=None, redoc_url=None, lifespan=_lifespan,
 )
 
@@ -755,7 +755,7 @@ def put_annotations(req: SaveAnnotationsRequest):
 # ---------------------------------------------------------------------------
 
 
-MAX_RECENT = 50
+MAX_RECENT = 200
 
 
 def _load_recent() -> list[dict]:
@@ -840,10 +840,13 @@ def clear_recent():
 # ---------------------------------------------------------------------------
 
 
-def _load_setlists() -> dict:
+def _load_setlists(strict: bool = False) -> dict:
+    """The setlists; {} if the file can't be read, or with *strict* a 503."""
     try:
         return load_setlists(state.setlist_path(), state.library_dir)
     except SafeJSONError:
+        if strict:
+            raise HTTPException(status_code=503, detail="Setlists unreadable")
         return {}
 
 
@@ -985,6 +988,36 @@ def get_setlist_flat(name: str):
         raise HTTPException(status_code=404, detail="Setlist not found")
     songs = _expand_setlist(data, name)
     return {"name": name, "songs": _api_songs(songs)}
+
+
+@app.get("/api/offline/wanted")
+def get_offline_wanted():
+    """The PDFs each device keeps offline: every setlist's songs (pinned
+    while a setlist holds them) and the Recent list, newest first.
+
+    Fails closed: a setlists file that can't be read answers 503, never an
+    empty list, which the client would take as "no setlist holds anything"
+    and release every hold. Paths aren't filtered by the scanned library,
+    for the same reason: a missing PDF just fails to download.
+    """
+    if not state.library_dir:
+        raise HTTPException(status_code=503, detail="No library")
+    data = _load_setlists(strict=True)
+    # Every setlist's own songs: a referenced setlist is itself in *data*,
+    # so the union needs no expansion of setlist_refs.
+    setlist_paths: dict[str, None] = {}
+    for sl in data.values():
+        for item in _normalize_items(list(sl["items"])):
+            path = item.get("path")
+            if item.get("type", "song") == "song" and isinstance(path, str) and path:
+                setlist_paths[_api_path(path)] = None
+    recent = _load_recent()
+    map_recent_paths(recent, _api_path)
+    recent_paths = [
+        e["filepath"] for e in recent
+        if isinstance(e, dict) and isinstance(e.get("filepath"), str) and e["filepath"]
+    ]
+    return {"setlist_paths": list(setlist_paths), "recent_paths": recent_paths}
 
 
 @app.get("/api/setlists/{name}/playback")

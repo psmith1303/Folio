@@ -78,7 +78,7 @@ if (typeof crypto !== "undefined" && !crypto.randomUUID) {
 // ---------------------------------------------------------------------------
 
 import { getState } from "./modules/state.js";
-import { api } from "./modules/api.js";
+import { api, askServiceWorker } from "./modules/api.js";
 import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary } from "./modules/library.js";
@@ -89,7 +89,7 @@ import { initSetlistEvents } from "./modules/setlists.js";
 import { initDialogHandlers, showDirDialog } from "./modules/dialog-handlers.js";
 import { initKeyboardShortcuts, setKeybindings } from "./modules/keyboard.js";
 import { initTouchHandlers } from "./modules/touch.js";
-import { initCacheUI } from "./modules/cache.js";
+import { initCacheUI, requestPersistentStorage, syncOfflineSet } from "./modules/cache.js";
 import { initNavButtons } from "./modules/views.js";
 
 // Surface any unhandled async failure as a viewer toast — keeps the user in
@@ -190,23 +190,9 @@ if ("serviceWorker" in navigator) {
 
 // Ask the controlling service worker which build it's serving. Returns null
 // if there's no controller yet (first install) or it doesn't answer.
-function getServiceWorkerVersion() {
-  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
-  if (!sw) return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const ch = new MessageChannel();
-    const timer = setTimeout(() => resolve(null), 1500);
-    ch.port1.onmessage = (e) => {
-      clearTimeout(timer);
-      resolve((e.data && e.data.version) || null);
-    };
-    try {
-      sw.postMessage({ type: "GET_VERSION" }, [ch.port2]);
-    } catch (_) {
-      clearTimeout(timer);
-      resolve(null);
-    }
-  });
+async function getServiceWorkerVersion() {
+  const reply = await askServiceWorker({ type: "GET_VERSION" });
+  return (reply && reply.version) || null;
 }
 
 // If the running shell is older than what the server now serves, force the
@@ -271,6 +257,9 @@ async function initApp() {
       dirInput.value = cfg.library_dir;
       await loadLibrary();
       syncPendingAnnotations();      // annotations drawn offline last time
+      // Keep setlists and Recent offline, in the background.
+      requestPersistentStorage();
+      syncOfflineSet();
     } else {
       showDirDialog(cfg.library_dir || "");
     }

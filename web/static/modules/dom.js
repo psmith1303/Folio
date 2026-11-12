@@ -83,7 +83,6 @@ export const btnDeleteSetlist = $("#btn-delete-setlist");
 export const btnAddSong = $("#btn-add-song");
 export const btnPlaySetlist = $("#btn-play-setlist");
 export const btnAddSetlistRef = $("#btn-add-setlist-ref");
-export const btnCacheSetlist = $("#btn-cache-setlist");
 export const btnToggleShuffle = $("#btn-toggle-shuffle");
 
 // Dialogs — set-folder

@@ -1611,3 +1611,66 @@ class TestShuffleSetlist:
         body = resp.json()
         assert body["shuffle"] is False
         assert len(body["items"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /api/offline/wanted
+# ---------------------------------------------------------------------------
+
+
+class TestOfflineWanted:
+    def test_unions_every_setlist_with_refs_once_each(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "Warm-up"})
+        client.put("/api/setlists/Warm-up", json={"items": [_song("Scales"), _song("Etude")]})
+        # Warm-up is reached three ways: directly, and through two refs.
+        for name in ("Monday", "Tuesday"):
+            client.post("/api/setlists", json={"name": name})
+            client.put(f"/api/setlists/{name}",
+                       json={"items": [_ref("Warm-up"), _song(name), _song("Etude")]})
+
+        data = client.get("/api/offline/wanted").json()
+        assert sorted(data["setlist_paths"]) == sorted(
+            ["Scales.pdf", "Etude.pdf", "Monday.pdf", "Tuesday.pdf"])
+
+    def test_paths_match_the_flat_endpoint(self, client, library_with_pdfs):
+        """The client keys its cache by these, so they must be the paths the
+        viewer opens setlist songs by."""
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "A"})
+        client.put("/api/setlists/A", json={"items": [_song("jazz/Davis - Blue -- swing")]})
+        flat = [s["path"] for s in client.get("/api/setlists/A/flat").json()["songs"]]
+        assert client.get("/api/offline/wanted").json()["setlist_paths"] == flat
+
+    def test_keeps_paths_the_library_does_not_know(self, client, library_with_pdfs):
+        """Dropping them would release a hold whenever the library is
+        briefly unscanned; a missing PDF just fails to download."""
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "A"})
+        client.put("/api/setlists/A", json={"items": [_song("Not There")]})
+        assert client.get("/api/offline/wanted").json()["setlist_paths"] == ["Not There.pdf"]
+
+    def test_recent_paths_newest_first(self, client, library_with_pdfs):
+        state.set_library(library_with_pdfs)
+        for s in state.scores:
+            client.post("/api/recent", json={"path": s.filepath})
+        recent = [e["filepath"] for e in client.get("/api/recent").json()["recent"]]
+        data = client.get("/api/offline/wanted").json()
+        assert data["recent_paths"] == recent and len(recent) == 3
+        assert data["setlist_paths"] == []
+
+    def test_unreadable_setlists_answer_503_not_an_empty_list(self, client, library_with_pdfs):
+        """An empty list would make every device release every hold."""
+        state.set_library(library_with_pdfs)
+        client.post("/api/setlists", json={"name": "A"})
+        client.put("/api/setlists/A", json={"items": [_song("X")]})
+        with open(state.setlist_path(), "w") as f:
+            f.write("{ not json")
+        assert client.get("/api/offline/wanted").status_code == 503
+
+    def test_no_library_answers_503(self, client):
+        assert client.get("/api/offline/wanted").status_code == 503
+
+
+def test_recent_keeps_200():
+    assert srv.MAX_RECENT == 200

@@ -18,3 +18,26 @@ export async function api(url, options = {}) {
   }
   return resp.json();
 }
+
+// Ask the controlling service worker *msg* (e.g. { type: "GET_VERSION" })
+// and resolve to its reply, or null if there's no controller yet (first
+// install), it doesn't answer within 1.5 s, or posting fails.
+export function askServiceWorker(msg) {
+  const sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (!sw) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    const done = (reply) => {
+      clearTimeout(timer);
+      ch.port1.close();
+      resolve(reply);
+    };
+    const timer = setTimeout(() => done(null), 1500);
+    ch.port1.onmessage = (e) => done(e.data || null);
+    try {
+      sw.postMessage(msg, [ch.port2]);
+    } catch (_) {
+      done(null);
+    }
+  });
+}

@@ -1,6 +1,6 @@
 """The page and the service worker must agree on a PDF's Cache Storage key.
 
-cache.js (pin, evict, "Cache setlist", purging a corrupt copy) and sw.js
+cache.js (pinning, the offline sync, purging a corrupt copy) and sw.js
 (serving and storing PDFs) both use the key; if the page's key differs, or
 throws, the page can't find or remove what the service worker cached. Both
 now take it from the shared offline-lru.js (self.FolioLru.pdfCacheKey):
