@@ -139,7 +139,9 @@ python3 -m pytest -v
 
 | File | Tests | What is tested |
 |---|---|---|
-| `tests/test_web_core.py` | 59 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
+| `tests/test_web_core.py` | 61 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
+| `tests/test_lighten_scans.py` | 25 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders, options, done-list; one end-to-end run (needs poppler and jbig2, skips without them, as in the deploy image) |
+| `tests/test_music_refresh.py` | 24 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while it hides a kept file), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
 | `tests/test_web_api.py` | 134 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
@@ -240,8 +242,73 @@ Each PDF gets a fast content hash (SHA-256 of first/last 4 KB + file size). A pe
 
 The version is set in one place, `APP_VERSION` in `web/static/sw.js`; the server reads it from there at startup (and fails to start without it). Bump it for every front-end change, so installed copies replace their cached shell.
 
+### Music-Master and the light library
+
+Heavy scans (600 dpi, 30–120 MP a page) don't open on an iPhone. So the
+library Folio serves (`psDATA/Resources/Music`) holds light copies, and the
+originals live in `psDATA/Resources/Music-Master`:
+
+- **Music-Master**: the original scans and everything kept with them
+  (audio, MIDI, LilyPond, `.exclude` folders). No json. Add new scores
+  **here**.
+- **Music**: what Folio shows, and nothing else: a copy of each PDF outside
+  a `.exclude` folder, plus Folio's json (sidecars, `setlists.json`,
+  `_hash_index.json`, ...). A PDF over 16.7 MP on a page, or with pages
+  more than 10% bigger than A4, is lightened by `scripts/lighten_scans.py`:
+  pages shrunk to A4, straightened, black-and-white JBIG2 at 300 dpi, with
+  specks and edge shadows removed. Other PDFs are copied as they are.
+
+`scripts/music_refresh.py` brings Music up to date with Music-Master. Run it
+on okapi; a dry run comes first and writes nothing:
+
+```
+python3 scripts/music_refresh.py            # what would change
+python3 scripts/music_refresh.py --apply    # do it (restartable)
+```
+
+- New and changed Master PDFs are lightened or copied. A copy replaces its
+  PDF at the same path, so its sidecar, setlist entries and Recent entry
+  still match. A Master file whose timestamp moved but whose content didn't
+  (a sync can do that) is not redone.
+- A PDF moved or renamed in Master: its Music copy and sidecar move too.
+  A PDF renamed in Folio (tag edits rename files): the Master file is
+  renamed to match. That rename is the refresh's only write to Master.
+- A PDF deleted from Master is reported; `--prune` deletes its Music copy
+  (never the sidecar). A copy deleted from Music isn't made again unless
+  `--restore` is given.
+- Other files in Music (audio, `.exclude` folders) are deleted only when
+  Master holds a byte-identical copy; anything else is reported as
+  MUSIC-ONLY and kept, and a `.exclude` marker stays while it still hides
+  a kept file. A Music file that differs from Master at the same path is a
+  CONFLICT, left alone, as is a move or rename onto a path that already
+  holds another file.
+- `ANNOTATED` lists lightened PDFs that have annotations: straightening
+  moves the music slightly, so check their marks.
+- State is in `Music/.music-refresh.tsv`.
+
+After a refresh that replaced PDFs, the iPhone and iPad still hold the old
+copies offline, and show them once before revalidating: clear the offline
+cache and re-pin setlists.
+
+`scripts/lighten_scans.py` also runs on its own, writing copies to
+`--out` (default `C:\Temp\Output`): `--dry-run` lists what it would do,
+and a done-list lets an interrupted run restart. `--help` and its
+docstring list the options.
+
+The one-off move to this layout (2026-11):
+
+```
+rsync -a --exclude='*.json' /mnt/z/psDATA/Resources/Music/ /mnt/z/psDATA/Resources/Music-Master/
+python3 scripts/music_refresh.py
+python3 scripts/music_refresh.py --apply
+```
+
+The first run finds every PDF already in Music (ADOPT), lightens the heavy
+ones in place, and deletes from Music the files Folio doesn't show (PRUNE).
+
 ### One-off scripts
 
+- **`scripts/music_refresh.py`**, **`scripts/lighten_scans.py`** — fill the library from Music-Master with light copies (above).
 - **`scripts/sort_tags.py`** — puts PDF filename tags into canonical form (lowercase, de-duplicated, sorted); updates the hash index, setlists and recent list in lockstep.
 - **`scripts/migrate_rotations.py`** — one-shot migration after the rotation-handling fix.  Subtracts each PDF's intrinsic `/Rotate` from the user-stored rotation in annotation sidecars, so previously-compensated pages stay visually identical after the fix.  Dry-run by default; `--apply` writes.  Only needs to be run once per library, and only matters if you'd previously rotated pages to compensate for upside-down PDFs.
 

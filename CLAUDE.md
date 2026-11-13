@@ -43,6 +43,12 @@ plan item covers the fix. A separate fix Peter asked for still gets its own comm
 ## Rules
 - PDFs are identified by content hash, so renamed or moved files keep their
   annotations and setlist entries. Don't key anything on the path.
+- The library (`Resources/Music`) holds light copies; the originals are in
+  `Resources/Music-Master`. Only `scripts/music_refresh.py` writes the copies
+  (`lighten_scans.py` run alone writes only to its `--out` folder), and its
+  one write to Master is following a rename made in Folio. Apart from the
+  one-off migration's rsync, never write to Master otherwise (README,
+  "Music-Master and the light library").
 - `config.json` and other runtime `*.json` are local and gitignored. Never
   commit them.
 - Don't push before /ship: a push deploys.

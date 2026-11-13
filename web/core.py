@@ -13,6 +13,7 @@ import os
 import posixpath
 import re
 import shutil
+import stat
 import sys
 import uuid
 from dataclasses import dataclass, field
@@ -355,6 +356,27 @@ def rename_score_file(score: Score, new_filename: str) -> Score:
 # ---------------------------------------------------------------------------
 
 
+EXCLUDE_MARKER = ".exclude"
+
+
+def is_excluded_dir(dir_path: str) -> bool:
+    """True if *dir_path* holds a ``.exclude`` file: Folio hides that
+    directory and everything under it. A marker that can't be read counts
+    as present, so an unreadable directory stays hidden. Shared with the
+    library scripts (scripts/lighten_scans.py, scripts/music_refresh.py).
+    """
+    try:
+        if not stat.S_ISREG(os.lstat(os.path.join(dir_path, EXCLUDE_MARKER)).st_mode):
+            return False
+        # The exact name: a case-insensitive drive (okapi's /mnt/z) also
+        # finds ".Exclude", which Folio on p3800 doesn't treat as a marker.
+        return EXCLUDE_MARKER in os.listdir(dir_path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
 def scan_library(
     path: str,
     hash_cache: dict | None = None,
@@ -384,14 +406,8 @@ def scan_library(
         except OSError:
             return
 
-        # Skip directories that contain a .exclude marker
-        for e in entries:
-            if e.name == ".exclude":
-                try:
-                    if e.is_file(follow_symlinks=False):
-                        return
-                except OSError:
-                    return
+        if is_excluded_dir(dir_path):
+            return
 
         rel = os.path.normpath(os.path.relpath(dir_path, path))
         parts = rel.lower().replace("\\", "/").split("/")

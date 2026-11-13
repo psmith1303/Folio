@@ -229,6 +229,37 @@ class TestScanLibrary:
         result = scan_library(str(tmp_path))
         assert len(result) == 0
 
+    def test_is_excluded_dir_needs_the_exact_name_on_a_case_insensitive_drive(self):
+        """On /mnt/z, lstat(".exclude") also finds ".Exclude"; Folio on
+        p3800 (case-sensitive) doesn't hide that folder, so nor may the scripts."""
+        import shutil
+        import tempfile
+        from pathlib import Path
+
+        from web.core import is_excluded_dir
+
+        d = Path(tempfile.mkdtemp(prefix=".casetest-", dir=Path(__file__).resolve().parent.parent))
+        try:
+            (d / ".Exclude").touch()
+            if not (d / ".exclude").exists():
+                pytest.skip("repo is not on a case-insensitive filesystem")
+            assert not is_excluded_dir(str(d))
+        finally:
+            shutil.rmtree(d)
+
+    def test_is_excluded_dir(self, tmp_path):
+        """The rule scan_library and the library scripts share: a regular
+        .exclude file hides its directory; a directory of that name doesn't."""
+        from web.core import is_excluded_dir
+
+        assert not is_excluded_dir(str(tmp_path))
+        (tmp_path / ".exclude").mkdir()
+        assert not is_excluded_dir(str(tmp_path))
+        marked = tmp_path / "marked"
+        marked.mkdir()
+        (marked / ".exclude").touch()
+        assert is_excluded_dir(str(marked))
+
     def test_hash_cache_reuse_skips_recompute(self, tmp_path, monkeypatch):
         """Files unchanged by size+mtime reuse the cached hash."""
         from web import core
