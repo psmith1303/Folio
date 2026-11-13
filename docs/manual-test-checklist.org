@@ -82,3 +82,5 @@
 - [ ] Offline sync — airplane mode: open a setlist song never viewed on this device, and an old Recent item; both open
 - [ ] Setlist holds — a setlist song's row shows the check, tooltip "Pinned by a setlist"; clicking it does nothing. Remove the song from every setlist; its icon turns to the hollow circle
 - [ ] Manual pin — pin a non-setlist score from the Library, click the check again; it becomes a hollow circle (still cached), not the download arrow
+- [ ] Cached reopen — online, open an auto-cached Recent score twice; reopen the Offline dialog: the counts haven't changed (a view of a cached PDF adds no entry)
+- [ ] Clear PDF Cache — in the Offline dialog it reads "PDF cache cleared."; every row's icon goes back to the download arrow, and reopening the dialog counts nothing cached. Relaunch online: the sync brings the setlist PDFs back
