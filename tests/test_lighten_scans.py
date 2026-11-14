@@ -155,6 +155,42 @@ def test_load_done_last_line_wins(tmp_path):
     assert ls.load_done(tmp_path / "missing.tsv") == {}
 
 
+# --- rendering a turned page (pdftoppm faked) -------------------------------
+
+def _fake_pdftoppm(rot, calls):
+    """Like poppler 25.03 on okapi: -scale-to-x/-y size the page before
+    /Rotate turns it, so a quarter-turned page comes out the other way round."""
+    def run(cmd, **kw):
+        calls.append(cmd)
+        sx = int(cmd[cmd.index("-scale-to-x") + 1])
+        sy = int(cmd[cmd.index("-scale-to-y") + 1])
+        size = (sy, sx) if rot % 180 == 90 else (sx, sy)
+        Image.new("L", size, 255).save(f"{cmd[-1]}.pgm")
+        return b""
+    return run
+
+
+@pytest.mark.parametrize("rot", [0, 90, 180, 270])
+def test_do_page_renders_a_turned_page_at_its_displayed_size(tmp_path, monkeypatch, rot):
+    calls = []
+    monkeypatch.setattr(ls, "run", _fake_pdftoppm(rot, calls))
+    a = SimpleNamespace(mode="gray", deskew=False)
+    out, wpx, hpx, *_ = ls.do_page(Path("score.pdf"), 1, 595.32, 841.92, rot, None, tmp_path, a)
+    assert (wpx, hpx) == (2481, 3508)
+    assert Image.open(out).size == (2481, 3508)
+    assert len(calls) == 1
+
+
+def test_do_page_refuses_a_render_of_the_wrong_shape(tmp_path, monkeypatch):
+    """Written as wpx x hpx, a wrong-shaped render comes out as streaks."""
+    # A poppler that turned the page before sizing it would do this.
+    monkeypatch.setattr(ls, "run", _fake_pdftoppm(90, []))
+    a = SimpleNamespace(mode="gray", deskew=False)
+    with pytest.raises(RuntimeError, match="rendered 3508x2481, not 2481x3508"):
+        ls.do_page(Path("score.pdf"), 1, 595.32, 841.92, 0, None, tmp_path, a)
+    assert not list(tmp_path.glob("*.jpg"))
+
+
 # --- end to end (okapi: needs poppler and jbig2) ---------------------------
 
 TOOLS = all(shutil.which(t) for t in ("pdftoppm", "pdfimages", "pdfinfo", "jbig2"))
@@ -180,3 +216,45 @@ def test_end_to_end_makes_a_smaller_one_bit_copy_and_restarts(tmp_path):
     # A second run finds it done.
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     assert "1 files already done" in r.stdout
+
+
+def _ink(pdf, n, tmp):
+    """Page n of pdf, rendered small: True where there is ink."""
+    base = tmp / f"ink-{pdf.stem}-{n}"
+    subprocess.run(["pdftoppm", "-f", str(n), "-l", str(n), "-r", "30", "-gray",
+                    "-singlefile", str(pdf), str(base)], check=True)
+    return np.asarray(Image.open(f"{base}.pgm")) < 200
+
+
+@pytest.mark.skipif(not TOOLS, reason="needs poppler-utils and jbig2")
+def test_a_page_turned_a_quarter_keeps_its_music(tmp_path):
+    """pdftoppm's -scale-to-x/-y size the unturned page: a /Rotate 90 page
+    once came out squashed and the wrong way round, written as streaks."""
+    pymupdf = pytest.importorskip("pymupdf")
+    upright = Image.new("L", (2480, 3508), 235)
+    d = ImageDraw.Draw(upright)
+    for y in range(300, 3200, 120):
+        d.line([(200, y), (2280, y)], fill=20, width=12)
+    d.rectangle([(200, 300), (600, 700)], fill=20)     # a corner: catches a half turn
+    # Pages 2 and 3 are stored on their sides and shown upright by /Rotate.
+    turned = [upright.transpose(Image.Transpose.ROTATE_90),
+              upright.transpose(Image.Transpose.ROTATE_270)]
+    src = tmp_path / "score.pdf"
+    upright.save(src, save_all=True, append_images=turned, resolution=300, quality=95)
+    doc = pymupdf.open(src)
+    doc[1].set_rotation(90)
+    doc[2].set_rotation(270)
+    doc.saveIncr()
+    doc.close()
+    r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path),
+                        "--out", str(tmp_path / "out"), "--min-mp", "0", "--keep-larger",
+                        str(src)], capture_output=True, text=True, timeout=300)
+    assert r.stdout.startswith("OK\t"), r.stdout + r.stderr
+    dst = tmp_path / "out" / "score.pdf"
+    for n in (1, 2, 3):
+        want, got = _ink(src, n, tmp_path), _ink(dst, n, tmp_path)
+        assert want.shape == got.shape
+        # One-bit lines are crisper than the original's: the copy's ink
+        # lies on the original's, and is most of it.
+        assert (want & got).sum() / got.sum() > 0.9, f"page {n}"
+        assert got.sum() > 0.5 * want.sum(), f"page {n}"

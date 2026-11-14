@@ -79,8 +79,8 @@ def run(cmd, **kw):
                           stdin=subprocess.DEVNULL, **kw).stdout
 
 
-def page_boxes(pdf):
-    """[(w_pt, h_pt)] per page as displayed: CropBox with /Rotate applied."""
+def page_geometry(pdf):
+    """({page: (w_pt, h_pt) CropBox}, {page: /Rotate}), as pdfinfo reports them."""
     out = run(["pdfinfo", "-box", "-f", "1", "-l", "1000000", str(pdf)]).decode(errors="replace")
     crop, rot = {}, {}
     for line in out.splitlines():
@@ -91,6 +91,12 @@ def page_boxes(pdf):
         m = re.match(r"Page\s+(\d+)\s+rot:\s+(\d+)", line)
         if m:
             rot[int(m[1])] = int(m[2])
+    return crop, rot
+
+
+def page_boxes(pdf):
+    """[(w_pt, h_pt)] per page as displayed: CropBox with /Rotate applied."""
+    crop, rot = page_geometry(pdf)
     return [crop[n] if rot.get(n, 0) % 180 == 0 else crop[n][::-1] for n in sorted(crop)]
 
 
@@ -125,19 +131,26 @@ def fit_a4(w, h):
     return w * s, h * s
 
 
-def do_page(src, n, w_pt, h_pt, native_ppi, tmp, a):
-    """Render page n of src to w_pt x h_pt; return (file, px w, px h, filter)."""
+def do_page(src, n, w_pt, h_pt, rot, native_ppi, tmp, a):
+    """Render page n of src (turned rot degrees by /Rotate) to w_pt x h_pt,
+    as displayed; return (file, px w, px h, filter)."""
     dpi = DPI
     if a.mode == "gray" and native_ppi:
         dpi = min(dpi, native_ppi)          # grey: no point inventing pixels
     wpx, hpx = round(w_pt * dpi / 72), round(h_pt * dpi / 72)
     base = tmp / f"p{n:05d}"
     # Straight to the final pixel size, in grey; PGM is uncompressed, so
-    # nothing is spent encoding a file that is read once.
+    # nothing is spent encoding a file that is read once. pdftoppm sizes the
+    # page before turning it, so a quarter-turned page takes the sizes swapped.
+    sx, sy = (hpx, wpx) if rot % 180 == 90 else (wpx, hpx)
     run(["pdftoppm", "-f", str(n), "-l", str(n), "-gray", "-singlefile",
-         "-scale-to-x", str(wpx), "-scale-to-y", str(hpx), str(src), str(base)])
+         "-scale-to-x", str(sx), "-scale-to-y", str(sy), str(src), str(base)])
     img = Image.open(f"{base}.pgm"); img.load()
     os.remove(f"{base}.pgm")
+    if img.size != (wpx, hpx):
+        # Written as wpx x hpx, it would come out as streaks.
+        raise RuntimeError(f"page {n} rendered {img.size[0]}x{img.size[1]},"
+                           f" not {wpx}x{hpx}")
     if a.deskew:
         angle = skew_angle(img)
         if abs(angle) >= 0.05:
@@ -274,11 +287,12 @@ def write_pdf(path, pages):
 def lighten(src, dst, a, boxes, mp, ppi):
     targets = [fit_a4(w, h) for w, h in boxes]
     dst_part = dst.with_name(dst.name + ".part")
+    _, rot = page_geometry(src)
     tmp = Path(tempfile.mkdtemp(prefix="lighten-"))
     try:
         with ProcessPoolExecutor(a.jobs) as ex:
             # A shrunk page holds the scan's pixels in less space: its ppi rises.
-            futs = [ex.submit(do_page, src, n, t[0], t[1],
+            futs = [ex.submit(do_page, src, n, t[0], t[1], rot.get(n, 0),
                               ppi[n] * b[0] / t[0] if ppi.get(n) else None, tmp, a)
                     for n, (t, b) in enumerate(zip(targets, boxes), 1)]
             pages = [f.result() + t for f, t in zip(futs, targets)]
