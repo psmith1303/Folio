@@ -140,8 +140,8 @@ python3 -m pytest -v
 | File | Tests | What is tested |
 |---|---|---|
 | `tests/test_web_core.py` | 61 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
-| `tests/test_lighten_scans.py` | 37 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders, options, done-list; a quarter-turned page rendered at its displayed size (the CropBox), a wrong-shaped render refused, and blank sheets and covers kept grey in black-and-white mode only (pdftoppm faked); three end-to-end runs: one with pages turned by `/Rotate` 90 and 270, one with a page cropped to half its scan beside a cover kept grey (needs poppler and jbig2, skips without them, as in the deploy image) |
-| `tests/test_music_refresh.py` | 25 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, a render fix (every copy made again), moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while it hides a kept file), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
+| `tests/test_lighten_scans.py` | 49 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders, options, done-list; colour scans (half the pages or more, not a colour cover; palette images and masks not counted as colour); a quarter-turned page rendered at its displayed size (the CropBox), a wrong-shaped render refused, and blank sheets and covers kept grey in black-and-white mode only (pdftoppm faked); three end-to-end runs: one with pages turned by `/Rotate` 90 and 270, one with a page cropped to half its scan beside a cover kept grey (needs poppler and jbig2, skips without them, as in the deploy image); a `--dry-run` on real colour, grey and colour-cover scans (needs poppler) |
+| `tests/test_music_refresh.py` | 26 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, a render fix (every copy made again), moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while it hides a kept file), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing and names a colour scan, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
 | `tests/test_web_api.py` | 134 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
@@ -253,8 +253,10 @@ originals live in `psDATA/Resources/Music-Master`:
   **here**.
 - **Music**: what Folio shows, and nothing else: a copy of each PDF outside
   a `.exclude` folder, plus Folio's json (sidecars, `setlists.json`,
-  `_hash_index.json`, ...). A PDF over 16.7 MP on a page, or with pages
-  more than 10% bigger than A4, is lightened by `scripts/lighten_scans.py`:
+  `_hash_index.json`, ...). A PDF over 16.7 MP on a page, with pages
+  more than 10% bigger than A4, or scanned in colour (half its pages or
+  more with 2 MP of colour images; a colour cover alone doesn't count), is
+  lightened by `scripts/lighten_scans.py`:
   pages shrunk to A4, straightened, black-and-white JBIG2 at 300 dpi, with
   specks and edge shadows removed (blank sheets, covers and photos are kept
   grey, as JPEG). Other PDFs are copied as they are.

@@ -122,10 +122,77 @@ def test_find_pdfs_skips_exclude_folders(tmp_path):
 
 def test_needs_lightening():
     a4 = [(595.28, 841.89)]
-    assert ls.needs_lightening(a4, {1: 20.0}, 16.7)[0]
-    assert not ls.needs_lightening(a4, {1: 5.0}, 16.7)[0]
-    assert ls.needs_lightening([(1929, 2644)], {1: 5.0}, 16.7)[0]     # oversize
-    assert not ls.needs_lightening([(1929, 2644)], {}, 16.7)[0]       # no images
+    assert ls.needs_lightening(a4, {1: 20.0}, {}, 16.7)[0]
+    assert not ls.needs_lightening(a4, {1: 5.0}, {}, 16.7)[0]
+    assert ls.needs_lightening([(1929, 2644)], {1: 5.0}, {}, 16.7)[0]     # oversize
+    assert not ls.needs_lightening([(1929, 2644)], {}, {}, 16.7)[0]       # no images
+
+
+A4P = (595.28, 841.89)
+
+
+@pytest.mark.parametrize("colour,pages,go,why", [
+    ({1: 8.7, 2: 8.7}, 2, True, "colour scan"),            # colour throughout
+    ({1: 8.7, 2: 8.7}, 4, True, "colour scan"),            # half: still a colour scan
+    ({1: 8.7}, 4, False, ""),                              # a colour cover on a grey score
+    ({1: 8.7}, 3, False, ""),                              # a third
+    ({1: 2.0, 2: 2.0}, 2, True, "colour scan"),            # 2 MP is a colour page
+    ({1: 1.9, 2: 1.9}, 2, False, ""),                      # a colour logo on each page
+    ({}, 2, False, ""),                                    # a grey scan
+])
+def test_needs_lightening_a_colour_scan_whatever_its_size(colour, pages, go, why):
+    mp = {p: 8.7 for p in range(1, pages + 1)}            # well under 16.7 MP
+    assert ls.needs_lightening([A4P] * pages, mp, colour, 16.7) == (go, 8.7, why)
+
+
+def test_needs_lightening_gives_every_reason():
+    assert ls.needs_lightening([(1929, 2644)], {1: 5.0}, {1: 5.0}, 16.7) == (
+        True, 5.0, "bigger than A4, colour scan")
+    assert ls.needs_lightening([A4P], {1: 20.0}, {}, 16.7) == (True, 20.0, "")
+
+
+def test_describe():
+    assert ls.describe(5.04, "") == "5.0 MP"
+    assert ls.describe(5.04, "bigger than A4, colour scan") == "5.0 MP, bigger than A4, colour scan"
+
+
+LISTING = """\
+page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio
+--------------------------------------------------------------------------------------------
+{rows}"""
+ROWS = {
+    1: ["   1     0 image    2000  1000  rgb     3   8  jpeg   no        10  0   300   300  500K 2.0%",
+        "   1     1 smask    2000  1000  gray    1   8  image  no        11  0   300   300  100K 1.0%"],
+    2: ["   2     2 image    1000  1000  index   1   8  image  no        12  0   150   150   90K 1.0%",
+        "   2     3 image    3000  1000  gray    1   8  jpeg   no        13  0   400   400  300K 1.0%"],
+    9: ["   9     4 image    1000  1000  cmyk    4   8  jpeg   no        14  0   200   200  100K 1.0%"],
+}
+
+
+def test_image_stats_counts_rgb_and_cmyk_as_colour(monkeypatch):
+    """pdfimages -list rows, read in chunks of 8 pages: a palette ("index")
+    image and a soft mask are not colour, and a mask is no image at all."""
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd)
+        f, l = int(cmd[cmd.index("-f") + 1]), int(cmd[cmd.index("-l") + 1])
+        rows = [r for p in range(f, l + 1) for r in ROWS.get(p, [])]
+        return LISTING.format(rows="\n".join(rows)).encode()
+
+    monkeypatch.setattr(ls, "run", run)
+    mp, ppi, colour = ls.image_stats("x.pdf", 9, 2)
+    assert len(calls) == 2                                  # pages 1-8, then 9
+    assert dict(mp) == {1: 2.0, 2: 4.0, 9: 1.0}
+    assert dict(colour) == {1: 2.0, 9: 1.0}
+    assert dict(ppi) == {1: 300, 2: 400, 9: 200}
+
+
+def test_settings_key_changes_with_the_colour_cut_off(monkeypatch):
+    a = ls.parse_args(["x.pdf"])
+    k = ls.settings_key(a)
+    monkeypatch.setattr(ls, "COLOUR_MP", 3.0)
+    assert ls.settings_key(a) != k          # a new cut-off reassesses every copy
 
 
 @pytest.mark.parametrize("argv", [
@@ -372,3 +439,40 @@ def test_a_cropped_page_and_a_cover_come_out_as_shown(tmp_path):
     assert got.sum() > 0.5 * want.sum()
     assert got.mean() < 0.4             # the black half is not squeezed in
     assert (~_ink(dst, 2, tmp_path)).mean() > 0.05   # the cover's title is still light
+
+
+def _scan(colour_pages, pages):
+    """An A4 scan at 200 dpi (3.9 MP a page, well under --min-mp): the first
+    colour_pages in colour, the rest grey."""
+    def page(colour):
+        img = Image.new("RGB" if colour else "L", (1654, 2339), (240, 235, 220) if colour else 235)
+        d = ImageDraw.Draw(img)
+        for y in range(200, 2200, 60):
+            d.line([(150, y), (1500, y)], fill=(20, 20, 60) if colour else 20, width=4)
+        return img
+    imgs = [page(n < colour_pages) for n in range(pages)]
+    return imgs[0], imgs[1:]
+
+
+@pytest.mark.skipif(not all(shutil.which(t) for t in ("pdfimages", "pdfinfo")),
+                    reason="needs poppler-utils")
+def test_dry_run_lightens_a_colour_scan_but_not_a_colour_cover(tmp_path):
+    """Real pdfimages output: its comp column marks a colour page. A small
+    colour scan is lightened; a grey scan, or one with only a colour cover,
+    is not."""
+    for name, colour_pages, pages in [("colour", 2, 2), ("grey", 0, 2), ("cover", 1, 4)]:
+        first, rest = _scan(colour_pages, pages)
+        first.save(tmp_path / f"{name}.pdf", save_all=True, append_images=rest,
+                   resolution=200, quality=90)
+    r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path),
+                        "--out", str(tmp_path / "out"), "--dry-run",
+                        *(str(tmp_path / f"{n}.pdf") for n in ("colour", "grey", "cover"))],
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 0, r.stdout + r.stderr
+    got = {}
+    for line in r.stdout.splitlines():
+        status, detail, rel = line.split("\t")
+        got[rel] = (status, detail.rsplit(" (", 1)[0])
+    assert got == {"colour.pdf": ("WOULD", "3.9 MP, colour scan"),
+                   "grey.pdf": ("LIGHT", "3.9 MP, left alone"),
+                   "cover.pdf": ("LIGHT", "3.9 MP, left alone")}

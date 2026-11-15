@@ -36,9 +36,11 @@ Usage:
                    their path relative to --root, e.g. Output/Technique/x.pdf
   --root DIR       library root (default /mnt/z/psDATA/Resources/Music)
   --min-mp N       only files whose heaviest page has N+ megapixels of
-                   images, or a page bigger than A4 (default 16.7);
-                   0 = every file with images (a file with no images,
-                   such as a born-digital PDF, is always left alone)
+                   images (default 16.7), plus every file with a page bigger
+                   than A4 or a colour scan (half its pages or more with
+                   2+ megapixels of colour images); 0 = every file with
+                   images (a file with no images, such as a born-digital
+                   PDF, is always left alone)
   --mode bw|gray   black-and-white JBIG2 (default) or greyscale JPEG
   --threshold P    black/white cut-off: "otsu" (default) or a percent
   --speck N        remove black specks that fit in an N x N pixel square (N odd)
@@ -81,6 +83,12 @@ A4 = (595.28, 841.89)          # points, portrait
 # is a cover or photo (0.52-0.99; music 0.33 at most, half a photo 0.40).
 MIN_INK_GAP = 30
 MAX_BLACK = 0.45
+# A page with this many megapixels of colour images is a colour page (A4 at
+# 140 dpi); a colour logo is smaller. A file with colour pages for at least
+# half its pages is a colour scan, lightened whatever its size. A colour
+# cover on a grey or born-digital score is not (measured on the library:
+# colour scans are colour throughout, covers 2-16% of the pages).
+COLOUR_MP = 2.0
 RENDER = 2      # bump when a fix changes the pages made from the same options
 
 
@@ -111,7 +119,8 @@ def page_boxes(pdf):
 
 
 def image_stats(pdf, pages, jobs):
-    """({page: megapixels of images}, {page: highest image ppi}).
+    """({page: megapixels of images}, {page: highest image ppi},
+    {page: megapixels of colour images}).
 
     pdfimages -list decodes every image (~1 s a page on a 38 MP scan), so
     the pages are listed in chunks, in parallel."""
@@ -121,15 +130,19 @@ def image_stats(pdf, pages, jobs):
                                      str(min(f + step - 1, pages)), str(pdf)]),
                       range(1, pages + 1, step))
         lines = [l for out in outs for l in out.decode(errors="replace").splitlines()[2:]]
-    mp, ppi = defaultdict(float), defaultdict(int)
+    mp, ppi, colour = defaultdict(float), defaultdict(int), defaultdict(float)
     for line in lines:
         f = line.split()
         if len(f) >= 14 and f[2] == "image":
             p = int(f[0])
-            mp[p] += int(f[3]) * int(f[4]) / 1e6
+            m = int(f[3]) * int(f[4]) / 1e6
+            mp[p] += m
+            # Components: RGB or CMYK (a grey scan stored as RGB counts too).
+            if f[6].isdigit() and int(f[6]) >= 3:
+                colour[p] += m
             if f[12].isdigit():
                 ppi[p] = max(ppi[p], int(f[12]))
-    return mp, ppi
+    return mp, ppi, colour
 
 
 def fit_a4(w, h):
@@ -341,7 +354,7 @@ def lighten(src, dst, a, boxes, mp, ppi):
             why.append(f"not smaller ({s0/1e6:.1f} -> {s1/1e6:.1f} MB)")
         if why:
             return "SKIP", "; ".join(why)
-        newmp, _ = image_stats(part, len(new), a.jobs)
+        newmp = image_stats(part, len(new), a.jobs)[0]
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(part, dst_part)
         os.replace(dst_part, dst)
@@ -382,31 +395,37 @@ def find_pdfs(paths):
     return pdfs
 
 
-def needs_lightening(boxes, mp, min_mp):
-    """(should lighten, heaviest page MP, any page bigger than A4)."""
+def needs_lightening(boxes, mp, colour, min_mp):
+    """(should lighten, heaviest page MP, reasons besides its MP joined by
+    ", " ("bigger than A4", "colour scan"), or "")."""
     heaviest = max(mp.values(), default=0.0)
-    oversize = any(fit_a4(w, h) != (w, h) for w, h in boxes)
-    return bool(mp) and (heaviest >= min_mp or oversize), heaviest, oversize
+    why = []
+    if any(fit_a4(w, h) != (w, h) for w, h in boxes):
+        why.append("bigger than A4")
+    colour_pages = sum(m >= COLOUR_MP for m in colour.values())
+    if 2 * colour_pages >= len(boxes):              # half the pages or more
+        why.append("colour scan")
+    return bool(mp) and (heaviest >= min_mp or bool(why)), heaviest, ", ".join(why)
 
 
 def assess(src, jobs, min_mp):
-    """Look at src: (go, heaviest MP, oversize, boxes, mp, ppi). Slow
+    """Look at src: (go, heaviest MP, why, boxes, mp, ppi). Slow
     (image_stats decodes the images), so callers run it once a file."""
     boxes = page_boxes(src)
-    mp, ppi = image_stats(src, len(boxes), jobs)
-    go, heaviest, oversize = needs_lightening(boxes, mp, min_mp)
-    return go, heaviest, oversize, boxes, mp, ppi
+    mp, ppi, colour = image_stats(src, len(boxes), jobs)
+    go, heaviest, why = needs_lightening(boxes, mp, colour, min_mp)
+    return go, heaviest, why, boxes, mp, ppi
 
 
-def describe(heaviest, oversize):
-    return f"{heaviest:.1f} MP{', bigger than A4' if oversize else ''}"
+def describe(heaviest, why):
+    return f"{heaviest:.1f} MP{', ' + why if why else ''}"
 
 
 def settings_key(a):
     """The options that change a copy; a recorded copy made with others is redone."""
     return (f"{a.mode} t={a.threshold} speck={a.speck} deskew={a.deskew} "
             f"edges={a.edges} min-mp={a.min_mp} keep-larger={a.keep_larger} "
-            f"render={RENDER}")
+            f"colour-mp={COLOUR_MP} render={RENDER}")
 
 
 def parse_args(argv=None):
@@ -484,11 +503,11 @@ def main():
             continue
         t = time.time()
         try:
-            go, heaviest, oversize, boxes, mp, ppi = assess(src, a.jobs, a.min_mp)
+            go, heaviest, why, boxes, mp, ppi = assess(src, a.jobs, a.min_mp)
             if not go:
                 status, detail = "LIGHT", f"{heaviest:.1f} MP, left alone"
             elif a.dry_run:
-                status, detail = "WOULD", describe(heaviest, oversize)
+                status, detail = "WOULD", describe(heaviest, why)
             else:
                 status, detail = lighten(src, dst, a, boxes, mp, ppi)
         except subprocess.CalledProcessError as e:      # one bad file: report it, go on

@@ -19,7 +19,7 @@ A4 = [(595.28, 841.89)]
 @pytest.fixture(autouse=True)
 def stub_lighten(monkeypatch):
     def image_stats(src, pages, jobs):
-        return ({1: 40.0 if b"heavy" in Path(src).read_bytes() else 1.0}, {})
+        return ({1: 40.0 if b"heavy" in Path(src).read_bytes() else 1.0}, {}, {})
 
     def lighten(src, dst, a, boxes, mp, ppi):
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -99,6 +99,14 @@ def test_dry_run_writes_nothing(trees, la):
     assert snapshot(master, music) == before
     assert line(lines, "ADOPT", "Tech/heavy.pdf") and "would lighten" in lines[0] + lines[1]
     assert counts["PRUNE"] == 4
+
+
+def test_dry_run_names_a_colour_scan(trees, la, monkeypatch):
+    """A small colour scan is lightened, and the dry run says why."""
+    monkeypatch.setattr(mr.ls, "image_stats", lambda src, pages, jobs: ({1: 3.0}, {}, {1: 3.0}))
+    assert mr.would_lighten(trees[0] / "Tech/small.pdf", la) == "would lighten (3.0 MP, colour scan)"
+    monkeypatch.setattr(mr.ls, "image_stats", lambda src, pages, jobs: ({1: 3.0}, {}, {}))
+    assert mr.would_lighten(trees[0] / "Tech/small.pdf", la) == "would copy (3.0 MP)"
 
 
 def test_second_run_finds_nothing_to_do(trees, la):

@@ -186,11 +186,11 @@ def make_copy(src, dst, la, same_already):
 
 def would_lighten(src, la):
     try:
-        go, heaviest, oversize, *_ = ls.assess(src, la.jobs, la.min_mp)
+        go, heaviest, why, *_ = ls.assess(src, la.jobs, la.min_mp)
     except Exception as e:
         return f"would copy (unreadable: {type(e).__name__})"
     if go:
-        return f"would lighten ({ls.describe(heaviest, oversize)})"
+        return f"would lighten ({ls.describe(heaviest, why)})"
     return f"would copy ({heaviest:.1f} MP)"
 
 
