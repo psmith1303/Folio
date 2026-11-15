@@ -140,6 +140,21 @@ def test_new_and_changed_files(trees, la):
     assert (music / "Tech/small.pdf").read_bytes() == b"%PDF small two, corrected"
 
 
+def test_a_render_fix_makes_every_copy_again(trees, la, monkeypatch):
+    # Copies made before the render version was in the key (a64e695 and
+    # earlier) are redone, though no option and no Master file changed.
+    master, music = trees
+    key = mr.ls.settings_key
+    monkeypatch.setattr(mr.ls, "settings_key", lambda a: key(a).rsplit(" render=", 1)[0])
+    run(master, music, la, apply=True)
+    monkeypatch.setattr(mr.ls, "settings_key", key)
+    counts, lines = run(master, music, la)
+    assert counts.get("CHANGED") == 2 and "SAME" not in counts
+    assert line(lines, "CHANGED", "Tech/heavy.pdf") and line(lines, "CHANGED", "Tech/small.pdf")
+    run(master, music, la, apply=True)
+    assert run(master, music, la)[0] == {"SAME": 2}       # and then it settles
+
+
 def test_a_new_timestamp_alone_is_not_a_change(trees, la):
     master, music = trees
     run(master, music, la, apply=True)

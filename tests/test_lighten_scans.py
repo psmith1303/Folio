@@ -146,6 +146,7 @@ def test_settings_key_changes_with_the_options_that_change_a_copy():
     assert k != ls.settings_key(ls.parse_args(["x.pdf", "--speck", "5"]))
     assert k != ls.settings_key(ls.parse_args(["x.pdf", "--no-deskew"]))
     assert k == ls.settings_key(ls.parse_args(["x.pdf", "--jobs", "1"]))
+    assert "render=" in k                  # a render fix redoes every copy
 
 
 def test_load_done_last_line_wins(tmp_path):
@@ -157,15 +158,19 @@ def test_load_done_last_line_wins(tmp_path):
 
 # --- rendering a turned page (pdftoppm faked) -------------------------------
 
-def _fake_pdftoppm(rot, calls):
+def _fake_pdftoppm(rot, calls, page=None):
     """Like poppler 25.03 on okapi: -scale-to-x/-y size the page before
-    /Rotate turns it, so a quarter-turned page comes out the other way round."""
+    /Rotate turns it, so a quarter-turned page comes out the other way round.
+    Draws `page` at that size (white if None); other commands do nothing."""
     def run(cmd, **kw):
         calls.append(cmd)
+        if cmd[0] != "pdftoppm":
+            return b""
         sx = int(cmd[cmd.index("-scale-to-x") + 1])
         sy = int(cmd[cmd.index("-scale-to-y") + 1])
         size = (sy, sx) if rot % 180 == 90 else (sx, sy)
-        Image.new("L", size, 255).save(f"{cmd[-1]}.pgm")
+        img = Image.new("L", size, 255) if page is None else page.resize(size)
+        img.save(f"{cmd[-1]}.pgm")
         return b""
     return run
 
@@ -179,6 +184,77 @@ def test_do_page_renders_a_turned_page_at_its_displayed_size(tmp_path, monkeypat
     assert (wpx, hpx) == (2481, 3508)
     assert Image.open(out).size == (2481, 3508)
     assert len(calls) == 1
+    assert "-cropbox" in calls[0]       # what a viewer shows, not the MediaBox
+
+
+def _staff_page():
+    img = Image.new("L", (1240, 1754), 235)
+    d = ImageDraw.Draw(img)
+    for y in range(150, 1600, 60):
+        d.line([(100, y), (1140, y)], fill=20, width=6)
+    return img
+
+
+def _blank_grey_sheet():
+    """Grey paper with darker mottling, shaped like Pares p45 (Otsu: 0.08 of
+    it black, gap 15): Otsu's share stays low, so only the gap can tell."""
+    rng = np.random.default_rng(1)
+    blotch = Image.fromarray((rng.random((14, 10)) * 255).astype(np.uint8))
+    blotch = np.asarray(blotch.resize((1240, 1754), Image.BILINEAR)) > 200
+    g = rng.normal(144, 3, (1754, 1240)) - 12 * blotch
+    return Image.fromarray(np.clip(g, 0, 255).astype(np.uint8))
+
+
+def _dark_cover():
+    img = Image.new("L", (1240, 1754), 40)
+    ImageDraw.Draw(img).rectangle([(200, 200), (1040, 500)], fill=230)    # the title
+    return img
+
+
+@pytest.mark.parametrize("make, kept_grey", [
+    (_blank_grey_sheet, True),     # Otsu split the paper: once solid black
+    (_dark_cover, True),           # a cover or photo can't be two levels
+    (_staff_page, False),
+])
+def test_do_page_keeps_covers_and_blank_sheets_grey(tmp_path, monkeypatch, make, kept_grey):
+    page = make()
+    monkeypatch.setattr(ls, "run", _fake_pdftoppm(0, [], page))      # jbig2 faked too
+    # Pares p4: a noise tilt of -5 degrees, whose white corners once made
+    # Otsu call the grey paper ink.
+    tilts = []
+    monkeypatch.setattr(ls, "skew_angle", lambda img: tilts.append(img.size) or -5.0)
+    a = SimpleNamespace(mode="bw", deskew=True, threshold="otsu", edges=True, speck=3)
+    out, wpx, hpx, flt, bpc = ls.do_page(Path("score.pdf"), 1, 595.32, 841.92, 0, None, tmp_path, a)
+    if kept_grey:
+        assert (flt, bpc) == ("DCTDecode", 8)
+        assert (wpx, hpx) == Image.open(out).size == (1241, 1754)     # 150 dpi
+        # Kept as it was: not turned, not cut to black.
+        want = np.asarray(page.resize((2481, 3508)).reduce(2), dtype=float)
+        assert abs(np.asarray(Image.open(out), dtype=float) - want).mean() < 3
+    else:
+        assert (flt, bpc, wpx, hpx) == ("JBIG2Decode", 1, 2481, 3508)
+    assert len(tilts) == (0 if kept_grey else 1)    # a kept page's tilt is noise
+
+
+def test_gray_mode_still_straightens_a_cover_at_full_size(tmp_path, monkeypatch):
+    # Keeping pages grey is for bw mode: --mode gray is as it was.
+    monkeypatch.setattr(ls, "run", _fake_pdftoppm(0, [], _dark_cover()))
+    tilts = []
+    monkeypatch.setattr(ls, "skew_angle", lambda img: tilts.append(img.size) or 1.0)
+    a = SimpleNamespace(mode="gray", deskew=True)
+    out, wpx, hpx, flt, bpc = ls.do_page(Path("score.pdf"), 1, 595.32, 841.92, 0, None, tmp_path, a)
+    assert len(tilts) == 1
+    assert (wpx, hpx, flt, bpc) == (2481, 3508, "DCTDecode", 8)
+    assert Image.open(out).size == (2481, 3508)
+
+
+def test_keep_grey_by_the_measured_cut_offs():
+    sheet = np.asarray(_blank_grey_sheet())
+    assert (sheet < ls.otsu(sheet)).mean() < ls.MAX_BLACK      # the gap decides it
+    assert ls.keep_grey(sheet)
+    assert ls.keep_grey(np.asarray(_dark_cover()))
+    assert ls.keep_grey(np.full((50, 50), 255, np.uint8))           # nothing on it
+    assert not ls.keep_grey(np.asarray(_staff_page()))
 
 
 def test_do_page_refuses_a_render_of_the_wrong_shape(tmp_path, monkeypatch):
@@ -222,8 +298,17 @@ def _ink(pdf, n, tmp):
     """Page n of pdf, rendered small: True where there is ink."""
     base = tmp / f"ink-{pdf.stem}-{n}"
     subprocess.run(["pdftoppm", "-f", str(n), "-l", str(n), "-r", "30", "-gray",
-                    "-singlefile", str(pdf), str(base)], check=True)
+                    "-cropbox", "-singlefile", str(pdf), str(base)], check=True)
     return np.asarray(Image.open(f"{base}.pgm")) < 200
+
+
+def _lighten(src, tmp_path):
+    """Lighten src as the library does, whatever its size: the copy's path."""
+    r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path),
+                        "--out", str(tmp_path / "out"), "--min-mp", "0", "--keep-larger",
+                        str(src)], capture_output=True, text=True, timeout=300)
+    assert r.stdout.startswith("OK\t"), r.stdout + r.stderr
+    return tmp_path / "out" / src.name
 
 
 @pytest.mark.skipif(not TOOLS, reason="needs poppler-utils and jbig2")
@@ -246,11 +331,7 @@ def test_a_page_turned_a_quarter_keeps_its_music(tmp_path):
     doc[2].set_rotation(270)
     doc.saveIncr()
     doc.close()
-    r = subprocess.run([sys.executable, str(SCRIPT), "--root", str(tmp_path),
-                        "--out", str(tmp_path / "out"), "--min-mp", "0", "--keep-larger",
-                        str(src)], capture_output=True, text=True, timeout=300)
-    assert r.stdout.startswith("OK\t"), r.stdout + r.stderr
-    dst = tmp_path / "out" / "score.pdf"
+    dst = _lighten(src, tmp_path)
     for n in (1, 2, 3):
         want, got = _ink(src, n, tmp_path), _ink(dst, n, tmp_path)
         assert want.shape == got.shape
@@ -258,3 +339,36 @@ def test_a_page_turned_a_quarter_keeps_its_music(tmp_path):
         # lies on the original's, and is most of it.
         assert (want & got).sum() / got.sum() > 0.9, f"page {n}"
         assert got.sum() > 0.5 * want.sum(), f"page {n}"
+
+
+@pytest.mark.skipif(not TOOLS, reason="needs poppler-utils and jbig2")
+def test_a_cropped_page_and_a_cover_come_out_as_shown(tmp_path):
+    """pdftoppm draws the MediaBox unless told -cropbox: a page cropped to
+    half its scan once came out with the whole scan squeezed in. A cover
+    once went to solid black; it is kept grey beside one-bit pages."""
+    pymupdf = pytest.importorskip("pymupdf")
+    scan = Image.new("L", (2480, 7016), 235)            # two pages tall
+    d = ImageDraw.Draw(scan)
+    for y in range(300, 3200, 120):
+        d.line([(200, y), (2280, y)], fill=20, width=12)
+    d.rectangle([(200, 4000), (2280, 6700)], fill=0)    # the half cropped away
+    cover = Image.new("L", (2480, 3508), 40)
+    ImageDraw.Draw(cover).rectangle([(400, 400), (2080, 1000)], fill=230)
+    src = tmp_path / "score.pdf"
+    scan.save(src, save_all=True, append_images=[cover], resolution=300, quality=95)
+    doc = pymupdf.open(src)
+    w, h = doc[0].rect.width, doc[0].rect.height
+    doc[0].set_cropbox(pymupdf.Rect(0, 0, w, h / 2))    # the top half
+    doc.saveIncr()
+    doc.close()
+    dst = _lighten(src, tmp_path)
+    head, _, *rows = subprocess.run(["pdfimages", "-list", str(dst)], capture_output=True,
+                                    text=True).stdout.splitlines()
+    enc = head.split().index("enc")
+    assert [r.split()[enc] for r in rows] == ["jbig2", "jpeg"]
+    want, got = _ink(src, 1, tmp_path), _ink(dst, 1, tmp_path)
+    assert want.shape == got.shape
+    assert (want & got).sum() / got.sum() > 0.9
+    assert got.sum() > 0.5 * want.sum()
+    assert got.mean() < 0.4             # the black half is not squeezed in
+    assert (~_ink(dst, 2, tmp_path)).mean() > 0.05   # the cover's title is still light

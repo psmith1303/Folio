@@ -6,14 +6,17 @@ scripts/music_refresh.py uses it to fill the library from Music-Master
   - shrunk to fit A4 (aspect ratio kept) if fitting needs more than a 10%
     shrink;
     Letter and other near-A4 sizes are left alone;
-  - drawn in grey at 300 dpi (at most 2480 x 3508 px); in black-and-white,
+  - drawn in grey at 300 dpi (at most 2480 x 3508 px), its CropBox (what
+    a viewer shows), not the whole MediaBox; in black-and-white,
     a low-resolution scan is drawn up to 300 dpi before the cut-off, which
     keeps curves and thin lines smooth;
   - straightened (deskew), then cropped back to its size;
   - black-and-white (default): cut off at the Otsu threshold (picked per
     page), dark strips along the edges and stray specks removed,
     compressed with JBIG2 (lossless, generic mode: no symbol
-    substitution);
+    substitution); a page with no clear ink (a blank sheet) or mostly
+    black (a cover, a photo) is kept grey instead: JPEG at 150 dpi, not
+    straightened;
   - grey (--mode gray, for scans with photos): JPEG, quality 75; a scan
     is never drawn above its own resolution.
 
@@ -72,6 +75,13 @@ Image.MAX_IMAGE_PIXELS = None
 
 DPI = 300
 A4 = (595.28, 841.89)          # points, portrait
+# Pages kept grey in black-and-white mode (measured over the library's 2569
+# pages, 2026-11): ink and paper means less than MIN_INK_GAP apart is a blank
+# sheet (15-20; music 42 and up), and more than MAX_BLACK of the page black
+# is a cover or photo (0.52-0.99; music 0.33 at most, half a photo 0.40).
+MIN_INK_GAP = 30
+MAX_BLACK = 0.45
+RENDER = 2      # bump when a fix changes the pages made from the same options
 
 
 def run(cmd, **kw):
@@ -133,7 +143,8 @@ def fit_a4(w, h):
 
 def do_page(src, n, w_pt, h_pt, rot, native_ppi, tmp, a):
     """Render page n of src (turned rot degrees by /Rotate) to w_pt x h_pt,
-    as displayed; return (file, px w, px h, filter)."""
+    as displayed; return (file, px w, px h, filter, bits per component).
+    A page kept grey in bw mode comes back at half the pixel size."""
     dpi = DPI
     if a.mode == "gray" and native_ppi:
         dpi = min(dpi, native_ppi)          # grey: no point inventing pixels
@@ -143,7 +154,9 @@ def do_page(src, n, w_pt, h_pt, rot, native_ppi, tmp, a):
     # nothing is spent encoding a file that is read once. pdftoppm sizes the
     # page before turning it, so a quarter-turned page takes the sizes swapped.
     sx, sy = (hpx, wpx) if rot % 180 == 90 else (wpx, hpx)
-    run(["pdftoppm", "-f", str(n), "-l", str(n), "-gray", "-singlefile",
+    # -cropbox: draw what a viewer shows, the CropBox that pdfinfo -box
+    # sized; without it the whole MediaBox is squeezed into that size.
+    run(["pdftoppm", "-f", str(n), "-l", str(n), "-gray", "-singlefile", "-cropbox",
          "-scale-to-x", str(sx), "-scale-to-y", str(sy), str(src), str(base)])
     img = Image.open(f"{base}.pgm"); img.load()
     os.remove(f"{base}.pgm")
@@ -151,15 +164,19 @@ def do_page(src, n, w_pt, h_pt, rot, native_ppi, tmp, a):
         # Written as wpx x hpx, it would come out as streaks.
         raise RuntimeError(f"page {n} rendered {img.size[0]}x{img.size[1]},"
                            f" not {wpx}x{hpx}")
-    if a.deskew:
+    # Judged before deskew: its white corners would skew the histogram.
+    grey = a.mode == "bw" and keep_grey(np.asarray(img))
+    if grey:
+        img = img.reduce(2)             # 150 dpi: plenty for a cover or photo
+    elif a.deskew:                      # a cover's or blank sheet's tilt is noise
         angle = skew_angle(img)
         if abs(angle) >= 0.05:
             # Same size, white fill: the page keeps its size.
             img = img.rotate(angle, resample=Image.BICUBIC, fillcolor=255)
-    if a.mode == "gray":
+    if a.mode == "gray" or grey:
         out = f"{base}.jpg"
         img.save(out, quality=75)
-        return out, wpx, hpx, "DCTDecode", 8
+        return out, img.width, img.height, "DCTDecode", 8
     g = np.asarray(img)
     black = g < (otsu(g) if a.threshold == "otsu" else 255 * float(a.threshold) / 100)
     if a.edges:
@@ -180,6 +197,17 @@ def otsu(g):
     m = np.cumsum(hist * np.arange(256))
     mu0 = m / np.maximum(w0, 1); mu1 = (m[-1] - m) / np.maximum(w1, 1)
     return int(np.argmax(w0 * w1 * (mu0 - mu1) ** 2)) + 1
+
+
+def keep_grey(g):
+    """True when a one-bit page would be wrong: no clear ink (a blank or
+    flat sheet, where Otsu splits the paper itself) or mostly black (a
+    cover or photo)."""
+    black = g < otsu(g)
+    share = black.mean()
+    if share == 0 or share > MAX_BLACK:
+        return True
+    return float(g[~black].mean()) - float(g[black].mean()) < MIN_INK_GAP
 
 
 def skew_angle(img, limit=5.0):
@@ -377,7 +405,8 @@ def describe(heaviest, oversize):
 def settings_key(a):
     """The options that change a copy; a recorded copy made with others is redone."""
     return (f"{a.mode} t={a.threshold} speck={a.speck} deskew={a.deskew} "
-            f"edges={a.edges} min-mp={a.min_mp} keep-larger={a.keep_larger}")
+            f"edges={a.edges} min-mp={a.min_mp} keep-larger={a.keep_larger} "
+            f"render={RENDER}")
 
 
 def parse_args(argv=None):
