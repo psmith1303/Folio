@@ -3,12 +3,12 @@
 #+STARTUP: showall
 
 * Library
-- [ ] Set Folder — enter your music library path, scores populate
+- [ ] Start-up — the library given by =--library= (=/library= in Docker) loads at once; there is no Set Folder button
 - [ ] Search — type a composer or title, results filter live
 - [ ] Composer dropdown — filters to one composer
 - [ ] Tag chips — click to filter by folder tags
 - [ ] Column sort — click Composer/Title/Tags headers
-- [ ] =.exclude= — put a =.exclude= file in a subdirectory, rescan, verify it's hidden
+- [ ] Title sort is letter by letter — "Stardust" comes before "St Louis Blues", and punctuation is ignored
 
 * Score Viewer
 - [ ] Open a score — click a row, PDF renders in Fit mode (single page)

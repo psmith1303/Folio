@@ -55,7 +55,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 import lighten_scans as ls  # noqa: E402
-from web.core import EXCLUDE_MARKER, compute_content_hash  # noqa: E402
+from web.core import compute_content_hash  # noqa: E402
 
 MANIFEST = ".music-refresh.tsv"
 FIELDS = ("rel", "size", "mtime_ns", "master_hash", "music_hash", "action", "settings")
@@ -365,7 +365,7 @@ def refresh(master, music, la, apply=False, prune=False, restore=False, out=prin
     kept = [Path(rel).parent for rel, _ in extras if rel not in same]
     for rel, p in extras:
         d = Path(rel).parent
-        if rel in same and not (Path(rel).name == EXCLUDE_MARKER
+        if rel in same and not (Path(rel).name == ls.EXCLUDE_MARKER
                                 and any(k == d or d in k.parents for k in kept)):
             report("PRUNE", "not shown by Folio; identical copy in Master", rel)
             if apply:

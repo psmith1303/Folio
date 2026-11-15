@@ -38,12 +38,12 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
     srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ def client():
 @pytest.fixture
 def lib(tmp_path, client):
     (tmp_path / PATH).write_bytes(b"%PDF-1.4 bach")
-    assert client.post("/api/library", json={"path": str(tmp_path)}).status_code == 200
+    state.set_library(str(tmp_path))
     return tmp_path
 
 

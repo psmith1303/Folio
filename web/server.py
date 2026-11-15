@@ -2,9 +2,8 @@
 Folio — Web backend (FastAPI).
 
 Run with:
-    uvicorn web.server:app --reload
-or:
-    python -m web.server
+    python -m web --library DIR      (web/__main__.py)
+A bare `uvicorn web.server:app` serves no library.
 """
 
 import logging
@@ -107,18 +106,21 @@ DEFAULT_KEYBINDINGS = {
 }
 
 DEFAULT_WEB_CONFIG: dict = {
-    "last_directory": "",
-    "allowed_roots": [],
     "keybindings": {},
 }
+
+# The library folder, from `python -m web --library DIR` (web/__main__.py).
+# Empty when the app is started some other way: then no library is scanned.
+LIBRARY_DIR = ""
 
 # Max setlist name length; only printable non-path characters allowed
 _MAX_SETLIST_NAME = 200
 _SETLIST_NAME_RE = re.compile(r'^[^/\\<>:"|?*\x00-\x1f]+$')
 
 
-# Keys written by the removed authentication mechanism; dropped on load.
-_OBSOLETE_CONFIG_KEYS = ("auth_salt", "session_secret")
+# Keys of removed features, dropped on load: the authentication mechanism,
+# and choosing the library in the browser (now the --library option).
+_OBSOLETE_CONFIG_KEYS = ("auth_salt", "session_secret", "last_directory", "allowed_roots")
 
 
 def _load_config() -> dict:
@@ -194,8 +196,6 @@ class AppState:
             except SafeJSONError as e:
                 log.warning("Could not save scan cache: %s", e)
         _heal_references(self)
-        self.config["last_directory"] = portable_path(path)
-        _save_config(self.config)
         log.info(
             f"Library set to {path} — {len(self.scores)} scores found"
         )
@@ -355,17 +355,15 @@ def _heal_recent_paths(remap: dict[str, str]) -> None:
 state = AppState()
 
 
-def _auto_load_library() -> None:
-    """Open the last-used library, if it still exists."""
-    last = state.config.get("last_directory", "")
-    if not last:
+def _load_library() -> None:
+    """Scan the library named by --library, if there is one."""
+    if not LIBRARY_DIR:
+        log.warning("No library: start Folio with --library DIR")
         return
-    resolved = normalize_path(last)
-    if os.path.isdir(resolved):
-        try:
-            state.set_library(resolved)
-        except Exception as e:
-            log.warning(f"Could not auto-load library {resolved}: {e}")
+    try:
+        state.set_library(LIBRARY_DIR)
+    except Exception as e:
+        log.warning(f"Could not load library {LIBRARY_DIR}: {e}")
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -407,8 +405,8 @@ async def _lifespan(app: FastAPI):
     log.propagate = False
     log.info("Folio v%s starting", app.version)
     # Scan here rather than at import, so importing the module (e.g. in
-    # tests) doesn't scan the configured library.
-    _auto_load_library()
+    # tests) doesn't scan the library.
+    _load_library()
     yield
 
 
@@ -521,10 +519,6 @@ def _api_songs(items: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-class SetLibraryRequest(BaseModel):
-    path: str
-
-
 def _validate_setlist_name(name: str) -> str:
     """Validate and return a cleaned setlist name, or raise 400."""
     name = name.strip()
@@ -535,23 +529,6 @@ def _validate_setlist_name(name: str) -> str:
     if not _SETLIST_NAME_RE.match(name):
         raise HTTPException(status_code=400, detail="Name contains invalid characters")
     return name
-
-
-def _is_allowed_root(path: str) -> bool:
-    """Check whether *path* is under one of the configured allowed_roots.
-
-    If no roots are configured, any directory is allowed (first-use convenience).
-    Once roots are set, the library directory must be under one of them.
-    """
-    roots = state.config.get("allowed_roots", [])
-    if not roots:
-        return True
-    resolved = os.path.realpath(path)
-    for root in roots:
-        root_resolved = os.path.realpath(normalize_path(root))
-        if resolved == root_resolved or resolved.startswith(root_resolved + os.sep):
-            return True
-    return False
 
 
 class ClientLogRequest(BaseModel):
@@ -587,20 +564,6 @@ def get_config():
         "score_count": len(state.scores),
         "version": app.version,
         "keybindings": keybindings,
-    }
-
-
-@app.post("/api/library")
-def set_library(req: SetLibraryRequest):
-    path = normalize_path(req.path)
-    if not os.path.isdir(path):
-        raise HTTPException(status_code=404, detail="Directory not found")
-    if not _is_allowed_root(path):
-        raise HTTPException(status_code=403, detail="Directory not in allowed roots")
-    state.set_library(path)
-    return {
-        "library_dir": portable_path(state.library_dir),
-        "score_count": len(state.scores),
     }
 
 
@@ -1144,13 +1107,3 @@ def rename_setlist(name: str, req: RenameSetlistRequest):
 # ---------------------------------------------------------------------------
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-
-
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("web.server:app", host="0.0.0.0", port=8989, reload=True)

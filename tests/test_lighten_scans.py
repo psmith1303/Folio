@@ -120,6 +120,33 @@ def test_find_pdfs_skips_exclude_folders(tmp_path):
     assert ls.find_pdfs([tmp_path]) == [tmp_path / "a" / "one.pdf"]
 
 
+def test_is_excluded_dir(tmp_path):
+    """The rule find_pdfs applies: a regular .exclude file hides its
+    directory; a directory of that name doesn't."""
+    assert not ls.is_excluded_dir(str(tmp_path))
+    (tmp_path / ".exclude").mkdir()
+    assert not ls.is_excluded_dir(str(tmp_path))
+    marked = tmp_path / "marked"
+    marked.mkdir()
+    (marked / ".exclude").touch()
+    assert ls.is_excluded_dir(str(marked))
+
+
+def test_is_excluded_dir_needs_the_exact_name_on_a_case_insensitive_drive():
+    """On /mnt/z, lstat(".exclude") also finds ".Exclude"; p3800's
+    case-sensitive drive doesn't, so nor may the scripts."""
+    import tempfile
+
+    d = Path(tempfile.mkdtemp(prefix=".casetest-", dir=Path(__file__).resolve().parent.parent))
+    try:
+        (d / ".Exclude").touch()
+        if not (d / ".exclude").exists():
+            pytest.skip("repo is not on a case-insensitive filesystem")
+        assert not ls.is_excluded_dir(str(d))
+    finally:
+        shutil.rmtree(d)
+
+
 def test_needs_lightening():
     a4 = [(595.28, 841.89)]
     assert ls.needs_lightening(a4, {1: 20.0}, {}, 16.7)[0]

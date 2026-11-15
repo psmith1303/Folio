@@ -20,8 +20,8 @@ COPY web ./web
 
 EXPOSE 8989
 
-# Mirror folio.sh.
-CMD ["python", "-m", "uvicorn", "web.server:app", "--host", "0.0.0.0", "--port", "8989"]
+# Mirror folio.sh. The library is the /library mount (Src/Docker/docker-folio.yml).
+CMD ["python", "-m", "web", "--library", "/library"]
 
 # The suite, on top of the runtime image, so it tests what ships. deno runs
 # the JS module tests (they skip without it).

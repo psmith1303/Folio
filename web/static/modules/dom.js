@@ -19,7 +19,6 @@ export const btnLibrary = $("#btn-library");
 export const btnSetlists = $("#btn-setlists");
 export const btnRecent = $("#btn-recent");
 export const btnNewest = $("#btn-newest");
-export const btnSetDir = $("#btn-set-dir");
 export const titleDisplay = $("#title-display");
 export const btnTheme = $("#btn-theme");
 
@@ -84,11 +83,6 @@ export const btnAddSong = $("#btn-add-song");
 export const btnPlaySetlist = $("#btn-play-setlist");
 export const btnAddSetlistRef = $("#btn-add-setlist-ref");
 export const btnToggleShuffle = $("#btn-toggle-shuffle");
-
-// Dialogs — set-folder
-export const dirDialog = $("#dir-dialog");
-export const dirInput = $("#dir-input");
-export const dirCancel = $("#dir-cancel");
 
 // Dialogs — pen style grid
 export const penDialog = $("#pen-dialog");

@@ -43,12 +43,12 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
     srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
@@ -264,7 +264,7 @@ def test_backup_failure_raises_safejsonerror_and_leaves_file(legacy_lib, monkeyp
 def test_opening_a_legacy_library_converts_it_and_api_is_relative(
         client, legacy_lib):
     pdf_path = "jazz/Davis - Blue.pdf"
-    assert client.post("/api/library", json={"path": str(legacy_lib)}).status_code == 200
+    state.set_library(str(legacy_lib))
 
     assert _read(legacy_lib / "setlists.json")["Gig"]["items"][0]["path"] \
         == "jazz/Davis - Blue.pdf"
@@ -329,7 +329,7 @@ def test_library_mounted_elsewhere_keeps_its_references(client, legacy_lib, tmp_
     os.rename(legacy_lib, moved)
     before = {n: (moved / n).read_bytes() for n in STORES}
 
-    assert client.post("/api/library", json={"path": str(moved)}).status_code == 200
+    state.set_library(str(moved))
     pdf_path = "jazz/Davis - Blue.pdf"
     assert client.get("/api/setlists/Gig").json()["items"][0]["path"] == pdf_path
     assert client.get("/api/recent").json()["recent"][0]["filepath"] == pdf_path

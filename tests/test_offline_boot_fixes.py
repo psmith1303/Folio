@@ -32,7 +32,6 @@ STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 SW_JS = STATIC / "sw.js"
 CACHE_JS = STATIC / "modules" / "cache.js"
 APP_JS = STATIC / "app.js"
-DIALOG_HANDLERS_JS = STATIC / "modules" / "dialog-handlers.js"
 LIBRARY_JS = STATIC / "modules" / "library.js"
 VIEWER_JS = STATIC / "modules" / "viewer.js"
 
@@ -298,7 +297,6 @@ class TestConfigCacheStaysFresh:
 # must call refreshCachedConfig() afterwards, or the fix above is unreachable
 # from the paths that actually go stale.
 WIRING_CASES = [
-    (DIALOG_HANDLERS_JS, "dirDialog.addEventListener(", "set-folder dialog"),
     (LIBRARY_JS, "btnReset.addEventListener(", "reset/rescan button"),
 ]
 

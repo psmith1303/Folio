@@ -1,7 +1,7 @@
 // Single source of truth for the shell build. web/server.py reads it from
 // here and serves it; the client compares the two to detect (and self-heal)
 // a stale service-worker shell.
-const APP_VERSION = "2.17.1";
+const APP_VERSION = "2.18.0";
 const SHELL_CACHE = "folio-v" + APP_VERSION;
 // Deliberately NOT keyed by APP_VERSION. Cached API responses are user data
 // (the library snapshot that makes an offline launch possible), not part of

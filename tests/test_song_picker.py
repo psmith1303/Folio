@@ -2,8 +2,7 @@
 
 It used to fetch /api/library?q=... per keystroke, which failed offline. Now
 it filters the scores the library view already loaded, so it must be able to
-tell "no matches" from "the library isn't loaded" -- including after the
-library is switched and the new list hasn't arrived.
+tell "no matches" from "the library isn't loaded".
 
 Runs the REAL shipped source under Deno (functions sliced out of setlists.js
 and dialog-handlers.js, library-filter.js imported), with only the DOM
@@ -81,58 +80,6 @@ def test_picker_says_when_the_library_is_not_loaded():
     r = _render_picker({"libraryLoaded": False, "allScores": []}, "")
     assert r["rows"] == []
     assert "Library not loaded" in r["html"]
-
-
-def _switch_library(reload_succeeds: bool) -> dict:
-    """Run the directory dialog's close handler with a stubbed API; the
-    library reload either repopulates the state or fails (loadLibrary
-    reports its own errors and returns normally)."""
-    src = DIALOGS_JS.read_text(encoding="utf-8")
-    handler = slice_source(src, 'dirDialog.addEventListener("close", async () => {',
-                           "\n  });\n") + "\n  });\n"
-    return run_deno(f"""
-const __s = {{
-  selectedTags: new Set(["old"]), libraryLoaded: true,
-  allScores: [{{ filepath: "/old/Bach - Suite.pdf" }}],
-}};
-const getState = () => __s;
-const dirInput = {{ value: "/new" }};
-const libraryStatus = {{ textContent: "" }};
-const api = async () => ({{}});
-const refreshCachedConfig = () => {{}};
-let seenAtReload = null;
-const loadLibrary = async () => {{
-  seenAtReload = {{ allScores: __s.allScores.length, loaded: __s.libraryLoaded }};
-  if ({json.dumps(reload_succeeds)}) {{
-    __s.allScores = [{{ filepath: "/new/Mozart - Sonata.pdf" }}];
-    __s.libraryLoaded = true;
-  }}
-}};
-let onClose;
-const dirDialog = {{ addEventListener: (ev, fn) => {{ onClose = fn; }} }};
-{handler}
-await onClose();
-console.log(JSON.stringify({{
-  seenAtReload, loaded: __s.libraryLoaded,
-  paths: __s.allScores.map((s) => s.filepath), tags: [...__s.selectedTags],
-}}));
-""")
-
-
-@requires_deno
-def test_switching_library_drops_the_old_scores_before_reloading():
-    """Regression: if the new library's list failed to load, the picker kept
-    offering the previous library's scores."""
-    r = _switch_library(reload_succeeds=False)
-    assert r["seenAtReload"] == {"allScores": 0, "loaded": False}
-    assert r == {**r, "loaded": False, "paths": [], "tags": []}
-
-
-@requires_deno
-def test_switching_library_then_reloading_shows_the_new_scores():
-    r = _switch_library(reload_succeeds=True)
-    assert r["loaded"] is True
-    assert r["paths"] == ["/new/Mozart - Sonata.pdf"]
 
 
 def test_every_module_is_in_the_offline_shell():

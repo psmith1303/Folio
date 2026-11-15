@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import web.server as srv
-from web.core import SafeJSON, load_hash_index, load_recent, load_setlists
+from web.core import SafeJSON, load_hash_index, load_recent, load_setlists, normalize_path
 from web.server import app, state
 
 
@@ -19,12 +19,12 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
     srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
@@ -77,7 +77,8 @@ class TestGetConfig:
 
 
 # ---------------------------------------------------------------------------
-# Obsolete config keys (left behind by the removed auth mechanism)
+# Obsolete config keys (left behind by removed features: the auth mechanism,
+# and choosing the library in the browser)
 # ---------------------------------------------------------------------------
 
 
@@ -86,9 +87,10 @@ class TestObsoleteConfigKeys:
         {"auth_salt": "xyzzy"},
         {"session_secret": "deadbeef"},
         {"auth_salt": "xyzzy", "session_secret": "deadbeef"},
+        {"last_directory": "/library", "allowed_roots": ["/library"]},
     ])
     def test_stale_keys_dropped_from_result_and_disk(self, stale):
-        srv._save_config({"last_directory": "/music", **stale})
+        srv._save_config({"keybindings": {}, **stale})
         cfg = srv._load_config()
         on_disk = SafeJSON.load(srv.WEB_CONFIG_PATH)
         for key in stale:
@@ -104,13 +106,11 @@ class TestObsoleteConfigKeys:
             "session_secret": "deadbeef",
         })
         cfg = srv._load_config()
-        assert cfg["last_directory"] == "/music"
-        assert cfg["allowed_roots"] == ["/music"]
-        assert cfg["keybindings"] == {"undo": "Ctrl+z"}
+        assert cfg == {"keybindings": {"undo": "Ctrl+z"}}
 
     def test_clean_config_is_not_rewritten(self, monkeypatch):
         """A config with no stale keys must not be saved on every load."""
-        srv._save_config({"last_directory": "/music"})
+        srv._save_config({"keybindings": {"undo": "Ctrl+z"}})
         saves: list[dict] = []
         monkeypatch.setattr(srv, "_save_config", saves.append)
         srv._load_config()
@@ -118,7 +118,7 @@ class TestObsoleteConfigKeys:
 
     def test_strip_is_idempotent(self, monkeypatch):
         """Second load finds nothing stale and does not rewrite the file."""
-        srv._save_config({"last_directory": "/music", "auth_salt": "xyzzy"})
+        srv._save_config({"keybindings": {}, "auth_salt": "xyzzy"})
         srv._load_config()
         saves: list[dict] = []
         monkeypatch.setattr(srv, "_save_config", saves.append)
@@ -138,22 +138,16 @@ class TestObsoleteConfigKeys:
 
 
 # ---------------------------------------------------------------------------
-# POST /api/library
+# POST /api/library: gone (the library is fixed by --library at start-up)
 # ---------------------------------------------------------------------------
 
 
-class TestSetLibrary:
-    def test_set_valid_directory(self, client, library_with_pdfs):
-        resp = client.post("/api/library",
-                           json={"path": library_with_pdfs})
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["score_count"] == 3
-
-    def test_set_nonexistent_directory(self, client):
-        resp = client.post("/api/library",
-                           json={"path": "/nonexistent/dir"})
-        assert resp.status_code == 404
+class TestSetLibraryRemoved:
+    def test_the_browser_cannot_choose_the_library(self, client, library_with_pdfs, tmp_path):
+        state.set_library(library_with_pdfs)
+        resp = client.post("/api/library", json={"path": str(tmp_path)})
+        assert resp.status_code == 405
+        assert state.library_dir == normalize_path(library_with_pdfs)
 
 
 # ---------------------------------------------------------------------------
@@ -769,23 +763,6 @@ class TestNestedSetlists:
 
 
 class TestSecurity:
-    def test_set_library_outside_allowed_roots(self, client, tmp_path):
-        """When allowed_roots is set, directories outside are rejected."""
-        allowed = tmp_path / "allowed"
-        allowed.mkdir()
-        forbidden = tmp_path / "forbidden"
-        forbidden.mkdir()
-        state.config["allowed_roots"] = [str(allowed)]
-        resp = client.post("/api/library", json={"path": str(forbidden)})
-        assert resp.status_code == 403
-
-    def test_set_library_inside_allowed_roots(self, client, tmp_path):
-        allowed = tmp_path / "allowed"
-        allowed.mkdir()
-        state.config["allowed_roots"] = [str(allowed)]
-        resp = client.post("/api/library", json={"path": str(allowed)})
-        assert resp.status_code == 200
-
     def test_security_headers_present(self, client, library_with_pdfs):
         state.set_library(library_with_pdfs)
         resp = client.get("/api/config")
@@ -869,7 +846,7 @@ class TestGetScore:
 
 class TestUpdateTags:
     def test_add_tag(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         resp = client.put("/api/scores/tags", json={
             "path": os.path.join(library_with_pdfs, "Bach - Cello Suite.pdf"),
             "filename_tags": ["jazz"],
@@ -884,7 +861,7 @@ class TestUpdateTags:
         assert os.path.exists(os.path.join(library_with_pdfs, "Bach - Cello Suite -- jazz.pdf"))
 
     def test_remove_tag(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         tagged = os.path.join(library_with_pdfs, "jazz", "Davis - Blue -- swing.pdf")
         resp = client.put("/api/scores/tags", json={
             "path": tagged,
@@ -894,7 +871,7 @@ class TestUpdateTags:
         assert resp.json()["score"]["filename"] == "Davis - Blue.pdf"
 
     def test_folder_tags_preserved(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         tagged = os.path.join(library_with_pdfs, "jazz", "Davis - Blue -- swing.pdf")
         resp = client.put("/api/scores/tags", json={
             "path": tagged,
@@ -913,7 +890,7 @@ class TestUpdateTags:
         assert resp.status_code == 400
 
     def test_not_found_returns_404(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         resp = client.put("/api/scores/tags", json={
             "path": os.path.join(library_with_pdfs, "Nonexistent.pdf"),
             "filename_tags": ["jazz"],
@@ -921,7 +898,7 @@ class TestUpdateTags:
         assert resp.status_code in (403, 404)
 
     def test_setlist_references_updated(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         pdf_path = os.path.join(library_with_pdfs, "Bach - Cello Suite.pdf")
         # Create a setlist referencing this score
         client.post("/api/setlists", json={"name": "Test"})
@@ -949,7 +926,7 @@ class TestUpdateTags:
         # Unique content: duplicate-content PDFs are kept out of the index
         with open(old_path, "wb") as f:
             f.write(b"%PDF-1.4 unique cello")
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         resp = client.put("/api/scores/tags", json={
             "path": old_path, "filename_tags": ["baroque"],
         })
@@ -964,7 +941,7 @@ class TestUpdateTags:
     def test_non_object_hash_index_does_not_break_rename(self, client, library_with_pdfs):
         """Regression: a hash index of the wrong JSON shape gave a 500 after
         the file had already been renamed."""
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         with open(os.path.join(library_with_pdfs, "_hash_index.json"), "w") as f:
             f.write("[]")
         resp = client.put("/api/scores/tags", json={
@@ -979,11 +956,11 @@ class TestUpdateTags:
             f.write(b"%PDF-1.4 unique cello")
         with open(os.path.join(library_with_pdfs, "_hash_index.json"), "w") as f:
             f.write("[]")
-        resp = client.post("/api/library", json={"path": library_with_pdfs})
-        assert resp.status_code == 200
+        state.set_library(library_with_pdfs)
+        assert len(state.scores) == 3
 
     def test_target_exists_returns_409(self, client, library_with_pdfs):
-        client.post("/api/library", json={"path": library_with_pdfs})
+        state.set_library(library_with_pdfs)
         # Create a file that would collide
         target = os.path.join(library_with_pdfs, "Bach - Cello Suite -- jazz.pdf")
         with open(target, "wb") as f:
@@ -1302,8 +1279,8 @@ class TestHealReferencesRobustness:
         monkeypatch.setattr(srv, "_save_setlists", boom)
         state.set_library(str(tmp_path))
 
-        # set_library survived and still recorded the directory ...
-        assert state.config["last_directory"] == portable_path(str(tmp_path))
+        # set_library survived and still opened the library ...
+        assert state.library_dir == normalize_path(str(tmp_path))
         # ... and the index still points at the OLD path, so the remap recurs.
         idx = load_hash_index(state.hash_index_path(), state.library_dir)
         assert old_portable in idx.values()

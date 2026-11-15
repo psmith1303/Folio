@@ -62,16 +62,13 @@ A rerun skips files recorded as unchanged, so an interrupted batch picks
 up where it stopped, and a later run over the whole library only works on
 new or changed scores. FAIL is not recorded: it is retried.
 """
-import argparse, os, re, shutil, subprocess, sys, tempfile, time
+import argparse, os, re, shutil, stat, subprocess, sys, tempfile, time
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from web.core import is_excluded_dir  # noqa: E402
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -377,6 +374,28 @@ def load_done(path):
         if len(f) == 5:
             done[f[0]] = tuple(f[1:])
     return done
+
+
+EXCLUDE_MARKER = ".exclude"
+
+
+def is_excluded_dir(dir_path: str) -> bool:
+    """True if *dir_path* holds a ``.exclude`` file: the scripts skip that
+    directory and everything under it, so it never reaches the light
+    library. A marker that can't be read counts as present, so an
+    unreadable directory stays out. Used by find_pdfs (and so by
+    scripts/music_refresh.py).
+    """
+    try:
+        if not stat.S_ISREG(os.lstat(os.path.join(dir_path, EXCLUDE_MARKER)).st_mode):
+            return False
+        # The exact name: a case-insensitive drive (okapi's /mnt/z) also
+        # finds ".Exclude", which p3800's case-sensitive drive doesn't.
+        return EXCLUDE_MARKER in os.listdir(dir_path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
 
 
 def find_pdfs(paths):

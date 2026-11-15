@@ -10,7 +10,8 @@ per score (Step 9) keep ordering exactly as the per-comparison sort did:
   not a reversed one);
 - tag lists compare element by element, shorter first on a common prefix,
   like Python lists;
-- the tags sort breaks composer ties on title.
+- the tags sort breaks composer ties on title;
+- titles compare letter by letter: spaces, punctuation and accents ignored.
 
 Runs the REAL library-filter.js under Deno.
 """
@@ -86,3 +87,43 @@ def test_unknown_sort_keeps_the_given_order():
     scores = [_score("/2", "Z"), _score("/1", "A")]
     assert _order(scores, "toString") == ["/2", "/1"]
     assert _order(scores, "bogus") == ["/2", "/1"]
+
+
+# --- titles letter by letter ----------------------------------------------
+
+@pytest.mark.parametrize("sort", ["title", "composer", "tags"])
+def test_titles_sort_letter_by_letter(sort):
+    """Word by word, "St Louis Blues" came first (a space sorts before "a")."""
+    scores = [_score("/stl", title="St Louis Blues"), _score("/star", title="Stardust")]
+    assert _order(scores, sort) == ["/star", "/stl"]
+
+
+def test_punctuation_is_ignored_in_titles():
+    scores = [_score("/dont", title="Dont Explain"), _score("/apos", title="Don't Blame Me"),
+              _score("/dash", title="Do-Re-Mi")]
+    assert _order(scores, "title") == ["/apos", "/dont", "/dash"]   # dontb < donte < doremi
+
+
+def test_an_accented_letter_sorts_with_its_plain_one():
+    scores = [_score("/f", title="Fantasia"), _score("/e", title="Élégie")]
+    assert _order(scores, "title") == ["/e", "/f"]
+
+
+def test_digits_count_as_letters():
+    scores = [_score("/2", title="Suite No. 2"), _score("/1", title="Suite No. 1")]
+    assert _order(scores, "title") == ["/1", "/2"]
+
+
+def test_titles_equal_letter_for_letter_have_a_fixed_order():
+    """ "ave maria" < "avemaria" as whole titles, whichever comes first in
+    the list, so the order doesn't depend on scan order."""
+    a = _score("/spaced", title="Ave Maria")
+    b = _score("/joined", title="AveMaria")
+    for sort in ("title", "composer", "tags"):
+        assert _order([b, a], sort) == ["/spaced", "/joined"]
+        assert _order([a, b], sort) == ["/spaced", "/joined"]
+
+
+def test_title_sort_breaks_letter_ties_on_composer_first():
+    scores = [_score("/z", "Zelenka", "Ave Maria"), _score("/a", "Arcadelt", "AveMaria")]
+    assert _order(scores, "title") == ["/a", "/z"]

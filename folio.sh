@@ -1,1 +1,1 @@
-python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+python3 -m web --library "${1:?usage: folio.sh LIBRARY_DIR}"

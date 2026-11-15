@@ -79,14 +79,14 @@ if (typeof crypto !== "undefined" && !crypto.randomUUID) {
 
 import { getState } from "./modules/state.js";
 import { api, askServiceWorker } from "./modules/api.js";
-import { dirInput, libraryStatus, titleDisplay } from "./modules/dom.js";
+import { libraryStatus, titleDisplay } from "./modules/dom.js";
 import { initTheme } from "./modules/theme.js";
 import { initLibraryEvents, loadLibrary } from "./modules/library.js";
 import { initViewerEvents } from "./modules/viewer.js";
 import { initAnnotationEvents, syncPendingAnnotations } from "./modules/annotations.js";
 import { initStampPalette, loadStampAssets } from "./modules/stamps.js";
 import { initSetlistEvents } from "./modules/setlists.js";
-import { initDialogHandlers, showDirDialog } from "./modules/dialog-handlers.js";
+import { initDialogHandlers } from "./modules/dialog-handlers.js";
 import { initKeyboardShortcuts, setKeybindings } from "./modules/keyboard.js";
 import { initTouchHandlers } from "./modules/touch.js";
 import { initCacheUI, requestPersistentStorage, syncOfflineSet } from "./modules/cache.js";
@@ -254,14 +254,16 @@ async function initApp() {
       reloadIfShellStale(cfg.version);
     }
     if (cfg.library_dir && cfg.score_count > 0) {
-      dirInput.value = cfg.library_dir;
       await loadLibrary();
       syncPendingAnnotations();      // annotations drawn offline last time
       // Keep setlists and Recent offline, in the background.
       requestPersistentStorage();
       syncOfflineSet();
     } else {
-      showDirDialog(cfg.library_dir || "");
+      // The library is fixed at start-up (python -m web --library DIR).
+      libraryStatus.textContent = cfg.library_dir
+        ? "No scores in the library."
+        : "No library: start Folio with --library.";
     }
   } catch (err) {
     libraryStatus.textContent = `Error: ${err.message}`;

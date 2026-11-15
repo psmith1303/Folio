@@ -19,11 +19,10 @@ The full feature list and run instructions are in [[file:README.md][README.md]].
 - [[file:tests/][tests/]] :: pytest suite.
 - =folio.sh=, =Dockerfile= :: Ways to launch it.
 - [[file:setlist-editor.el][setlist-editor.el]] :: Emacs helper for editing setlists.
-- =config.json= :: Local settings (library path etc.).
 
 * Quick start
 
 #+begin_src sh
 pip install -r requirements.txt
-python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+python3 -m web --library /path/to/Music
 #+end_src

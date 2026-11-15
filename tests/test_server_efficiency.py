@@ -43,12 +43,12 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
     srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
@@ -305,7 +305,9 @@ def test_legacy_sidecar_is_migrated_and_etag_follows(tmp_path):
 
 def test_import_does_not_scan_the_library_but_startup_does(tmp_path):
     """Regression: importing web.server (e.g. from any test) scanned the
-    configured library at import time."""
+    configured library at import time. Start-up scans LIBRARY_DIR (set by
+    --library) and nothing else: a last_directory left in an old config is
+    ignored, so without --library there are no scores."""
     home = tmp_path / "home"
     (home / ".folio").mkdir(parents=True)
     lib = tmp_path / "lib"
@@ -319,15 +321,18 @@ def test_import_does_not_scan_the_library_but_startup_does(tmp_path):
         "from fastapi.testclient import TestClient\n"
         "at_import = len(s.state.scores)\n"
         "with TestClient(s.app) as c:\n"
+        "    no_flag = c.get('/api/config').json()['score_count']\n"
+        f"s.LIBRARY_DIR = {str(lib)!r}\n"
+        "with TestClient(s.app) as c:\n"
         "    at_startup = c.get('/api/config').json()['score_count']\n"
-        "print(json.dumps([at_import, at_startup]))\n"
+        "print(json.dumps([at_import, no_flag, at_startup]))\n"
     )
     proc = subprocess.run(
         [sys.executable, "-c", script], cwd=REPO, capture_output=True, text=True,
         env={**os.environ, "HOME": str(home)}, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
-    assert json.loads(proc.stdout.strip().splitlines()[-1]) == [0, 2]
+    assert json.loads(proc.stdout.strip().splitlines()[-1]) == [0, 0, 2]
 
 
 # ---------------------------------------------------------------------------

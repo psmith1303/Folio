@@ -9,7 +9,7 @@ Runs on any device with a browser, including iPad.
 - 7-colour palette, adjustable text and stamp size, musical symbol shortcuts
 - Pen style grid: pick width (Fine to Heavy) and transparency (Solid, Semi, Highlight) with one tap from sample strokes; widths scale with the page
 - Touch and Apple Pencil support (Pointer Events API), with optional Pencil-only mode that ignores finger/mouse input on the pen tool for palm-rejection during writing
-- Metadata search by composer, title, and folder tags
+- Metadata search by composer, title, and folder tags; titles sort letter by letter (spaces, punctuation and accents ignored: "Stardust" before "St Louis Blues")
 - Start-page stamp: mark the page a score should open on; Library, Recent, Newest and setlists (whose start page is left at 1) open there
 - Add scores to setlists directly from the viewer (`s` key)
 - Click-to-navigate in Fit/2-up modes: right/bottom half = next page, left/top half = previous
@@ -21,7 +21,6 @@ Runs on any device with a browser, including iPad.
 - Offline use (PWA): each device keeps every setlist's PDFs pinned automatically (released when no setlist holds them), keeps the Recent list's PDFs (the last 200 opened) cached, and auto-caches up to 500 more viewed PDFs, least recently used evicted first. It syncs at launch and after a setlist change on that device, and asks the browser for persistent storage
 - Dark/light theme toggle (remembered across sessions)
 - Fullscreen mode for distraction-free viewing (f key or toolbar button)
-- Directories with a `.exclude` file are hidden from the library
 
 ## Requirements
 - Python 3.10+
@@ -41,32 +40,31 @@ pip install -r requirements.txt
 
 ### Start the server
 ```
-python3 -m uvicorn web.server:app --host 0.0.0.0 --port 8989
+python3 -m web --library /path/to/Music
 ```
 
+(`./folio.sh /path/to/Music` does the same.) `--host` and `--port` default to
+`0.0.0.0` and `8989`. The library is fixed when Folio starts: the browser can't
+choose it. Started without `--library` (e.g. a bare `uvicorn web.server:app`),
+Folio serves no library.
+
 Open `http://<your-machine>:8989` in a browser or on your iPad.
-On first launch, a dialog prompts for your music library path.
-The setting is remembered across restarts.
 
 ### Docker
 
 A `Dockerfile` is included; run it like any other container, with two volumes:
 
-- **Music library** — bind-mount it read-write, e.g. at `/library`. Stored
+- **Music library** — bind-mount it read-write at `/library`: the image runs
+  `python -m web --library /library`. Stored
   setlists, the recent list and the hash index hold paths relative to the
   library root, the API gives and takes paths in the same form, and
   annotation sidecars sit next to each PDF — so neither the stored data nor
   each device's offline copies depend on the mount path.
-- **Config** — the app keeps its settings in `~/.folio/web_config.json`. The
-  image sets `HOME=/config`, so persist `/config` (e.g. `./folio-config:/config`)
-  to keep your library selection across container recreations.
-
-> **Gotcha — no scores listed?** A fresh `web_config.json` has no library
-> selected, so the library is empty until you pick the folder once (via the
-> first-launch dialog, or `POST /api/library {"path": "..."}`). The bind mount
-> being present is not enough — Folio only scans the folder you point it at.
-> Once set, `last_directory` is saved to the persisted config and auto-loaded on
-> every restart.
+- **Config** — the app keeps its settings (keybindings) in
+  `~/.folio/web_config.json`. The image sets `HOME=/config`, so persist
+  `/config` (e.g. `./folio-config:/config`) to keep them across container
+  recreations. Keys from older versions (`last_directory`, `allowed_roots`)
+  are dropped on load.
 
 ## Security
 
@@ -139,10 +137,10 @@ python3 -m pytest -v
 
 | File | Tests | What is tested |
 |---|---|---|
-| `tests/test_web_core.py` | 61 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (.exclude support), annotation load/save/migration, etag, conflict detection, tag renaming |
-| `tests/test_lighten_scans.py` | 49 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders, options, done-list; colour scans (half the pages or more, not a colour cover; palette images and masks not counted as colour); a quarter-turned page rendered at its displayed size (the CropBox), a wrong-shaped render refused, and blank sheets and covers kept grey in black-and-white mode only (pdftoppm faked); three end-to-end runs: one with pages turned by `/Rotate` 90 and 270, one with a page cropped to half its scan beside a cover kept grey (needs poppler and jbig2, skips without them, as in the deploy image); a `--dry-run` on real colour, grey and colour-cover scans (needs poppler) |
+| `tests/test_web_core.py` | 58 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (a `.exclude` file no longer hides a folder), annotation load/save/migration, etag, conflict detection, tag renaming |
+| `tests/test_lighten_scans.py` | 51 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders (the exact name, also on a case-insensitive drive), options, done-list; colour scans (half the pages or more, not a colour cover; palette images and masks not counted as colour); a quarter-turned page rendered at its displayed size (the CropBox), a wrong-shaped render refused, and blank sheets and covers kept grey in black-and-white mode only (pdftoppm faked); three end-to-end runs: one with pages turned by `/Rotate` 90 and 270, one with a page cropped to half its scan beside a cover kept grey (needs poppler and jbig2, skips without them, as in the deploy image); a `--dry-run` on real colour, grey and colour-cover scans (needs poppler) |
 | `tests/test_music_refresh.py` | 26 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, a render fix (every copy made again), moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while it hides a kept file), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing and names a colour scan, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
-| `tests/test_web_api.py` | 134 | FastAPI endpoints: config (keybindings), library, PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
+| `tests/test_web_api.py` | 138 | FastAPI endpoints: config (keybindings, obsolete keys dropped), library (not settable from the browser), PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
 

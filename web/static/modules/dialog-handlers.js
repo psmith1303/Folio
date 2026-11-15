@@ -5,20 +5,17 @@
 
 import { getState } from "./state.js";
 import {
-  dirDialog, dirInput, dirCancel,
   textDialog, textDialogTitle, textInput, textFont, textCancel,
   textSizeSlider, textSizePt,
   clearPageDialog, clearPageCancel, btnClearPage,
   conflictDialog, conflictReload, conflictForce,
-  btnSetDir, btnAddToSetlist, btnEditTags,
+  btnAddToSetlist, btnEditTags,
   setlistPickerDialog, setlistPickerList, setlistPickerCancel,
   setlistPickerStart, setlistPickerEnd, setlistPickerAdd,
   tagEditorDialog, tagEditorChips, tagEditorInput, tagEditorAddBtn,
   tagEditorCancel, titleDisplay,
-  libraryStatus,
 } from "./dom.js";
 import { api } from "./api.js";
-import { refreshCachedConfig } from "./cache.js";
 import { esc, sizeToPt } from "./utils.js";
 import {
   saveAnnotations, annotationsReloaded,
@@ -27,52 +24,7 @@ import {
 } from "./annotations.js";
 import { annotUrl } from "./annot-outbox.js";
 import { renderPage } from "./viewer.js";
-import { loadLibrary } from "./library.js";
 import { addCurrentScoreToSetlist } from "./setlists.js";
-
-// ---------------------------------------------------------------------------
-// Set-folder dialog
-// ---------------------------------------------------------------------------
-
-export function showDirDialog(defaultPath) {
-  dirInput.value = defaultPath || "";
-  dirDialog.showModal();
-  dirInput.focus();
-}
-
-function initDirDialog() {
-  btnSetDir.addEventListener("click", () => {
-    dirInput.value = "";
-    dirDialog.showModal();
-    dirInput.focus();
-  });
-
-  dirCancel.addEventListener("click", () => dirDialog.close());
-
-  dirDialog.addEventListener("close", async () => {
-    const path = dirInput.value.trim();
-    if (!path) return;
-    try {
-      libraryStatus.textContent = "Scanning\u2026";
-      await api("/api/library", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-      // The old library's scores are no longer valid: drop them, so a failed
-      // reload leaves the song picker saying "not loaded" rather than
-      // offering songs from the previous library.
-      const s = getState();
-      s.selectedTags.clear();
-      s.allScores = [];
-      s.libraryLoaded = false;
-      await loadLibrary();
-      refreshCachedConfig();
-    } catch (err) {
-      libraryStatus.textContent = `Error: ${err.message}`;
-    }
-  });
-}
 
 // ---------------------------------------------------------------------------
 // Text annotation dialog
@@ -393,7 +345,6 @@ function initTagEditorDialog() {
 // ---------------------------------------------------------------------------
 
 export function initDialogHandlers() {
-  initDirDialog();
   initTextDialog();
   initClearPageDialog();
   initConflictDialog();

@@ -8,6 +8,7 @@
 // substring on title or composer, exact composer match, and all selected tags
 // present. Tag matching is an exact subset — selected tags always come from
 // the library's own tag list, so no case folding is needed.
+// Titles sort letter by letter (see letters() below).
 // ---------------------------------------------------------------------------
 
 const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -23,16 +24,27 @@ function cmpArr(a, b) {
   return a.length - b.length;
 }
 
+// A title's letter-by-letter key: lower case, letters and digits only, so
+// spaces and punctuation don't count ("Stardust" before "St Louis Blues")
+// and an accented letter sorts with its plain one (NFKD splits off the
+// accent, which is then dropped).
+const letters = (s) => s.normalize("NFKD").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+// A title's sort keys: letter by letter, then the whole lower-cased title,
+// so titles equal letter for letter ("Ave Maria", "AveMaria") still have a
+// fixed order.
+const titleKeys = (sc) => [letters(sc.title), sc.title.toLowerCase()];
+
 // Each sort's key for a score, computed once per score rather than on
 // every comparison.
 const SORT_KEYS = {
-  composer: (sc) => [sc.composer.toLowerCase(), sc.title.toLowerCase()],
-  title: (sc) => [sc.title.toLowerCase(), sc.composer.toLowerCase()],
-  // Title is a third key the old endpoint did not have. Sorting by tags
+  composer: (sc) => [sc.composer.toLowerCase(), ...titleKeys(sc)],
+  title: (sc) => [letters(sc.title), sc.composer.toLowerCase(), sc.title.toLowerCase()],
+  // The title keys are ones the old endpoint did not have. Sorting by tags
   // leaves same-composer/same-tag scores tied, and their order would then
   // depend on how the fetched list happened to be ordered. Breaking on title
   // makes the ordering total and independent of that.
-  tags: (sc) => [[...sc.tags].sort(cmpStr), sc.composer.toLowerCase(), sc.title.toLowerCase()],
+  tags: (sc) => [[...sc.tags].sort(cmpStr), sc.composer.toLowerCase(), ...titleKeys(sc)],
 };
 
 // Stable sort of `scores` by `keyOf`, descending if `desc`.

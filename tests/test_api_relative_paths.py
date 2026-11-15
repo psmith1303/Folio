@@ -29,12 +29,12 @@ def reset_state(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
     srv._rate_buckets.clear()
     yield
     state.library_dir = ""
     state.scores = []
-    state.config = {"last_directory": "", "allowed_roots": []}
+    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ def lib(tmp_path, client, outside):
     (root / "jazz").mkdir(parents=True)
     (root / DAVIS).write_bytes(b"%PDF-1.4 davis")
     (root / BACH).write_bytes(b"%PDF-1.4 bach")
-    assert client.post("/api/library", json={"path": str(root)}).status_code == 200
+    state.set_library(str(root))
     for name in ("Gig", "Encore"):
         client.post("/api/setlists", json={"name": name})
     assert client.put("/api/setlists/Encore", json={"items": [
@@ -117,7 +117,7 @@ def test_the_api_paths_do_not_change_when_the_library_moves(client, lib, outside
     before = {e: sorted(RESPONSES[e](client)) for e in RESPONSES if e != "playback"}
     moved = tmp_path / "library"
     os.rename(lib, moved)
-    assert client.post("/api/library", json={"path": str(moved)}).status_code == 200
+    state.set_library(str(moved))
     after = {e: sorted(RESPONSES[e](client)) for e in RESPONSES if e != "playback"}
     assert after == before
 
