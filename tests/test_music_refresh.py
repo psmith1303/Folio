@@ -81,7 +81,7 @@ def test_first_run_lightens_heavy_keeps_small_and_prunes_the_rest(trees, la):
     assert (music / "Tech/heavy.pdf").read_bytes() == b"LIGHT:%PDF heavy one"
     assert (music / "Tech/small.pdf").read_bytes() == b"%PDF small two"
     assert counts["ADOPT"] == 2
-    # Not shown by Folio, identical in Master: gone from Music, Master untouched.
+    # Not a library PDF, identical in Master: gone from Music, Master untouched.
     for rel in ("Audio/track.mp3", "Audio/hidden.pdf", "Audio/.exclude", "Tech/notes.docx"):
         assert line(lines, "PRUNE", rel)
         assert not (music / rel).exists() and (master / rel).exists()

@@ -139,7 +139,7 @@ python3 -m pytest -v
 |---|---|---|
 | `tests/test_web_core.py` | 58 | `web.core` module: path utils, SafeJSON, Score parsing, content hashing, library scanning (a `.exclude` file no longer hides a folder), annotation load/save/migration, etag, conflict detection, tag renaming |
 | `tests/test_lighten_scans.py` | 51 | `scripts/lighten_scans.py`: A4 fit, Otsu, speck and edge-strip removal, deskew, `.exclude` folders (the exact name, also on a case-insensitive drive), options, done-list; colour scans (half the pages or more, not a colour cover; palette images and masks not counted as colour); a quarter-turned page rendered at its displayed size (the CropBox), a wrong-shaped render refused, and blank sheets and covers kept grey in black-and-white mode only (pdftoppm faked); three end-to-end runs: one with pages turned by `/Rotate` 90 and 270, one with a page cropped to half its scan beside a cover kept grey (needs poppler and jbig2, skips without them, as in the deploy image); a `--dry-run` on real colour, grey and colour-cover scans (needs poppler) |
-| `tests/test_music_refresh.py` | 26 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, a render fix (every copy made again), moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while it hides a kept file), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing and names a colour scan, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
+| `tests/test_music_refresh.py` | 26 | `scripts/music_refresh.py` (lightening stubbed): every class (new, adopt only when every byte matches, conflict, changed, a new timestamp only, a render fix (every copy made again), moved, renamed in Folio, deleted, deleted from both, gone), prune only with an identical Master copy (a .exclude marker kept while a kept file sits under its folder), only folders the run emptied removed, no rename or move over another file, odd sidecar json, dry run writes nothing and names a colour scan, restart after a crash, the swapped-folders guard, lighten options and jbig2 needed only for `--apply` in bw mode |
 | `tests/test_web_api.py` | 138 | FastAPI endpoints: config (keybindings, obsolete keys dropped), library (not settable from the browser), PDF serving, annotation CRUD, rotation, etag/conflict, setlist CRUD/rename, nested setlists (refs, flattening, cycle detection, rename cascading, backward compat), content-hash reference healing, path traversal, security |
 
 ## Emacs Editing
@@ -279,8 +279,8 @@ python3 scripts/music_refresh.py --apply    # do it (restartable)
   `--restore` is given.
 - Other files in Music (audio, `.exclude` folders) are deleted only when
   Master holds a byte-identical copy; anything else is reported as
-  MUSIC-ONLY and kept, and a `.exclude` marker stays while it still hides
-  a kept file. A Music file that differs from Master at the same path is a
+  MUSIC-ONLY and kept, and a `.exclude` marker stays while a kept file
+  sits under its folder. A Music file that differs from Master at the same path is a
   CONFLICT, left alone, as is a move or rename onto a path that already
   holds another file.
 - `ANNOTATED` lists lightened PDFs that have annotations: straightening

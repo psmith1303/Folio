@@ -3,9 +3,11 @@
 
 Music-Master holds the original scans and everything else Peter keeps with
 them (audio, LilyPond, .exclude folders). Music, the folder Folio serves,
-holds only what Folio shows: a light copy of each PDF outside a .exclude
+holds the library's PDFs: a light copy of each Master PDF outside a .exclude
 folder (scripts/lighten_scans.py; small PDFs are copied as they are), plus
 Folio's own json (annotation sidecars, setlists.json, _hash_index.json...).
+Folio shows every PDF in Music, so the .exclude rule is applied here, on
+the way in.
 
 Dry run by default: it reports what it would do and writes nothing.
 --apply makes the changes. Each Master PDF falls in one class:
@@ -64,8 +66,8 @@ FIELDS = ("rel", "size", "mtime_ns", "master_hash", "music_hash", "action", "set
 # --- reading the two trees -------------------------------------------------
 
 def folio_pdfs(root):
-    """{rel path (posix str): Path} of the PDFs Folio shows (outside .exclude
-    folders)."""
+    """{rel path (posix str): Path} of the library's PDFs under root: those
+    outside .exclude folders. (Folio itself shows every PDF in Music.)"""
     return {p.relative_to(root).as_posix(): p for p in ls.find_pdfs([root])}
 
 
@@ -349,7 +351,7 @@ def refresh(master, music, la, apply=False, prune=False, restore=False, out=prin
 
     # Everything else in Music.
     # Classify every file before deleting any: pruning a folder's .exclude
-    # marker would make the PDFs beside it look like Folio's.
+    # marker would make the PDFs beside it count as the library's.
     shown = folio_pdfs(music)
     extras = []
     for rel, p in sorted(all_files(music).items()):
@@ -361,20 +363,21 @@ def refresh(master, music, la, apply=False, prune=False, restore=False, out=prin
     same = {rel for rel, p in extras
             if (master / rel).is_file() and filecmp.cmp(master / rel, p, shallow=False)}
     # A .exclude marker stays while a kept file sits under its folder:
-    # without it Folio would show that file.
+    # without it the next run would count that file as one of the library's
+    # PDFs.
     kept = [Path(rel).parent for rel, _ in extras if rel not in same]
     for rel, p in extras:
         d = Path(rel).parent
         if rel in same and not (Path(rel).name == ls.EXCLUDE_MARKER
                                 and any(k == d or d in k.parents for k in kept)):
-            report("PRUNE", "not shown by Folio; identical copy in Master", rel)
+            report("PRUNE", "not a library PDF; identical copy in Master", rel)
             if apply:
                 p.unlink()
                 emptied.add(p.parent)
         elif rel in same:
-            report("MUSIC-ONLY", "kept: it hides files kept beside it", rel)
+            report("MUSIC-ONLY", "kept: files kept under its folder need it", rel)
         else:
-            report("MUSIC-ONLY", "not shown by Folio, and no identical copy in Master: kept", rel)
+            report("MUSIC-ONLY", "not a library PDF, and no identical copy in Master: kept", rel)
     if apply:
         # Only folders this run emptied: an empty folder made on purpose stays.
         for d in sorted(emptied, key=lambda d: len(d.parts), reverse=True):
