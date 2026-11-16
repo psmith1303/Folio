@@ -27,7 +27,8 @@ the full feature list and run instructions.
   (`run_deno`, `slice_source`) and `tests/js_module_harness.py` (`run_module`
   with generated sibling stubs). Put new pure logic in `modules/utils.js`.
   Deno gotchas: `caches` and `localStorage` need `Object.defineProperty`, and
-  `localStorage` is real and persists across runs. Two sliced functions with one
+  `localStorage` is real and persists across runs within one pytest session
+  (conftest gives each session a scratch HOME). Two sliced functions with one
   name: wrap one in an IIFE, don't rename it.
 - Tests must not read git history or gitignored files: /ship runs them from an
   export with no `.git`.

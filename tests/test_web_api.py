@@ -10,23 +10,6 @@ from web.core import SafeJSON, load_hash_index, load_recent, load_setlists, norm
 from web.server import app, state
 
 
-@pytest.fixture(autouse=True)
-def reset_state(tmp_path, monkeypatch):
-    """Reset server state and isolate config writes to a temp file."""
-    monkeypatch.setattr(srv, "WEB_CONFIG_PATH", str(tmp_path / "web_config.json"))
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
-    state.library_dir = ""
-    state.scores = []
-    state.config = {"keybindings": {}}
-    srv._rate_buckets.clear()
-    yield
-    state.library_dir = ""
-    state.scores = []
-    state.config = {"keybindings": {}}
-
-
 @pytest.fixture
 def client():
     return TestClient(app)
@@ -1268,9 +1251,9 @@ class TestHealReferencesRobustness:
         os.rename(str(pdf), str(new_pdf))
 
         # The setlist file cannot be written during this scan.  Restore by
-        # re-patching, never monkeypatch.undo() -- reset_state shares this
-        # monkeypatch instance, and undoing it would let _save_config write to
-        # the real ~/.folio/web_config.json.
+        # re-patching, never monkeypatch.undo() -- conftest's reset_server shares
+        # this monkeypatch instance, and undoing it would let _save_config write
+        # outside this test's config folder.
         real_save_setlists = srv._save_setlists
 
         def boom(data):

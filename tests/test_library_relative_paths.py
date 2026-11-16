@@ -16,7 +16,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 import web.core as core
-import web.server as srv
 from web.core import (
     MIGRATION_BACKUP_SUFFIX,
     SafeJSONError,
@@ -32,23 +31,6 @@ from web.core import (
 from web.server import app, state
 
 STORES = ["setlists.json", "_recent.json", "_hash_index.json"]
-
-
-@pytest.fixture(autouse=True)
-def reset_state(tmp_path, monkeypatch):
-    """Isolate server config and state, as in test_web_api.py."""
-    monkeypatch.setattr(srv, "WEB_CONFIG_PATH", str(tmp_path / "web_config.json"))
-    config_dir = tmp_path / "config"
-    config_dir.mkdir()
-    monkeypatch.setattr(srv, "CONFIG_DIR", str(config_dir))
-    state.library_dir = ""
-    state.scores = []
-    state.config = {"keybindings": {}}
-    srv._rate_buckets.clear()
-    yield
-    state.library_dir = ""
-    state.scores = []
-    state.config = {"keybindings": {}}
 
 
 @pytest.fixture
